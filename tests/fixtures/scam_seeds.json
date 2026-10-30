@@ -1,0 +1,10 @@
+[
+  {"text": "Dear SBI customer, your KYC will be blocked today. Share your OTP and Aadhaar number to update at https://sbi-kyc.in/upd", "rules": ["credential_request", "kyc_block_urgency", "brand_domain_mismatch"]},
+  {"text": "Congratulations! You won Rs 25 lakh in KBC lottery. Send processing fee and OTP to claim.", "rules": ["prize_lottery", "credential_request"]},
+  {"text": "Your electricity will be disconnected tonight. Call 9876543210 and share OTP to avoid power cut.", "rules": ["electricity_disconnect", "credential_request"]},
+  {"text": "Install AnyDesk QuickSupport app to fix your Paytm KYC. Our agent will guide you.", "rules": ["remote_access_app", "apk_install"]},
+  {"text": "Approve the UPI collect request of Rs 1 to receive refund from Paytm customer care", "rules": ["upi_collect_or_pay"]},
+  {"text": "CBI officer here. Digital arrest warrant issued for your Aadhaar. Video call now.", "rules": ["digital_arrest"]},
+  {"text": "Your account will be suspended. Verify at http://hdfc-secure-login.xyz/verify now", "rules": ["account_suspension", "suspicious_url", "brand_domain_mismatch"]},
+  {"text": "Parcel held at customs. Pay Rs 99 duty at bit.ly/dhl99 to release it.", "rules": ["parcel_customs", "shortened_url"]}
+]

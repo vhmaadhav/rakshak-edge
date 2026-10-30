@@ -1,0 +1,15 @@
+# raw datasets (downloaded, not committed)
+/data/
+
+# Kaggle launcher outputs (kernel source and downloaded results)
+kaggle/out/
+
+# Python and tool caches, local virtualenv, OS and notebook leftovers
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.ipynb_checkpoints/
+.DS_Store

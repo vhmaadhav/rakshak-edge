@@ -1,0 +1,22 @@
+# Pinned runtime set for rakshak Kaggle kernels. The first block comes from uv.lock.
+# The transformer stack (transformers, datasets, accelerate, optuna, sentencepiece, protobuf) is not in
+# uv.lock. Each pin is the newest PyPI release at least two weeks old on 2026-10-30. transformers 5.19.0
+# is the newest that old (5.20+ came out after 2026-10-15). torch and CUDA are not pinned: the Kaggle GPU
+# image provides them, and reinstalling torch would replace the image's CUDA build.
+# kaggle/build_kernel.py embeds these lines; run.py installs them only when the kernel has internet.
+# numpy has two pins because uv.lock resolves differently for Python below and at 3.12.
+numpy==2.4.6 ; python_version < "3.12"
+numpy==2.5.4 ; python_version >= "3.12"
+scikit-learn==1.9.1
+pandas==3.1.0
+lightgbm==4.7.0
+regex==2026.9.29
+tldextract==5.4.0
+joblib==1.6.0
+threadpoolctl==3.7.0
+transformers==5.19.0
+datasets==5.1.0
+accelerate==1.15.0
+optuna==5.0.0
+sentencepiece==0.2.2
+protobuf==7.36.2

@@ -1,0 +1,144 @@
+{
+  "_comment": "Curated Indian brand -> official registered domains. Each entry lists the registered domains (eTLD+1, as tldextract reports them) a legitimate message would link to. 'verified' false means the domain is from memory and must be confirmed against the brand's own site before relying on it. Aliases are matched case-insensitively against message text; host_aliases are matched against host labels (hyphen/dot separated, spaces removed).",
+  "version": 1,
+  "brands": {
+    "SBI": {
+      "aliases": ["sbi", "state bank of india", "onlinesbi"],
+      "host_aliases": ["sbi", "onlinesbi"],
+      "domains": ["sbi.co.in", "onlinesbi.sbi"],
+      "verified": true
+    },
+    "HDFC Bank": {
+      "aliases": ["hdfc bank", "hdfc"],
+      "host_aliases": ["hdfc", "hdfcbank"],
+      "domains": ["hdfcbank.com"],
+      "verified": true
+    },
+    "ICICI Bank": {
+      "aliases": ["icici bank", "icici"],
+      "host_aliases": ["icici", "icicibank"],
+      "domains": ["icicibank.com"],
+      "verified": true
+    },
+    "Axis Bank": {
+      "aliases": ["axis bank"],
+      "host_aliases": ["axisbank", "axis"],
+      "domains": ["axisbank.com"],
+      "verified": true
+    },
+    "Kotak Mahindra Bank": {
+      "aliases": ["kotak", "kotak mahindra"],
+      "host_aliases": ["kotak", "kotakbank"],
+      "domains": ["kotak.com", "kotakbank.com"],
+      "verified": true
+    },
+    "Punjab National Bank": {
+      "aliases": ["pnb", "punjab national bank"],
+      "host_aliases": ["pnb", "pnbindia"],
+      "domains": ["pnbindia.in"],
+      "verified": true
+    },
+    "Paytm": {
+      "aliases": ["paytm"],
+      "host_aliases": ["paytm"],
+      "domains": ["paytm.com"],
+      "verified": true
+    },
+    "PhonePe": {
+      "aliases": ["phonepe"],
+      "host_aliases": ["phonepe"],
+      "domains": ["phonepe.com"],
+      "verified": true
+    },
+    "Google Pay": {
+      "aliases": ["google pay", "gpay"],
+      "host_aliases": ["gpay", "googlepay"],
+      "domains": ["pay.google.com"],
+      "verified": true
+    },
+    "BHIM / NPCI": {
+      "aliases": ["bhim", "npci"],
+      "host_aliases": ["bhim", "npci"],
+      "domains": ["npci.org.in", "bhimupi.org.in"],
+      "verified": false
+    },
+    "IRCTC": {
+      "aliases": ["irctc"],
+      "host_aliases": ["irctc"],
+      "domains": ["irctc.co.in"],
+      "verified": true
+    },
+    "India Post": {
+      "aliases": ["india post", "indiapost", "department of posts"],
+      "host_aliases": ["indiapost"],
+      "domains": ["indiapost.gov.in"],
+      "verified": true
+    },
+    "Amazon": {
+      "aliases": ["amazon"],
+      "host_aliases": ["amazon"],
+      "domains": ["amazon.in", "amazon.com"],
+      "verified": true
+    },
+    "Flipkart": {
+      "aliases": ["flipkart"],
+      "host_aliases": ["flipkart"],
+      "domains": ["flipkart.com"],
+      "verified": true
+    },
+    "Airtel": {
+      "aliases": ["airtel"],
+      "host_aliases": ["airtel"],
+      "domains": ["airtel.in"],
+      "verified": true
+    },
+    "Jio": {
+      "aliases": ["jio", "reliance jio"],
+      "host_aliases": ["jio"],
+      "domains": ["jio.com"],
+      "verified": true
+    },
+    "Vi (Vodafone Idea)": {
+      "aliases": ["vodafone idea", "myvi", "vi app"],
+      "host_aliases": ["myvi", "vodafoneidea"],
+      "domains": ["myvi.in", "vodafoneidea.com"],
+      "verified": false
+    },
+    "BSNL": {
+      "aliases": ["bsnl"],
+      "host_aliases": ["bsnl"],
+      "domains": ["bsnl.co.in"],
+      "verified": true
+    },
+    "EPFO": {
+      "aliases": ["epfo", "epf", "provident fund"],
+      "host_aliases": ["epfo", "epfindia"],
+      "domains": ["epfindia.gov.in"],
+      "verified": true
+    },
+    "Income Tax Department": {
+      "aliases": ["income tax", "income tax department", "incometax"],
+      "host_aliases": ["incometax"],
+      "domains": ["incometax.gov.in"],
+      "verified": true
+    },
+    "UIDAI / Aadhaar": {
+      "aliases": ["uidai", "aadhaar", "aadhar"],
+      "host_aliases": ["uidai", "aadhaar", "myaadhaar"],
+      "domains": ["uidai.gov.in"],
+      "verified": true
+    },
+    "Blue Dart": {
+      "aliases": ["blue dart", "bluedart"],
+      "host_aliases": ["bluedart"],
+      "domains": ["bluedart.com"],
+      "verified": true
+    },
+    "Delhivery": {
+      "aliases": ["delhivery"],
+      "host_aliases": ["delhivery"],
+      "domains": ["delhivery.com"],
+      "verified": true
+    }
+  }
+}
