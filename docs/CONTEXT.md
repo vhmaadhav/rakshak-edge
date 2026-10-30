@@ -52,3 +52,24 @@ Goal is state of the art and the best, not just a working demo.
 - Strategy: strongest teacher (fine-tuned multilingual/Indic encoders, ensembles, HPO) → distill into tiny on-device students; report both, ship the student.
 - All training, HPO, distillation and benchmark evals run on Kaggle kernels via the kaggle CLI (`kaggle/` launcher, ntfy completion event, no polling). Laptop = code, git, unit tests.
 - Cross-device benchmarking: Qualcomm AI Hub (cloud-hosted real Snapdragon devices) for the specialist models — CPU-only profiles are the headline, NPU numbers a bonus. Final submission numbers still come from our own physical device. Plan: docs/QAI_HUB_PLAN.md.
+
+## Decisions from deep-research report 2 (2026-10-30; claims being verified in docs/RESEARCH_NOTES.md)
+- Rename "proof-carrying explanation" → **Evidence-Locked Advisory (ELA)**; no "proof" or blanket "SOTA" wording unless reproduced under identical protocol.
+- Primary safety objective: **low FPR on legitimate Indian transactional SMS** (bank/UPI/OTP/delivery). External test: GroundLM 2026 Indian Financial SMS benchmark (target FPR ≤1%).
+- **Spam ≠ scam**: re-adjudicate labels into benign_transactional / benign_personal / promotion / scam / unclear; fraud claims use scam vs not-scam, promotions are not fraud.
+- Four frozen test partitions: T1 source-disjoint, T2 campaign-disjoint, T3 temporal (only where dates exist), T4 paired adversarial (only delivery-surviving attacks; bidi excluded).
+- **Dual-view student**: raw/byte view + canonical view; canonicalisation is non-destructive and emits obfuscation evidence.
+- Teacher bake-off adds mmBERT; mandatory baselines fastText/char-CNN/rules. Student <10 MB distilled on fraud + teacher KL + intent + evidence + attack-consistency.
+- Outputs SAFE / UNCERTAIN / SCAM with risk–coverage curves; no conformal "guarantee under drift" claims.
+- Name the Llama quantisation exactly (8da4w / SpinQuant), never just "INT4".
+- Freeze benchmark before chasing models; predeclared go/kill thresholds.
+
+## Phase 2 option: Android AppFunctions (noted 2026-10-30)
+Expose `scanMessage(text) -> {verdict, evidence_ids, action_id}` as an AppFunction (androidx.appfunctions, Android 16 / API 36+, experimental) so on-device agents can call the offline detector. Not for Phase 1: experimental API, Gemini caller access is private preview, caller agent may not be offline. Demo via `adb shell cmd app_function` or a tiny caller app. Source: developer.android.com/ai/appfunctions.
+
+## Scope addition: network-intrusion module (Maadhav, 2026-10-30)
+PS3 lists network-traffic monitoring and malware behaviour. Added a flow-based home/SME/IoT network IDS as a coverage module (SMS + URL stay the headline research claim):
+- Runs on Raspberry Pi 5 (Scapy/libpcap flow capture → features → small detector); phone stays the SMS/URL device; Llama via ExecuTorch on both.
+- Same Evidence-Locked Advisory: network evidence IDs (e.g. PORT_SCAN, SYN_FLOOD, BRUTE_FORCE, BEACONING, DNS_TUNNEL, NEW_DEVICE_RARE_PORT) + remediation action codes.
+- Evaluation rigour as for SMS: no random splits as headline; time-split, unseen-attack-family and cross-dataset (e.g. train CIC-IDS2017 → test CSE-CIC-IDS2018) tests; corrected dataset versions where label errors are documented.
+- Plan and targets: docs/NETWORK_IDS_PLAN.md.

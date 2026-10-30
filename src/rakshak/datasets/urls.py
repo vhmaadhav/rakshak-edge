@@ -82,3 +82,18 @@ def build_url_frame(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     feats = pd.DataFrame([url_features(u) for u in kept["url"]])
     kept = pd.concat([kept, feats], axis=1)
     return kept, accounting
+
+
+def build_phreshphish_frame(raw: pd.DataFrame) -> pd.DataFrame:
+    """Official PhreshPhish rows with url_norm, reg_domain, id and url_features.
+
+    No dedup and no merge with the other URL sources: the release's own split and benchmark
+    membership are the protocol (docs/SOTA_TARGETS.md section 5). Within the release, sha256 and
+    the normalised URL are already unique (the build report checks this).
+    """
+    df = raw.reset_index(drop=True).copy()
+    df["id"] = [stable_id(s, k) for s, k in zip(df["source"], df["row_key"], strict=True)]
+    df["url_norm"] = [normalize_url(u) for u in df["url"]]
+    df["reg_domain"] = [cached_registered_domain(u) for u in df["url_norm"]]
+    feats = pd.DataFrame([url_features(u) for u in df["url"]])
+    return pd.concat([df, feats], axis=1)

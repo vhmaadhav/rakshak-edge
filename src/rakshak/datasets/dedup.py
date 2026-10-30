@@ -79,6 +79,29 @@ def near_duplicate_pairs(
     return sorted(out)
 
 
+def cross_near_duplicates(
+    pool: list[MinHash], queries: list[MinHash], threshold: float = NEAR_DUP_THRESHOLD
+) -> list[list[tuple[int, float]]]:
+    """For each query, the pool entries whose estimated Jaccard is at least ``threshold``.
+
+    Returns one list per query of (pool index, estimated Jaccard), best first. Same LSH and
+    verification as ``near_duplicate_pairs``, so the two agree on what counts as a near-duplicate.
+    """
+    lsh = MinHashLSH(threshold=threshold, num_perm=NUM_PERM)
+    with lsh.insertion_session() as session:
+        for j, m in enumerate(pool):
+            session.insert(j, m)
+    out: list[list[tuple[int, float]]] = []
+    for q in queries:
+        hits = []
+        for j in lsh.query(q):
+            est = q.jaccard(pool[j])
+            if est >= threshold:
+                hits.append((j, float(est)))
+        out.append(sorted(hits, key=lambda h: (-h[1], h[0])))
+    return out
+
+
 def assign_campaigns(
     df: pd.DataFrame,
     threshold: float = NEAR_DUP_THRESHOLD,

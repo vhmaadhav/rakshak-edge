@@ -52,3 +52,35 @@ def test_homoglyph_brand_still_detected_via_canonicalizer():
     text = "Ваш SBI аккаунт blocked. Update at https://sbi-kyc.in/upd"
     types = {e.type for e in run_rules(canonicalize(text))}
     assert "brand_domain_mismatch" in types
+
+
+def test_urgency_alone_never_sets_an_action_or_a_high_risk():
+    from conftest import package_for
+
+    from rakshak.evidence import Action, Risk
+    from rakshak.verifier import template_explanation
+
+    pkg = package_for("Meeting ke liye turant aao, sab wait kar rahe hain", state="benign")
+    assert {e.type for e in pkg.evidence} == {"urgency"}
+    assert pkg.risk is Risk.LOW
+    assert pkg.allowed_actions == [Action.IGNORE]
+    # the template explanation must cover urgency in both languages
+    assert "time pressure" in template_explanation(pkg, "en")["summary"]
+    assert "dabav" in template_explanation(pkg, "hinglish")["summary"]
+
+
+def test_devanagari_and_hinglish_scam_fires_the_new_types():
+    cases = {
+        "electricity_disconnect": "आपका बिजली कनेक्शन आज रात 9:30 बजे काट दिया जाएगा।",
+        "digital_arrest": "आपके खिलाफ साइबर क्राइम में शिकायत दर्ज हुई है।",
+        "investment_returns": "निवेश करें और दोगुना मुनाफा पाएं",
+        "credential_request": "ओटीपी बताएं, तभी आपका खाता सुरक्षित रहेगा",
+    }
+    for expected, text in cases.items():
+        types = {e.type for e in run_rules(canonicalize(text))}
+        assert expected in types, (expected, types)
+
+
+def test_devanagari_negated_otp_warning_stays_benign():
+    types = {e.type for e in run_rules(canonicalize("ओटीपी किसी को न बताएं"))}
+    assert "credential_request" not in types

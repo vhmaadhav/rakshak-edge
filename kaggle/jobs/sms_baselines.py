@@ -24,7 +24,7 @@ Flags go through ``kaggle/launch.sh sms_baselines --job-args="..."``:
   --models NAME...          subset of rules_lr char_lr svc_cal cnb_cal lgbm_svd_rules
   --variants raw canon     which input variants
   --seed INT                bootstrap and split seed (default 0)
-  --n-boot INT             bootstrap resamples (default 1000)
+  --n-boot INT             bootstrap resamples (default 1000; campaign-clustered bootstrap)
   --no-robustness           skip the attack harness
   --robust-seeds INT...     attack seeds (default 0 1 2)
   --max-robust-pos INT      cap the scam texts per run in the attack harness (default all)
@@ -42,7 +42,15 @@ import time
 import joblib
 import lightgbm as lgb
 import numpy as np
-from _common import env_report, log_input_tree, seed_everything, timed
+from _common import (
+    Units,
+    env_report,
+    log_input_tree,
+    record_skip,
+    seed_everything,
+    single_class_reason,
+    timed,
+)
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -210,6 +218,37 @@ def measure_latency(det: Detector, texts, n: int) -> dict:
             "p95_ms": float(np.percentile(arr, 95)), "mean_ms": float(arr.mean())}
 
 
+def fit_and_evaluate(run_, name: str, variant: str, texts, labels, args, groups, clusters,
+                     pos_test, neg_test, timings: dict) -> dict:
+    """One (split, model, variant) unit: fit on train, threshold on cal, score test, then the
+    attack harness. Returns the protocol result with the fitted detector and max-F1 threshold."""
+    tr, ca, te = run_.train, run_.cal, run_.test
+    key = f"{name}/{variant}"
+    with timed(f"{run_.name}|{key}|fit_s", timings):
+        det = Detector(name, variant).fit(texts[tr], labels[tr], texts[ca], labels[ca])
+    s_cal = det.score(texts[ca])
+    s_test = det.score(texts[te])
+    result = evaluate_scores(
+        labels[ca], s_cal, labels[te], s_test,
+        groups=groups, n_boot=args.n_boot, seed=args.seed, cluster_ids=clusters,
+    )
+    thr = result["thresholds"]["max_f1"]["threshold"]
+    if not args.no_robustness:
+        with timed(f"{run_.name}|{key}|robust_s", timings):
+            result["robustness"] = robustness_report(
+                lambda ts, d=det: d.score(ts, cached=False),
+                pos_test, neg_test, thr,
+                seeds=args.robust_seeds, max_positives=args.max_robust_pos,
+                subsample_seed=args.seed,
+            )
+    return {"result": result, "det": det, "thr": thr}
+
+
+def _checkpoint(ctx, root, splits: dict) -> None:
+    report.write_report({"title": "SMS baselines", "meta": {"data_root": str(root)},
+                         "splits": splits}, ctx.work)
+
+
 def run(ctx) -> bool:
     args = parse_args(ctx.argv)
     seed_everything(args.seed)
@@ -236,6 +275,7 @@ def run(ctx) -> bool:
         canon_agreement = float(np.mean(same))
         ctx.log(f"runtime canonicalize agrees with text_canon on {canon_agreement:.4f} of rows")
 
+    units = Units(ctx)
     splits: dict[str, dict] = {}
     primary_name = next((r.name for r in runs if r.name.split(":")[0] == PRIMARY_SPLIT),
                         runs[0].name)
@@ -243,63 +283,58 @@ def run(ctx) -> bool:
     fitted: dict[tuple[str, str], Detector] = {}
     primary_thresholds: dict[tuple[str, str], float] = {}
     for run_ in runs:
-        tr, ca, te = run_.train, run_.cal, run_.test
         ctx.log(f"run {run_.name}: sizes {run_.notes['sizes']}")
-        groups = D.group_values(sms, te)
-        block: dict[str, dict] = {}
-        pos_test = texts[te][labels[te] == 1].tolist()
-        neg_test = texts[te][labels[te] == 0].tolist()
+        reason = single_class_reason(labels[run_.test], run_.name)
+        if reason:
+            record_skip(ctx, run_.name, reason)
+            continue
+        groups = D.group_values(sms, run_.test)
+        clusters = D.cluster_values(sms, run_.test, "campaign_id")
+        block: dict[str, dict] = splits.setdefault(run_.name, {})
+        pos_test = texts[run_.test][labels[run_.test] == 1].tolist()
+        neg_test = texts[run_.test][labels[run_.test] == 0].tolist()
         for variant in args.variants:
             for name in args.models:
                 key = f"{name}/{variant}"
-                with timed(f"{run_.name}|{key}|fit_s", timings):
-                    det = Detector(name, variant).fit(texts[tr], labels[tr], texts[ca], labels[ca])
-                s_cal = det.score(texts[ca])
-                s_test = det.score(texts[te])
-                result = evaluate_scores(
-                    labels[ca], s_cal, labels[te], s_test,
-                    groups=groups, n_boot=args.n_boot, seed=args.seed,
-                )
-                thr = result["thresholds"]["max_f1"]["threshold"]
-                if not args.no_robustness:
-                    with timed(f"{run_.name}|{key}|robust_s", timings):
-                        result["robustness"] = robustness_report(
-                            lambda ts, d=det: d.score(ts, cached=False),
-                            pos_test, neg_test, thr,
-                            seeds=args.robust_seeds, max_positives=args.max_robust_pos,
-                            subsample_seed=args.seed,
-                        )
-                block[key] = result
-                ctx.log(f"  {key}: F1 {result['operating_points']['max_f1']['f1']:.4f} "
-                        f"PR-AUC {result['threshold_free']['pr_auc']:.4f}")
-                if run_.name == primary_name:
-                    fitted[(name, variant)] = det
-                    primary_thresholds[(name, variant)] = thr
-                else:
-                    del det
-        splits[run_.name] = block
-        payload = {"title": "SMS baselines", "meta": {"data_root": str(root)}, "splits": splits}
-        report.write_report(payload, ctx.work)
+                out = units.run({"split": run_.name, "model": name, "variant": variant},
+                                fit_and_evaluate, run_, name, variant, texts, labels, args,
+                                groups, clusters, pos_test, neg_test, timings)
+                if out is not None:
+                    block[key] = out["result"]
+                    op = out["result"]["operating_points"]["max_f1"]
+                    ctx.log(f"  {key}: F1 {op['f1']:.4f} "
+                            f"PR-AUC {out['result']['threshold_free']['pr_auc']:.4f}")
+                    if run_.name == primary_name:
+                        fitted[(name, variant)] = out["det"]
+                        primary_thresholds[(name, variant)] = out["thr"]
+                _checkpoint(ctx, root, splits)
 
-    # Selection on cal only: mean cal PR-AUC across runs.
+    # Selection on cal only: mean cal PR-AUC across the runs whose unit finished.
     cal_scores: dict[str, list[float]] = {}
     for block in splits.values():
         for key, result in block.items():
             cal_scores.setdefault(key, []).append(result["cal_threshold_free"]["pr_auc"])
-    ranking = sorted(((float(np.mean(v)), k) for k, v in cal_scores.items()), reverse=True)
-    best_key = ranking[0][1]
-    best_name, best_variant = best_key.split("/")
+    mean_cal = {key: float(np.mean(values)) for key, values in cal_scores.items()}
+    ranking = sorted(((mean_cal[k], k) for k in mean_cal), reverse=True)
     ctx.log(f"selection (mean cal PR-AUC): {ranking[:5]}")
+    # The bundle needs the fit from the primary run, so only those models are candidates.
+    best_key = next((k for _, k in ranking if tuple(k.split("/")) in fitted), None)
 
-    bundle_path = ctx.work / "best_model.joblib"
-    det = fitted[(best_name, best_variant)]
-    latency = measure_latency(det, texts[primary_run.test], args.latency_n)
-    bundle = {"model": best_key, "run": primary_name,
-              "threshold": primary_thresholds[(best_name, best_variant)],
-              "train_rows": int(len(primary_run.train)), "state": det.state()}
-    joblib.dump(bundle, bundle_path, compress=3)
-    size = os.path.getsize(bundle_path)
-    ctx.log(f"best model {best_key}: {size} bytes, latency {latency}")
+    latency: dict = {}
+    size = None
+    if best_key is None:
+        ctx.log("no selected model has a primary-run fit; the model bundle is not written")
+    else:
+        best_name, best_variant = best_key.split("/")
+        bundle_path = ctx.work / "best_model.joblib"
+        det = fitted[(best_name, best_variant)]
+        latency = measure_latency(det, texts[primary_run.test], args.latency_n)
+        bundle = {"model": best_key, "run": primary_name,
+                  "threshold": primary_thresholds[(best_name, best_variant)],
+                  "train_rows": int(len(primary_run.train)), "state": det.state()}
+        joblib.dump(bundle, bundle_path, compress=3)
+        size = os.path.getsize(bundle_path)
+        ctx.log(f"best model {best_key}: {size} bytes, latency {latency}")
 
     payload = {
         "title": "SMS baselines",
@@ -308,7 +343,7 @@ def run(ctx) -> bool:
             "runs": len(runs),
             "seed": args.seed,
             "best_model": best_key,
-            "best_mean_cal_pr_auc": ranking[0][0],
+            "best_mean_cal_pr_auc": mean_cal.get(best_key) if best_key else None,
             "best_bundle_bytes": size,
             "best_cpu_latency": latency,
             "canon_agreement_with_text_canon": canon_agreement,
@@ -318,6 +353,7 @@ def run(ctx) -> bool:
     }
     report.write_report(payload, ctx.work)
     ctx.results["timings"] = timings
-    ctx.results["summary"] = (f"{len(runs)} runs, best {best_key} "
-                              f"cal-PR-AUC {ranking[0][0]:.3f}")
-    return True
+    best_text = f"{mean_cal[best_key]:.3f}" if best_key else "n/a"
+    ctx.results["summary"] = (f"{len(runs)} runs, {units.ok} units ok, {units.failed} failed; "
+                              f"best {best_key or 'none'} cal-PR-AUC {best_text}")
+    return units.status()

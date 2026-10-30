@@ -22,7 +22,22 @@ from rakshak.datasets import report
 from rakshak.datasets.common import PROCESSED_DIR, RAW_DIR, SEED
 from rakshak.datasets.confound import label_from_source_accuracy, source_identity_accuracy
 from rakshak.datasets.dedup import minhash_signatures, near_dup_sensitivity
-from rakshak.datasets.loaders import SOURCE_IMC25, load_all_sms, load_all_urls
+from rakshak.datasets.external import (
+    GROUNDLM_ZIP,
+    SMISHX_PATH,
+    build_external_frame,
+    cross_set_overlap,
+    load_groundlm,
+    load_smishx,
+    overlap_report,
+    pool_overlap,
+)
+from rakshak.datasets.loaders import (
+    SOURCE_IMC25,
+    load_all_sms,
+    load_all_urls,
+    load_phreshphish,
+)
 from rakshak.datasets.sms import SMS_COLUMNS, build_sms_frame, cross_source_overlap
 from rakshak.datasets.splits import (
     campaign_partition,
@@ -34,8 +49,32 @@ from rakshak.datasets.splits import (
     url_domain_partition,
     url_temporal_partition,
 )
-from rakshak.datasets.urls import build_url_frame
+from rakshak.datasets.urls import build_phreshphish_frame, build_url_frame
 
+EXTERNAL_COLUMNS = [
+    "id",
+    "source",
+    "row_key",
+    "text",
+    "text_canon",
+    "label_binary",
+    "label_fine",
+    "label_policy",
+    "label_scam",
+    "policy_negative",
+    "category",
+    "lang",
+    "template_key",
+    "dedup_key",
+    "text_available",
+    "dup_within_set",
+    "label_conflict_in_set",
+    "eval_ok",
+    "pool_exact",
+    "pool_near",
+    "pool_matches",
+]
+PHRESHPHISH_FAMILY = "url_phreshphish"
 URL_COLUMNS_OUT = [
     "id",
     "url",
@@ -113,6 +152,8 @@ def build_sms(raw_dir: Path, out_dir: Path, rep: dict) -> pd.DataFrame:
     rep["near_dup_sensitivity_components"] = near_dup_sensitivity(sigs, [0.5, 0.7, 0.9])
     _log(f"sensitivity done ({time.time() - t0:.1f}s)")
 
+    drop_from_train = build_external(raw_dir, out_dir, kept, rep)
+
     camp_ids, camp_split = campaign_partition(kept)
     temp_ids = temporal_partition(kept, camp_split)
     lang_ids = lang_shift_partition(kept, camp_split)
@@ -141,6 +182,8 @@ def build_sms(raw_dir: Path, out_dir: Path, rep: dict) -> pd.DataFrame:
 
     rep_splits: dict[str, dict] = {}
     for fam, (desc, parts) in families.items():
+        before = _train_rows(parts)
+        parts = _drop_from_train(parts, drop_from_train)
         blocks = parts if _is_nested(parts) else {"_": parts}
         checks: dict[str, dict] = {}
         for key, block in blocks.items():
@@ -157,6 +200,7 @@ def build_sms(raw_dir: Path, out_dir: Path, rep: dict) -> pd.DataFrame:
         rep_splits[fam] = {
             "description": desc,
             "seed": SEED,
+            "train_rows_removed_external_overlap": before - _train_rows(parts),
             "stats": (
                 {k: report.partition_stats(kept, v) for k, v in blocks.items()}
                 if _is_nested(parts)
@@ -178,6 +222,56 @@ def build_sms(raw_dir: Path, out_dir: Path, rep: dict) -> pd.DataFrame:
     out.to_parquet(out_dir / "sms.parquet", index=False)
     _log(f"sms.parquet: {len(out)} rows")
     return frame
+
+
+def build_external(raw_dir: Path, out_dir: Path, kept: pd.DataFrame, rep: dict) -> set[str]:
+    """Eval-only external SMS sets, deduplicated against the kept training pool.
+
+    Writes external/<name>.parquet for each set whose raw file is present. Returns the pool ids
+    that overlap any external message (exact or near-duplicate). Those rows are dropped from
+    every TRAIN partition; the external rows themselves are never removed.
+    """
+    pool = kept[["id", "dedup_key", "template_key"]]
+    built: dict[str, pd.DataFrame] = {}
+    if (raw_dir / SMISHX_PATH).is_file():
+        built["external_smishx"] = load_smishx(raw_dir)
+    if (raw_dir / GROUNDLM_ZIP).is_file():
+        built["external_groundlm"] = load_groundlm(raw_dir)
+    drop: set[str] = set()
+    frames = []
+    for name, raw in built.items():
+        frame, ids = pool_overlap(build_external_frame(raw), pool)
+        drop |= ids
+        frames.append(frame)
+        (out_dir / "external").mkdir(parents=True, exist_ok=True)
+        frame[EXTERNAL_COLUMNS].to_parquet(out_dir / "external" / f"{name}.parquet", index=False)
+        _log(f"{name}: {len(frame)} rows written")
+    if frames:
+        allext = pd.concat(frames, ignore_index=True)
+        rep["external"] = {
+            **overlap_report(allext, len(pool)),
+            "cross_set_exact": cross_set_overlap(allext),
+            "pool_rows_dropped_from_train": len(drop),
+            "sets_present": sorted(built),
+        }
+    else:
+        rep["external"] = {"sets_present": [], "pool_rows_dropped_from_train": 0}
+    return drop
+
+
+def _train_rows(parts: dict) -> int:
+    if _is_nested(parts):
+        return sum(_train_rows(v) for v in parts.values())
+    return len(parts.get("train", []))
+
+
+def _drop_from_train(parts: dict, drop: set[str]) -> dict:
+    """Remove ``drop`` from every train list (nested folds included); other splits are kept."""
+    if not drop:
+        return parts
+    if _is_nested(parts):
+        return {k: _drop_from_train(v, drop) for k, v in parts.items()}
+    return {**parts, "train": [i for i in parts["train"] if i not in drop]}
 
 
 def _is_nested(parts: dict) -> bool:
@@ -204,9 +298,10 @@ def _lang_agreement(frame: pd.DataFrame) -> dict:
     return out
 
 
-def build_urls(raw_dir: Path, out_dir: Path, phreshphish: str | None, rep: dict) -> None:
+def build_urls(raw_dir: Path, out_dir: Path, rep: dict) -> None:
+    """General URL pool (PhishTank, OpenPhish, LegitPhish). PhreshPhish is built separately."""
     t0 = time.time()
-    raw = load_all_urls(raw_dir, phreshphish)
+    raw = load_all_urls(raw_dir)
     _log(f"URL raw rows: {len(raw)} ({time.time() - t0:.1f}s)")
     urls, accounting = build_url_frame(raw)
     _log(f"URL corpus kept: {len(urls)} ({time.time() - t0:.1f}s)")
@@ -227,6 +322,7 @@ def build_urls(raw_dir: Path, out_dir: Path, phreshphish: str | None, rep: dict)
     urls["group"] = urls["reg_domain"].where(urls["reg_domain"] != "", urls["url_norm"])
     dom_ids, _dom_split = url_domain_partition(urls)
     temp_ids = url_temporal_partition(urls)
+    labels_by_id = urls.set_index("id")["label"]
     for fam, parts, desc in (
         (
             "url_domain",
@@ -236,9 +332,19 @@ def build_urls(raw_dir: Path, out_dir: Path, phreshphish: str | None, rep: dict)
         (
             "url_temporal",
             temp_ids,
-            "Time-ordered 70/10/20 over dated rows (PhishTank submission date, PhreshPhish date).",
+            "Time-ordered 70/10/20 over dated rows of the general pool (PhishTank submission "
+            "date). PhreshPhish is its own family (url_phreshphish).",
         ),
     ):
+        single = [
+            f"{split}: single class"
+            for split in ("train", "test")
+            if labels_by_id.reindex(parts[split]).nunique() < 2
+        ]
+        if single:
+            rep.setdefault("url_splits_skipped", {})[fam] = single
+            _log(f"{fam} not written: {single}")
+            continue
         check = check_disjoint(urls, parts, "group")
         stats = report.partition_stats(urls, parts)
         _write_split(
@@ -258,14 +364,93 @@ def build_urls(raw_dir: Path, out_dir: Path, phreshphish: str | None, rep: dict)
     _log(f"urls.parquet: {len(urls_out)} rows, {urls_out.shape[1]} columns")
 
 
+PHRESH_META_COLUMNS = ["lang", "split", "bench_benign", "bench_full", "bench_subsets"]
+PHRESH_SUBSET_RATES = {
+    "benchmark-005": "0.05%",
+    "benchmark-010": "0.1%",
+    "benchmark-050": "0.5%",
+    "benchmark-100": "1%",
+    "benchmark-500": "5%",
+}
+
+
+def build_phreshphish(src: Path, out_dir: Path, rep: dict) -> None:
+    """Official PhreshPhish release as its own split family (url_phreshphish).
+
+    urls_phreshphish.parquet keeps every train and test row. splits/url_phreshphish.json holds
+    the official train and test id lists. There is no cal partition: the PhreshPhish protocol
+    (AP and precision at 90% recall) takes no threshold.
+    """
+    raw = load_phreshphish(src)
+    urls = build_phreshphish_frame(raw)
+    urls["group"] = urls["reg_domain"].where(urls["reg_domain"] != "", urls["url_norm"])
+    train = urls[urls["split"] == "train"]
+    test = urls[urls["split"] == "test"]
+    desc = (
+        "PhreshPhish official release split (train, test). Its own family: no other URL source "
+        "is mixed in. No cal partition (the protocol takes no threshold)."
+    )
+    _write_split(
+        out_dir / "splits" / f"{PHRESHPHISH_FAMILY}.json",
+        {
+            "family": PHRESHPHISH_FAMILY,
+            "seed": SEED,
+            "description": desc,
+            "partitions": {"official": {"train": sorted(train["id"]), "test": sorted(test["id"])}},
+        },
+    )
+    subset_ids: set[str] = set()
+    for ids in urls["bench_subsets"]:
+        subset_ids.update(ids)
+    per_rate: dict[str, int] = {}
+    for sid in subset_ids:
+        rate = PHRESH_SUBSET_RATES.get(sid.split("/")[0], sid.split("/")[0])
+        per_rate[rate] = per_rate.get(rate, 0) + 1
+    stray = sum(
+        1
+        for ids, full in zip(urls["bench_subsets"], urls["bench_full"], strict=True)
+        if ids and not full
+    )
+    rep["url_phreshphish"] = {
+        "rows": int(len(urls)),
+        "rows_by_split_label": {
+            f"{s}|{'phish' if lab == 1 else 'benign'}": int(n)
+            for (s, lab), n in urls.groupby(["split", "label"]).size().items()
+        },
+        "date_range": {
+            s: [str(g["date"].dropna().min()), str(g["date"].dropna().max())]
+            for s, g in urls.groupby("split")
+        },
+        "benchmark_benign_rows": int(urls["bench_benign"].sum()),
+        "benchmark_benign_outside_test": int(
+            (urls["bench_benign"] & (urls["split"] != "test")).sum()
+        ),
+        "benchmark_full_rows": int(urls["bench_full"].sum()),
+        "benchmark_full_phish_rows": int((urls["bench_full"] & (urls["label"] == 1)).sum()),
+        "benchmark_subsets_per_rate": dict(sorted(per_rate.items())),
+        "subset_phish_rows_outside_full": int(stray),
+        "url_norm_shared_train_test": len(set(train["url_norm"]) & set(test["url_norm"])),
+        "reg_domain_shared_train_test": len(
+            (set(train["reg_domain"]) & set(test["reg_domain"])) - {""}
+        ),
+        "duplicate_sha256": int(urls["row_key"].duplicated().sum()),
+        "duplicate_url_norm": int(urls["url_norm"].duplicated().sum()),
+    }
+    cols = URL_COLUMNS_OUT + PHRESH_META_COLUMNS
+    feats = [c for c in urls.columns if c not in cols and c not in ("group",)]
+    urls[cols + feats].to_parquet(out_dir / "urls_phreshphish.parquet", index=False)
+    _log(f"urls_phreshphish.parquet: {len(urls)} rows")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m rakshak.datasets.build")
     ap.add_argument("--raw-dir", type=Path, default=RAW_DIR)
     ap.add_argument("--out-dir", type=Path, default=PROCESSED_DIR)
     ap.add_argument(
         "--phreshphish",
-        default=None,
-        help="Local parquet dir/file or HF id to stream (default: shards in raw dir)",
+        type=Path,
+        default=RAW_DIR / "phreshphish_full",
+        help="PhreshPhish release: folder or parquet file (default: data/raw/phreshphish_full)",
     )
     ap.add_argument("--skip-urls", action="store_true")
     ap.add_argument("--skip-confound", action="store_true")
@@ -282,7 +467,8 @@ def main(argv: list[str] | None = None) -> int:
         rep["label_from_source"] = label_from_source_accuracy(kept)
         _log(f"confound probes done ({time.time() - t0:.1f}s)")
     if not args.skip_urls:
-        build_urls(args.raw_dir, out_dir, args.phreshphish, rep)
+        build_urls(args.raw_dir, out_dir, rep)
+        build_phreshphish(args.phreshphish, out_dir, rep)
     rep["elapsed_s"] = round(time.time() - t0, 1)
     with (out_dir / "build_report.json").open("w", encoding="utf-8") as fh:
         json.dump(rep, fh, ensure_ascii=False, indent=2, default=_jsonable)

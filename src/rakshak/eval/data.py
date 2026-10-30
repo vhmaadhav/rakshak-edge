@@ -1,7 +1,8 @@
 """Data-contract loading: sms.parquet, urls.parquet and splits/*.json (see docs/CONTEXT.md).
 
 The data root is configurable: an explicit path (which alone is tried), then ``$RAKSHAK_DATA``,
-the known candidates (``/kaggle/input/rakshak-data``, the repository's ``data/processed``), and
+the known candidates (``/kaggle/input/rakshak-data``, ``/content/rakshak-data`` on Colab, the
+repository's ``data/processed``), and
 finally a recursive search of ``/kaggle/input`` (directories up to 5 levels deep). The first
 location that holds the marker file (directly or one folder down) wins; among several recursive
 hits a path containing ``rakshak-data`` is preferred.
@@ -38,6 +39,7 @@ logger = logging.getLogger(__name__)
 ENV_VAR = "RAKSHAK_DATA"
 KAGGLE_INPUT = Path("/kaggle/input")
 KAGGLE_DATA = KAGGLE_INPUT / "rakshak-data"
+COLAB_DATA = Path("/content/rakshak-data")
 KAGGLE_SEARCH_DEPTH = 5
 DATA_FOLDER_NAME = "rakshak-data"
 REPO_DATA = Path(__file__).resolve().parents[3] / "data" / "processed"
@@ -93,7 +95,7 @@ def resolve_data_root(explicit: str | os.PathLike | None = None, marker: str = S
         candidates = [Path(explicit)]
     else:
         candidates = [Path(os.environ[ENV_VAR])] if os.environ.get(ENV_VAR) else []
-        candidates += [KAGGLE_DATA, REPO_DATA]
+        candidates += [KAGGLE_DATA, COLAB_DATA, REPO_DATA]
     for candidate in candidates:
         found = _direct_or_child(candidate, marker)
         if found is not None:
@@ -265,6 +267,22 @@ def group_values(df: pd.DataFrame, positions: np.ndarray,
                  columns: Sequence[str] = GROUP_COLUMNS) -> dict[str, list]:
     """Group labels for the given rows; columns the table lacks are skipped."""
     return {c: df[c].iloc[positions].tolist() for c in columns if c in df.columns}
+
+
+CLUSTER_COLUMNS: dict[str, str] = {"sms": "campaign_id", "urls": "reg_domain"}
+
+
+def cluster_values(df: pd.DataFrame, positions: np.ndarray, column: str) -> list[str]:
+    """Cluster id per row for the cluster bootstrap (campaign ids for SMS, registered domains
+    for URLs). Missing ids become a unique id per row, so an absent id is its own cluster."""
+    if column not in df.columns:
+        raise KeyError(f"cluster column {column!r} is not in the table")
+    values = df[column].iloc[positions].tolist()
+    return [
+        f"__row_{int(p)}" if v is None or (isinstance(v, float) and np.isnan(v)) or v == ""
+        else str(v)
+        for p, v in zip(positions, values, strict=True)
+    ]
 
 
 @functools.lru_cache(maxsize=400_000)

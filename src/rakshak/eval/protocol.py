@@ -65,11 +65,18 @@ def evaluate_scores(
     n_boot: int = 1000,
     seed: int = 0,
     bootstrap: bool = True,
+    cluster_ids: Sequence | None = None,
+    bootstrap_method: str | None = None,
 ) -> dict:
     """Full protocol result for one model on one split.
 
     ``s_*`` are probabilities or any monotone score where higher means scam. Calibration arrays
     pick thresholds. Test arrays give every reported test number.
+
+    ``cluster_ids`` (one per test row, for example campaign ids) switches the confidence
+    intervals to the campaign-clustered bootstrap, the default whenever ids are given.
+    ``bootstrap_method="iid"`` forces the iid stratified version. The method used is recorded in
+    ``result["bootstrap"]["method"]``.
     """
     y_cal = np.asarray(y_cal).astype(np.int64)
     y_test = np.asarray(y_test).astype(np.int64)
@@ -141,8 +148,11 @@ def evaluate_scores(
         "groups": group_metrics(y_test, s_test, thr_f1, groups or {}),
     }
     if bootstrap:
+        if cluster_ids is not None and len(cluster_ids) != len(y_test):
+            raise ValueError("cluster_ids must have one entry per test row")
         result["bootstrap"] = bootstrap_intervals(
-            y_test, s_test, thr_f1, n_boot=n_boot, seed=seed, fpr_targets=fpr_targets
+            y_test, s_test, thr_f1, n_boot=n_boot, seed=seed, fpr_targets=fpr_targets,
+            cluster_ids=cluster_ids, method=bootstrap_method,
         )
     return result
 

@@ -40,7 +40,7 @@ Flags go through ``kaggle/launch.sh sms_teacher --gpu t4 --internet --job-args="
   --no-fp16               disable fp16 autocast
   --data-root PATH        data root (default: $RAKSHAK_DATA, /kaggle/input/rakshak-data,
                           then data/processed, then a search of /kaggle/input)
-  --n-boot INT            bootstrap resamples (default 1000)
+  --n-boot INT            bootstrap resamples (default 1000; campaign-clustered bootstrap)
   --no-robustness         skip the attack harness
   --robust-seeds INT...   attack seeds (default 0 1 2)
   --max-robust-pos INT    cap scams in the attack harness (default all)
@@ -58,7 +58,15 @@ from fnmatch import fnmatch
 import numpy as np
 import pandas as pd
 import torch
-from _common import env_report, log_input_tree, seed_everything, timed
+from _common import (
+    Units,
+    env_report,
+    log_input_tree,
+    record_skip,
+    seed_everything,
+    single_class_reason,
+    timed,
+)
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Dataset
 from transformers import (
@@ -360,8 +368,112 @@ def run(ctx) -> bool:
     best_global = {"cal_pr_auc": -1.0}
     logits_dir = ctx.work
     t_total = time.time()
+    units = Units(ctx)
+
+    def checkpoint() -> None:
+        report.write_report(
+            {"title": "SMS teacher", "meta": {"budget_h": args.budget_h}, "splits": splits},
+            ctx.work,
+        )
+
+    def train_model(run_, model_name: str, short: str, seed: int, data: dict) -> dict:
+        """Unit: fine-tune one (model, seed) on one run, write its logits, and keep the best
+        checkpoint so far. The caller evaluates the returned model per variant."""
+        tr, ca, te = run_.train, run_.cal, run_.test
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        key_base = f"{short}-s{seed}"
+        ctx.log(f"== {run_.name} {key_base}: train {len(tr)} cal {len(ca)} test {len(te)}")
+        job_deadline = time.time() + TRAIN_FRACTION_OF_RUN * per_run_s
+        default_hp = {"lr": args.lr, "epochs": args.epochs, "warmup": args.warmup_ratio,
+                      "weight_decay": args.weight_decay}
+        if args.hpo > 0:
+            best_trial = search_hpo(cfg, args.hpo, model_name, short, seed,
+                                    run_.name, tokenizer, device, data, job_deadline,
+                                    budget)
+        else:
+            out = train_once(cfg, default_hp, model_name, seed, tokenizer, device,
+                             data, job_deadline)
+            best_trial = {"result": out, "hp": default_hp}
+            budget["trials"].append({"model": short, "seed": seed, "run": run_.name,
+                                     "hp": default_hp, "cal_pr_auc": out["cal_pr_auc"],
+                                     "seconds": out["seconds"],
+                                     "stopped_by_budget": out["stopped_by_budget"]})
+
+        result = best_trial["result"]
+        model = result["model"].to(device)
+        ctx.log(f"   best hp {best_trial['hp']} cal PR-AUC {result['cal_pr_auc']:.4f} "
+                f"epoch {result['best_epoch']} ({result['seconds']} s)")
+
+        train_prep = (
+            [D.canon_text(t) for t in texts[tr]] if cfg.train_canon else list(texts[tr])
+        )
+        logits = {
+            "train": predict_logits(model, tokenizer, train_prep, cfg, device),
+            "cal": predict_logits(model, tokenizer, data["cal_prepped"], cfg, device),
+            "test": predict_logits(
+                model, tokenizer,
+                [D.canon_text(t) for t in texts[te]] if cfg.train_canon
+                else list(texts[te]),
+                cfg, device,
+            ),
+        }
+        frame = []
+        for split_name, positions in (("train", tr), ("cal", ca), ("test", te)):
+            frame.append(pd.DataFrame({
+                "id": ids[positions], "split": split_name,
+                "logit_0": logits[split_name][:, 0], "logit_1": logits[split_name][:, 1],
+                "label_binary": labels[positions],
+            }))
+        safe_run = run_.name.replace(":", "_")
+        logits_path = logits_dir / f"logits_{short}_s{seed}_{safe_run}.parquet"
+        pd.concat(frame, ignore_index=True).to_parquet(logits_path, index=False)
+
+        if result["cal_pr_auc"] > best_global["cal_pr_auc"]:
+            best_global.update({"cal_pr_auc": result["cal_pr_auc"], "model": model_name,
+                                "seed": seed, "run": run_.name})
+            ckpt = logits_dir / BEST_DIR
+            shutil.rmtree(ckpt, ignore_errors=True)
+            model.save_pretrained(ckpt)
+            tokenizer.save_pretrained(ckpt)
+            ctx.log(f"   kept as best checkpoint -> {ckpt}")
+        return {"model": model, "model_name": model_name, "tokenizer": tokenizer,
+                "result": result, "hp": best_trial["hp"]}
+
+    def eval_variant(run_, groups, pos_test, neg_test, short: str, seed: int, variant: str,
+                     trained: dict, block: dict) -> None:
+        """Unit: protocol metrics and the attack harness for one inference variant."""
+        ca, te = run_.cal, run_.test
+        key_base = f"{short}-s{seed}"
+        result = trained["result"]
+        score = make_scorer(trained["model"], trained["tokenizer"], cfg, device, variant)
+        s_cal = score(texts[ca])
+        s_test = score(texts[te])
+        ev = evaluate_scores(
+            labels[ca], s_cal, labels[te], s_test,
+            groups=groups, n_boot=args.n_boot, seed=seed,
+            cluster_ids=D.cluster_values(sms, te, "campaign_id"),
+        )
+        ev["teacher"] = {"model": trained["model_name"], "seed": seed, "hp": trained["hp"],
+                         "cal_pr_auc": result["cal_pr_auc"], "best_epoch": result["best_epoch"],
+                         "train_input": args.train_input, "variant": variant,
+                         "adv_aug": args.adv_aug, "history": result["history"]}
+        thr = ev["thresholds"]["max_f1"]["threshold"]
+        if not args.no_robustness:
+            with timed(f"{run_.name}|{key_base}|{variant}|robust_s", timings):
+                ev["robustness"] = robustness_report(
+                    lambda ts, s=score: s(ts, cached=False),
+                    pos_test, neg_test, thr,
+                    seeds=args.robust_seeds, max_positives=args.max_robust_pos,
+                )
+        block[f"{key_base}/{variant}"] = ev
+        ctx.log(f"   {variant}: F1 {ev['operating_points']['max_f1']['f1']:.4f} "
+                f"PR-AUC {ev['threshold_free']['pr_auc']:.4f}")
 
     for run_ in runs:
+        reason = single_class_reason(labels[run_.test], run_.name)
+        if reason:
+            record_skip(ctx, run_.name, reason)
+            continue
         tr, ca, te = run_.train, run_.cal, run_.test
         groups = D.group_values(sms, te)
         data = {
@@ -372,101 +484,27 @@ def run(ctx) -> bool:
         }
         pos_test = texts[te][labels[te] == 1].tolist()
         neg_test = texts[te][labels[te] == 0].tolist()
-        block: dict[str, dict] = {}
+        block: dict[str, dict] = splits.setdefault(run_.name, {})
         for model_name in args.models:
             short = model_name.split("/")[-1]
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
             for seed in args.seeds:
-                key_base = f"{short}-s{seed}"
-                ctx.log(f"== {run_.name} {key_base}: train {len(tr)} cal {len(ca)} test {len(te)}")
-                job_deadline = time.time() + TRAIN_FRACTION_OF_RUN * per_run_s
-                default_hp = {"lr": args.lr, "epochs": args.epochs, "warmup": args.warmup_ratio,
-                              "weight_decay": args.weight_decay}
-                if args.hpo > 0:
-                    best_trial = search_hpo(cfg, args.hpo, model_name, short, seed,
-                                            run_.name, tokenizer, device, data, job_deadline,
-                                            budget)
-                else:
-                    out = train_once(cfg, default_hp, model_name, seed, tokenizer, device,
-                                     data, job_deadline)
-                    best_trial = {"result": out, "hp": default_hp}
-                    budget["trials"].append({"model": short, "seed": seed, "run": run_.name,
-                                             "hp": default_hp, "cal_pr_auc": out["cal_pr_auc"],
-                                             "seconds": out["seconds"],
-                                             "stopped_by_budget": out["stopped_by_budget"]})
-
-                result = best_trial["result"]
-                model = result["model"].to(device)
-                ctx.log(f"   best hp {best_trial['hp']} cal PR-AUC {result['cal_pr_auc']:.4f} "
-                        f"epoch {result['best_epoch']} ({result['seconds']} s)")
-
-                train_prep = (
-                    [D.canon_text(t) for t in texts[tr]] if cfg.train_canon else list(texts[tr])
+                trained = units.run(
+                    {"split": run_.name, "model": short, "seed": seed, "variant": "train"},
+                    train_model, run_, model_name, short, seed, data,
                 )
-                logits = {
-                    "train": predict_logits(model, tokenizer, train_prep, cfg, device),
-                    "cal": predict_logits(model, tokenizer, data["cal_prepped"], cfg, device),
-                    "test": predict_logits(
-                        model, tokenizer,
-                        [D.canon_text(t) for t in texts[te]] if cfg.train_canon
-                        else list(texts[te]),
-                        cfg, device,
-                    ),
-                }
-                frame = []
-                for split_name, positions in (("train", tr), ("cal", ca), ("test", te)):
-                    frame.append(pd.DataFrame({
-                        "id": ids[positions], "split": split_name,
-                        "logit_0": logits[split_name][:, 0], "logit_1": logits[split_name][:, 1],
-                        "label_binary": labels[positions],
-                    }))
-                safe_run = run_.name.replace(":", "_")
-                logits_path = logits_dir / f"logits_{short}_s{seed}_{safe_run}.parquet"
-                pd.concat(frame, ignore_index=True).to_parquet(logits_path, index=False)
-
-                for variant in ("canon", "raw"):
-                    score = make_scorer(model, tokenizer, cfg, device, variant)
-                    s_cal = score(texts[ca])
-                    s_test = score(texts[te])
-                    ev = evaluate_scores(
-                        labels[ca], s_cal, labels[te], s_test,
-                        groups=groups, n_boot=args.n_boot, seed=seed,
-                    )
-                    ev["teacher"] = {"model": model_name, "seed": seed,
-                                     "hp": best_trial["hp"], "cal_pr_auc": result["cal_pr_auc"],
-                                     "best_epoch": result["best_epoch"],
-                                     "train_input": args.train_input, "variant": variant,
-                                     "adv_aug": args.adv_aug, "history": result["history"]}
-                    thr = ev["thresholds"]["max_f1"]["threshold"]
-                    if not args.no_robustness:
-                        with timed(f"{run_.name}|{key_base}|{variant}|robust_s", timings):
-                            ev["robustness"] = robustness_report(
-                                lambda ts, s=score: s(ts, cached=False),
-                                pos_test, neg_test, thr,
-                                seeds=args.robust_seeds, max_positives=args.max_robust_pos,
-                            )
-                    block[f"{key_base}/{variant}"] = ev
-                    ctx.log(f"   {variant}: F1 {ev['operating_points']['max_f1']['f1']:.4f} "
-                            f"PR-AUC {ev['threshold_free']['pr_auc']:.4f}")
-
-                if result["cal_pr_auc"] > best_global["cal_pr_auc"]:
-                    best_global = {"cal_pr_auc": result["cal_pr_auc"], "model": model_name,
-                                   "seed": seed, "run": run_.name}
-                    ckpt = logits_dir / BEST_DIR
-                    shutil.rmtree(ckpt, ignore_errors=True)
-                    model.save_pretrained(ckpt)
-                    tokenizer.save_pretrained(ckpt)
-                    ctx.log(f"   kept as best checkpoint -> {ckpt}")
+                if trained is not None:
+                    for variant in ("canon", "raw"):
+                        units.run(
+                            {"split": run_.name, "model": short, "seed": seed,
+                             "variant": variant},
+                            eval_variant, run_, groups, pos_test, neg_test, short, seed,
+                            variant, trained, block,
+                        )
+                        checkpoint()
                 # Drop every reference to the weights so the GPU memory is released.
-                best_trial = result = out = None  # noqa: F841
-                del model
+                trained = None
                 torch.cuda.empty_cache()
-                splits[run_.name] = block
-                report.write_report(
-                    {"title": "SMS teacher", "meta": {"budget_h": args.budget_h},
-                     "splits": splits},
-                    ctx.work,
-                )
+                checkpoint()
 
     budget["elapsed_h"] = round((time.time() - t_total) / 3600.0, 3)
     ctx.results["timings"] = timings
@@ -479,7 +517,8 @@ def run(ctx) -> bool:
         "env": env,
     }
     report.write_report({"title": "SMS teacher", "meta": meta, "splits": splits}, ctx.work)
-    ctx.results["summary"] = (f"{len(runs)} run(s) x {len(args.models)} model(s); best "
+    ctx.results["summary"] = (f"{len(runs)} run(s) x {len(args.models)} model(s); "
+                              f"{units.ok} units ok, {units.failed} failed; best "
                               f"{best_global.get('model', 'none')} cal-PR-AUC "
                               f"{best_global['cal_pr_auc']:.3f} in {budget['elapsed_h']} h")
-    return True
+    return units.status()

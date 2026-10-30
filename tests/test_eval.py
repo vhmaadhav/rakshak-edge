@@ -462,3 +462,192 @@ def test_render_markdown_marks_missing_robustness():
     text = render_markdown({"splits": {"x": {"m": res}}})
     assert "| m |" in text
     assert "n/a" in text
+
+
+# ---------------------------------------------------------------------------
+# Campaign-clustered bootstrap, paired tests and the recompute CLI
+# ---------------------------------------------------------------------------
+
+
+def _clustered_toy(seed: int = 0, n_clusters: int = 60, size: int = 20):
+    """Clusters whose rows share one score, so campaign dependence is strong."""
+    rng = np.random.default_rng(seed)
+    cluster_label = rng.integers(0, 2, size=n_clusters)
+    cluster_score = np.clip(0.3 * cluster_label + rng.normal(0.4, 0.3, n_clusters), 0, 1)
+    y = np.repeat(cluster_label, size)
+    s = np.repeat(cluster_score, size)
+    ids = [f"c{c}" for c in np.repeat(np.arange(n_clusters), size)]
+    return y, s, ids
+
+
+def test_bootstrap_defaults_to_campaign_clusters_when_ids_are_given():
+    y, s, ids = _clustered_toy(1)
+    out = M.bootstrap_intervals(y, s, 0.5, n_boot=40, seed=3, cluster_ids=ids)
+    assert out["method"] == "campaign_cluster"
+    assert out["n_clusters"] == 60
+    iid = M.bootstrap_intervals(y, s, 0.5, n_boot=40, seed=3)
+    assert iid["method"] == "iid_stratified"
+    assert "n_clusters" not in iid
+
+
+def test_bootstrap_iid_can_be_forced_and_cluster_needs_ids():
+    y, s, ids = _clustered_toy(2)
+    forced = M.bootstrap_intervals(y, s, 0.5, n_boot=20, seed=3, cluster_ids=ids, method="iid")
+    assert forced["method"] == "iid_stratified"
+    with pytest.raises(ValueError):
+        M.bootstrap_intervals(y, s, 0.5, n_boot=5, method="campaign_cluster")
+    with pytest.raises(ValueError):
+        M.bootstrap_intervals(y, s, 0.5, n_boot=5, method="nonsense")
+
+
+def test_cluster_bootstrap_is_wider_when_rows_within_a_campaign_are_correlated():
+    y, s, ids = _clustered_toy(4)
+    clustered = M.bootstrap_intervals(y, s, 0.5, n_boot=300, seed=0, cluster_ids=ids)
+    iid = M.bootstrap_intervals(y, s, 0.5, n_boot=300, seed=0)
+    width = {k: v[1] - v[0] for k, v in clustered.items() if isinstance(v, list)}
+    width_iid = {k: v[1] - v[0] for k, v in iid.items() if isinstance(v, list)}
+    assert width["pr_auc"] > width_iid["pr_auc"]
+
+
+def test_cluster_draw_takes_whole_campaigns():
+    y = np.array([1, 1, 0, 0, 0, 1, 0])
+    ids = ["a", "a", "b", "b", "b", "c", "d"]
+    index = M._cluster_index(y, ids)
+    rng = np.random.default_rng(0)
+    for _ in range(50):
+        idx = M._cluster_draw(index, rng)
+        counts = np.bincount(idx, minlength=len(y))
+        for group in ([0, 1], [2, 3, 4], [5], [6]):
+            # every row of a campaign is drawn the same number of times, possibly zero
+            assert len(set(counts[group])) == 1
+
+
+def test_cluster_draw_keeps_positive_and_benign_campaign_strata():
+    y = np.array([1, 0, 0, 0, 0, 0])
+    ids = ["pos", "ben1", "ben1", "ben2", "ben2", "ben3"]
+    index = M._cluster_index(y, ids)
+    assert len(index["pos_clusters"]) == 1
+    assert len(index["neg_clusters"]) == 3
+    idx = M._cluster_draw(index, np.random.default_rng(1))
+    assert (y[idx] == 1).sum() >= 1  # the positive stratum always contributes
+
+
+def test_paired_test_identical_models_has_no_difference():
+    y, s, ids = _clustered_toy(5)
+    out = M.paired_bootstrap_test(y, s, s, metric="pr_auc", cluster_ids=ids, n_boot=60)
+    assert out["delta"] == pytest.approx(0.0)
+    assert out["p_value"] == pytest.approx(1.0)
+
+
+def test_paired_test_detects_a_clearly_better_model():
+    rng = np.random.default_rng(6)
+    y = rng.integers(0, 2, size=800)
+    good = np.clip(0.5 * y + rng.normal(0.3, 0.2, 800), 0, 1)
+    bad = np.clip(0.05 * y + rng.normal(0.3, 0.2, 800), 0, 1)
+    ids = [f"g{i // 4}" for i in range(800)]
+    out = M.paired_bootstrap_test(y, good, bad, metric="pr_auc", cluster_ids=ids, n_boot=200)
+    assert out["delta"] > 0
+    assert out["delta_ci"][0] > 0
+    assert out["p_value"] < 0.05
+    assert out["method"] == "campaign_cluster"
+
+
+def test_paired_fixed_threshold_metric_needs_thresholds():
+    y, s, _ = _clustered_toy(7)
+    with pytest.raises(ValueError):
+        M.paired_bootstrap_test(y, s, s, metric="f1", n_boot=5)
+    out = M.paired_bootstrap_test(y, s, s, metric="f1", threshold_a=0.5, threshold_b=0.5,
+                                  n_boot=20)
+    assert out["delta"] == pytest.approx(0.0)
+
+
+def test_protocol_records_the_bootstrap_method_used():
+    y_cal, s_cal = _toy(30, n=200)
+    y_test, s_test = _toy(31, n=200)
+    ids = [f"k{i // 5}" for i in range(200)]
+    clustered = evaluate_scores(y_cal, s_cal, y_test, s_test, n_boot=20, cluster_ids=ids)
+    assert clustered["bootstrap"]["method"] == "campaign_cluster"
+    forced = evaluate_scores(y_cal, s_cal, y_test, s_test, n_boot=20, cluster_ids=ids,
+                             bootstrap_method="iid")
+    assert forced["bootstrap"]["method"] == "iid_stratified"
+    plain = evaluate_scores(y_cal, s_cal, y_test, s_test, n_boot=20)
+    assert plain["bootstrap"]["method"] == "iid_stratified"
+
+
+def test_report_shows_bootstrap_method_and_paired_comparisons(tmp_path):
+    y_cal, s_cal = _toy(32, n=200)
+    y_test, s_test = _toy(33, n=200)
+    res = evaluate_scores(y_cal, s_cal, y_test, s_test, n_boot=10,
+                          cluster_ids=[f"k{i // 4}" for i in range(200)])
+    cmp_ = M.paired_bootstrap_test(y_test, s_test, s_test, metric="pr_auc", n_boot=10)
+    text = render_markdown({"splits": {"x": {"m": res}},
+                            "comparisons": {"m vs m": {"pr_auc": cmp_}}})
+    assert "campaign_cluster bootstrap" in text
+    assert "## Paired comparisons" in text
+    assert "| m vs m | pr_auc |" in text
+
+
+@pytest.fixture()
+def tiny_campaign_root(tiny_root):
+    sms = pd.read_parquet(tiny_root / "sms.parquet")
+    sms["campaign_id"] = [f"camp{i // 4}" for i in range(len(sms))]
+    sms.to_parquet(tiny_root / "sms.parquet")
+    return tiny_root
+
+
+def _write_predictions(path, root, cal_ids, test_ids, seed: int, sep: float):
+    sms = D.load_sms(root).set_index("id")
+    rng = np.random.default_rng(seed)
+    rows = []
+    for split, ids in (("cal", cal_ids), ("test", test_ids)):
+        y = sms.loc[ids, "label_binary"].to_numpy()
+        s = 1 / (1 + np.exp(-(sep * y + rng.normal(0, 1, len(y)))))
+        rows.append(pd.DataFrame({"id": ids, "split": split, "prob": s,
+                                  "label_binary": y}))
+    pd.concat(rows, ignore_index=True).to_parquet(path, index=False)
+
+
+def test_recompute_cli_writes_metrics_ci_method_and_comparison(tiny_campaign_root, tmp_path):
+    from rakshak.eval.recompute import main
+
+    ids = [f"id{i:03d}" for i in range(40)]
+    cal_ids, test_ids = ids[24:30], ids[30:]
+    _write_predictions(tmp_path / "good.parquet", tiny_campaign_root, cal_ids, test_ids, 1, 2.0)
+    _write_predictions(tmp_path / "weak.parquet", tiny_campaign_root, cal_ids, test_ids, 2, 0.2)
+    out = tmp_path / "out"
+    code = main([
+        "--scores", str(tmp_path / "good.parquet"), str(tmp_path / "weak.parquet"),
+        "--out", str(out), "--data-root", str(tiny_campaign_root), "--n-boot", "30",
+        "--compare", "good:weak",
+    ])
+    assert code == 0
+    payload = json.loads((out / "metrics.json").read_text())
+    model = payload["splits"]["recomputed"]["good"]
+    assert model["bootstrap"]["method"] == "campaign_cluster"
+    assert payload["meta"]["bootstrap"] == "cluster"
+    assert "good vs weak" in payload["comparisons"]
+    assert set(payload["comparisons"]["good vs weak"]) == set(M.PAIRED_METRICS)
+    assert (out / "report.md").read_text().count("| good |") >= 1
+
+
+def test_recompute_cli_iid_option_and_label_check(tiny_campaign_root, tmp_path):
+    from rakshak.eval.recompute import main
+
+    ids = [f"id{i:03d}" for i in range(40)]
+    path = tmp_path / "model.parquet"
+    _write_predictions(path, tiny_campaign_root, ids[24:30], ids[30:], 3, 1.0)
+    out = tmp_path / "iid"
+    main(["--scores", str(path), "--out", str(out), "--data-root", str(tiny_campaign_root),
+          "--n-boot", "10", "--bootstrap", "iid"])
+    payload = json.loads((out / "metrics.json").read_text())
+    assert payload["splits"]["recomputed"]["model"]["bootstrap"]["method"] == "iid_stratified"
+
+
+def test_recompute_rejects_ids_missing_from_the_table(tiny_campaign_root, tmp_path):
+    from rakshak.eval.recompute import main
+
+    bad = pd.DataFrame({"id": ["nope"], "split": ["test"], "prob": [0.5], "label_binary": [0]})
+    bad.to_parquet(tmp_path / "bad.parquet", index=False)
+    with pytest.raises(ValueError):
+        main(["--scores", str(tmp_path / "bad.parquet"), "--out", str(tmp_path / "o"),
+              "--data-root", str(tiny_campaign_root), "--n-boot", "5"])

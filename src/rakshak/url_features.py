@@ -19,23 +19,96 @@ import tldextract
 _EXTRACTOR = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None, fallback_to_snapshot=True)
 
 SHORTENERS = {
-    "bit.ly", "tinyurl.com", "t.co", "goo.gl", "is.gd", "cutt.ly", "rb.gy", "ow.ly",
-    "shorturl.at", "tiny.cc", "rebrand.ly", "bit.do", "t.ly", "v.gd", "s.id", "lnkd.in",
-    "buff.ly", "tiny.one", "clck.ru", "urlz.fr",
+    "bit.ly",
+    "tinyurl.com",
+    "t.co",
+    "goo.gl",
+    "is.gd",
+    "cutt.ly",
+    "rb.gy",
+    "ow.ly",
+    "shorturl.at",
+    "tiny.cc",
+    "rebrand.ly",
+    "bit.do",
+    "t.ly",
+    "v.gd",
+    "s.id",
+    "lnkd.in",
+    "buff.ly",
+    "tiny.one",
+    "clck.ru",
+    "urlz.fr",
 }
 
 SUSPICIOUS_TOKENS = [
-    "login", "signin", "verify", "verification", "kyc", "update", "secure", "security",
-    "account", "bank", "otp", "refund", "reward", "lottery", "claim", "unlock", "suspend",
-    "blocked", "billing", "payment", "wallet", "invoice", "support", "helpdesk", "activate",
-    "confirm", "validate", "reactivate", "upi", "pay",
+    "login",
+    "signin",
+    "verify",
+    "verification",
+    "kyc",
+    "update",
+    "secure",
+    "security",
+    "account",
+    "bank",
+    "otp",
+    "refund",
+    "reward",
+    "lottery",
+    "claim",
+    "unlock",
+    "suspend",
+    "blocked",
+    "billing",
+    "payment",
+    "wallet",
+    "invoice",
+    "support",
+    "helpdesk",
+    "activate",
+    "confirm",
+    "validate",
+    "reactivate",
+    "upi",
+    "pay",
 ]
 _TOKEN_RE = re.compile(r"[a-z]+")
 
 RISKY_TLDS = {
-    "xyz", "top", "tk", "ml", "ga", "cf", "gq", "cc", "click", "link", "icu", "buzz",
-    "cyou", "rest", "sbs", "cfd", "shop", "online", "site", "live", "work", "fun", "vip",
-    "support", "monster", "zip", "mov", "quest", "su", "pw", "ws", "bond", "cam",
+    "xyz",
+    "top",
+    "tk",
+    "ml",
+    "ga",
+    "cf",
+    "gq",
+    "cc",
+    "click",
+    "link",
+    "icu",
+    "buzz",
+    "cyou",
+    "rest",
+    "sbs",
+    "cfd",
+    "shop",
+    "online",
+    "site",
+    "live",
+    "work",
+    "fun",
+    "vip",
+    "support",
+    "monster",
+    "zip",
+    "mov",
+    "quest",
+    "su",
+    "pw",
+    "ws",
+    "bond",
+    "cam",
 }
 COMMON_TLDS = {"com", "in", "org", "net", "edu", "co.in", "gov.in", "ac.in", "nic.in", "io"}
 
@@ -59,26 +132,72 @@ def _compiled_brand_patterns() -> dict[str, re.Pattern[str]]:
     return patterns
 
 
-def _split(url: str) -> tuple[str, str, str, str]:
-    """Return (scheme, host, path, query) with the host lower-cased and port/userinfo removed."""
+_SCHEME_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*")
+_AUTHORITY_END_RE = re.compile(r"[/?#]")
+
+
+def _best_effort_split(url: str) -> tuple[str, str, str, str]:
+    """Fallback for strings urlsplit rejects (stray brackets, bad IPv6 literal, bad netloc).
+
+    The authority is the text up to the first '/', '?' or '#'. Userinfo, brackets and one
+    port are dropped and the host is lower-cased, so obfuscated forms like ``example[.]com``
+    still give ``example.com``. Returns (scheme, host, path, query); host may be ''.
+    """
+    text = url.strip()
+    scheme = ""
+    if "://" in text:
+        head, _, text = text.partition("://")
+        if _SCHEME_RE.fullmatch(head):
+            scheme = head.lower()
+    end = _AUTHORITY_END_RE.search(text)
+    authority, tail = (text[: end.start()], text[end.start() :]) if end else (text, "")
+    authority = authority.rsplit("@", 1)[-1].replace("[", "").replace("]", "")
+    if authority.count(":") == 1:
+        authority = authority.split(":", 1)[0]
+    host = authority.lower().rstrip(".")
+    path, _, query = tail.split("#", 1)[0].partition("?")
+    return scheme, host, path, query
+
+
+def _split(url: str) -> tuple[str, str, str, str, bool]:
+    """Return (scheme, host, path, query, parse_error). Never raises.
+
+    The host is lower-cased with port and userinfo removed. ``parse_error`` is True when
+    urlsplit rejected the string and the values came from ``_best_effort_split``.
+    """
     candidate = url if "://" in url else "http://" + url
-    parts = urlsplit(candidate)
-    host = (parts.hostname or "").lower().rstrip(".")
-    return parts.scheme.lower(), host, parts.path or "", parts.query or ""
+    try:
+        parts = urlsplit(candidate)
+        host = (parts.hostname or "").lower().rstrip(".")
+        if host or not url.strip():
+            return parts.scheme.lower(), host, parts.path or "", parts.query or "", False
+    except (ValueError, UnicodeError):
+        pass
+    # urlsplit rejected the string, or found no host in non-empty text (e.g. "[http://x").
+    return (*_best_effort_split(url), True)
+
+
+def _extract(host: str):
+    """tldextract result for ``host``, or None when tldextract rejects the string."""
+    try:
+        return _EXTRACTOR(host)
+    except (ValueError, UnicodeError):
+        return None
+
+
+def _registered(host: str) -> str:
+    ext = _extract(host) if host else None
+    return (ext.top_domain_under_public_suffix or "") if ext else ""
 
 
 def registered_domain(url: str) -> str:
     """eTLD+1 of the URL's host using the bundled suffix snapshot ('' when unknown)."""
-    _, host, _, _ = _split(url)
-    if not host:
-        return ""
-    ext = _EXTRACTOR(host)
-    return ext.top_domain_under_public_suffix or ""
+    return _registered(_split(url)[1])
 
 
 def _subdomain(host: str) -> str:
-    ext = _EXTRACTOR(host)
-    return ext.subdomain
+    ext = _extract(host)
+    return (ext.subdomain or "") if ext else ""
 
 
 def _entropy(s: str) -> float:
@@ -90,8 +209,8 @@ def _entropy(s: str) -> float:
 
 
 def _tld_of(host: str) -> str:
-    ext = _EXTRACTOR(host)
-    return ext.suffix or ""
+    ext = _extract(host)
+    return (ext.suffix or "") if ext else ""
 
 
 def _brand_in_host_not_registered(host: str, reg: str) -> float:
@@ -113,9 +232,9 @@ def _brand_in_host_not_registered(host: str, reg: str) -> float:
 
 def url_features(url: str) -> dict[str, float]:
     """Structural and lexical features for one URL. All values are floats."""
-    scheme, host, path, query = _split(url)
+    scheme, host, path, query, parse_error = _split(url)
     full = url.lower()
-    reg = registered_domain(url)
+    reg = _registered(host)
     sub = _subdomain(host) if host else ""
     tld = _tld_of(host) if host else ""
     labels = host.split(".") if host else []
@@ -152,6 +271,7 @@ def url_features(url: str) -> dict[str, float]:
         "tok_secure": 1.0 if any("secur" in t for t in tokens) else 0.0,
         "brand_host_mismatch": _brand_in_host_not_registered(host, reg),
         "registered_domain_missing": 1.0 if not reg else 0.0,
+        "url_parse_error": 1.0 if parse_error else 0.0,
     }
     feats["tld_other"] = 0.0 if (feats["tld_common"] or feats["tld_risky"]) else 1.0
     return feats

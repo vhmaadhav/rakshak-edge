@@ -4,6 +4,9 @@
 # Kaggle launcher outputs (kernel source and downloaded results)
 kaggle/out/
 
+# Colab launcher outputs (runner source, data archive, downloaded results, launch logs)
+colab/out/
+
 # Python and tool caches, local virtualenv, OS and notebook leftovers
 .venv/
 __pycache__/

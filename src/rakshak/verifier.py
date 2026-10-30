@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from rakshak.evidence import Action, EvidencePackage, Risk
+from rakshak.nids.evidence import NETWORK_DOMAIN, NetAction
 
 MAX_SUMMARY = 280
 
@@ -128,6 +129,10 @@ def verify(llm_output: str, package: EvidencePackage) -> VerifyResult:
     allowed_values = {a.value for a in package.allowed_actions}
     if not isinstance(action, str) or action not in allowed_values:
         problems.append(f"action {action!r} is not in allowed actions {sorted(allowed_values)}")
+    if package.domain == NETWORK_DOMAIN and isinstance(action, str):
+        sms_only = {a.value for a in Action} - {a.value for a in NetAction}
+        if action in sms_only:
+            problems.append(f"action {action!r} is an SMS-only code, not valid for network")
 
     # --- summary -----------------------------------------------------------
     if not isinstance(summary, str):
@@ -184,6 +189,7 @@ _TYPE_PHRASE = {
         "brand_domain_mismatch": "links to a domain that does not match the brand named",
         "shortened_url": "contains a shortened link",
         "suspicious_url": "contains a suspicious link",
+        "urgency": "uses time pressure (turant, abhi, 24 hours)",
     },
     "hinglish": {
         "credential_request": "OTP, PIN ya password maangta hai",
@@ -201,6 +207,7 @@ _TYPE_PHRASE = {
         "brand_domain_mismatch": "brand ka naam le kar galat domain ka link deta hai",
         "shortened_url": "chhota (shortened) link deta hai",
         "suspicious_url": "shaq wala link deta hai",
+        "urgency": "jaldi karne ka dabav dalta hai (turant, abhi, 24 ghante)",
     },
 }
 

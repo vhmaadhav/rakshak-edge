@@ -47,10 +47,12 @@ Conventions:
 No peer-reviewed Hinglish SMS spam benchmark with a leakage-controlled protocol was found. Candidates:
 
 - **HinSpam** (Hugging Face, Keshav0av/HinSpam). Binary Hinglish spam/ham. Self-reported F1 0.949, accuracy 0.953, MCC 0.906. Dataset size, split and provenance not described. Cites a 2026 paper we could not confirm. UNVERIFIED. https://huggingface.co/Keshav0av/HinSpam
-- **Hindi Spam SMS dataset**, NIT Silchar, IEEE DataPort. 3,894 messages, spam/ham, mostly Devanagari. No accepted model numbers found. https://ieee-dataport.org/documents/spam-sms-hindi-language
+- **Hindi Spam SMS dataset**, NIT Silchar, IEEE DataPort. 3,894 messages, spam/ham, mostly Devanagari. No accepted model numbers found. https://ieee-dataport.org/documents/spam-sms-hindi-language. Corrected 2026-10-30: count VERIFIED (DOI 10.21227/5y8x-n678); access requires an IEEE DataPort subscription; no licence shown. Not downloaded.
 - **Multilingual SMS spam dataset + CNN-LSTM hybrid**, CHRIST University repository (2022). Metrics exist, values not extracted. https://archives.christuniversity.in/items/show/20174
 - **RupeeBee technical report**, BERT with attention, 94% accuracy. Not peer-reviewed. Low weight. https://rupeebee.vercel.app/doc/rupeebee-publication.pdf
-- **Cleaned multilingual benchmark** (Zenodo 20480151, v4 dated 31 May 2026). 1,393-row test set in Devanagari, Hinglish and English. Fleiss kappa 0.82 across three annotators. XLM-R detector compared with GPT-4o, Claude Haiku 4.5 and Gemini 2.5 Flash. Under anonymous review. Accuracy not extracted. UNVERIFIED. https://zenodo.org/records/20480151
+- **Policy-aligned Indian SMS benchmark (Gupta, GroundLM 2026)**. Corrected 2026-10-30, was UNVERIFIED. Paper: ACL Anthology 2026.groundlm-1.79 (workshop volume, not ACL main; https://aclanthology.org/2026.groundlm-1.79/). 1,393 messages (Hindi, Hinglish, English-India); primary endpoint is FPR on 1,294 policy-negatives. Fine-tuned 270M XLM-R: 0.4% global FPR, 0.980 recall (abstract, verified). Fleiss kappa 0.821 over 276 overlap rows (supplement results, verified). Positive labels partly from GPT-4o and Gemini, so recall is secondary. Release: Zenodo 20480151 v4 (Apache-2.0; IIITD-sourced rows hash-only); ACL supplement is text-free. Accuracy by model and per-template results: see RESEARCH_NOTES section for 2026-10-30.
+- **SmishX dataset** (SOUPS 2025, Wang et al.; https://github.com/yizhu-joy/SmishX, MIT). 1,200 manually relabelled messages: 622 legitimate, 319 spam, 259 smishing (downloaded and counted, verified 2026-10-30). Reported overall accuracy 98.8% and user study N=175 (verified in paper). SUS 82.6 not found in paper text (appears only in a talk description). Local copy: `data/raw/smishx_soups2025/dataset.csv`.
+- **Indian fraud conversations, not SMS:** ICFD-31k (IJCAI-ECAI 2026, proceedings paper 0786; HF `rishia2220/icfd-31k`, licence `other`). Synthetic English/Hinglish phone-call transcripts, so not a real-fraud benchmark. Not downloaded.
 - **Code-mixed proxy (not spam):** arXiv 2405.20755, Hindi-English code-mixed hate speech. MuRIL F1 0.54 best; XLM-R F1 0.52. Useful only as a difficulty indicator. https://arxiv.org/pdf/2405.20755
 - **Resource:** L3Cube-HingCorpus and HingBERT (arXiv 2204.08398), Hindi-English Roman-script corpus and BERT models. Pretraining resource, not a spam benchmark. https://arxiv.org/pdf/2204.08398
 
@@ -79,7 +81,8 @@ No peer-reviewed Hinglish SMS spam benchmark with a leakage-controlled protocol 
 | Gemini-2.5-Pro zero-shot | P@R=0.90 | 0.0390 | 0.0722 | 0.2606 | 0.4147 | 0.7861 | 0.9352 |
 
 - Caveat: GTE and the LLM use HTML. Our URL-only system must be compared on a URL-only variant or reported as a separate row. Do not claim to beat GTE with URL-only features unless we run the same split.
-- Caveat: v1 numbers not checked; v2 is the reference.
+- **URL-only numbers: none published** (checked 2026-10-30 against the full v2 text, read via WebFetch in two passes; a summariser, not the PDF tables). Table 2 and the appendix have four rows only: Linear (LinearSVC), FFN (32-unit), GTE and the Gemini-2.5-Pro zero-shot LLM. The paper says Linear and FFN take character n-grams of both URL and HTML, and the LLM prompt holds the URL plus pruned HTML. So there is no URL-only target to beat. Our URL-only students (kaggle/jobs/url_student.py) are reported against the GTE row for reference only, and always labelled URL-only, not as a like-for-like win.
+- Caveat (corrected 2026-10-30): v1 numbers now checked, and they differ from v2. v1 GTE (arXiv 2507.10854v1, Table 2, read via WebFetch summary of the v1 HTML): 0.05% AP 0.7771 ± 0.0128, P@R=0.90 0.2222 ± 0.0296; 5.0% AP 0.9715; full test set (18.3% base rate in v1) AP 0.9918, P@R 0.9855. Do not mix v1 and v2 rows. v2 remains the reference.
 
 ## 6. Other URL benchmarks
 
@@ -112,6 +115,8 @@ No peer-reviewed Hinglish SMS spam benchmark with a leakage-controlled protocol 
 ## 7. Robustness and adversarial evasion
 
 - **"Johnny Still Receives Spam SMS: Assessing the Robustness of SMS Spam Detection"**, Salman, Islam, Ikram, Kaafar. arXiv 2609.01171, submitted 1 Sep 2026 (VERIFIED existence by arXiv id and title; preprint, not peer-reviewed). https://arxiv.org/abs/2609.01171 · HTML https://arxiv.org/html/2609.01171
+  - Corrected 2026-10-30: EMNLP 2026 acceptance NOT FOUND (arXiv v1 only; no venue line). Do not describe as accepted.
+  - Corrected 2026-10-30, delivery rule (Table 3): invisible-character and homoglyph perturbations survive SMS and RCS delivery; RTLO bidi reordering does not and is excluded from the threat model (Table 2 footnote). The abstract also evaluates commercial messaging apps and third-party anti-spam services (not only BERT).
   - Data: "Super SMS" dataset, 67,010 messages (40,837 benign, 26,181 spam). Sources include UCI SMS, NUS SMS, SpamHunter, X, ScamWatch, UK Action Fraud.
   - Test: 5,000 benign and 5,000 spam, random. Training is the rest. Random split, no temporal split stated.
   - Cross-dataset: Smishtank (913 after dedup, all spam) BERT recall 99.67%.
@@ -119,7 +124,9 @@ No peer-reviewed Hinglish SMS spam benchmark with a leakage-controlled protocol 
   - Key numbers (accuracy %, BERT not adversarially trained, Table 12): clean 99.0; Spacing 94.1; Insert 96.9; Delete 95.2; Sub-Chars 96.4; Sub-Word 97.2; Swap 95.9; Invisible 94.9; **Homoglyphs 41.3**; Reordering 86.5.
   - BERT, full adversarial training: Homoglyphs 99.5, Invisible 94.6, clean 97.9.
   - BERT, minimal AT (Insert + Invisible only): Homoglyphs 79.7, clean 99.7.
-  - Open-weight HF spam models under Homoglyphs: 17.6% to 70.9%.
+  - Open-weight HF spam models under Homoglyphs: 17.6% to 70.9%. (UNVERIFIED; not re-checked.)
+  - Corrected 2026-10-30: the "RoBERTa 99.7% clean to 17.6%" claim is PARTIAL. Table 9 gives maria_roberta 17.6% under Invisible and Homoglyphs, but the text says "spacing and invisible characters" while Table 9 lists spacing 58.7%. The 99.7% clean value was not found in the text read.
+  - Corrected 2026-10-30: BERT clean 99.33% acc / 0.30% FPR is Table 11; Table 12 uses 99.0. Minimal AT Table 15: homoglyph 79.7, invisible 98.7 (clean 99.7 not confirmed).
   - Inconsistency in the source: BERT clean is 99.33 in Table 11 and 99.0 in Table 12. SVM is 95.23 in Table 11 and 76.8 in Table 12. Use the full PDF to confirm before citing.
   - The paper reports accuracy under attack only, not attack success rate.
   - Section 7 (proposed ensemble) was truncated in our fetch. Its numbers are UNVERIFIED.
@@ -137,6 +144,7 @@ No peer-reviewed Hinglish SMS spam benchmark with a leakage-controlled protocol 
 | PhishLang (MobileBERT) | 74 MB **memory** (model size not stated) | acc 0.96, P 0.95, R 0.96, F1 0.96; 0.39 s median prediction | arXiv 2408.05667 (VERIFIED); NDSS 2026 DOI 10.14722/ndss.2026.231037 (VERIFIED) | Table from arXiv v3 via search; NDSS PDF unreadable. Abstract: 94.7% accuracy on evasive attacks across five threat families. Dataset and split not extracted. Code: github.com/uta-sprlab/phishlang |
 | PhishLang DistilBERT | 502 MB memory | acc/P/R/F1 0.94; 0.85 s | same | UNVERIFIED beyond search summary |
 | COPS | 3.46 MB | 98.15% smishing, 99.5% URL | arXiv 2402.04173 / CCNC 2024 | Abstract; dataset not recorded |
+| EI-BERT (cross-distillation) | 1.91 MB (added 2026-10-30) | accuracy not extracted | arXiv 2507.04636; ACM DOI 10.1145/3711896.3737257 | Size VERIFIED; KDD 2025 venue PARTIAL (not matched on kdd.org) |
 | Samsung IEEE Access | about 127 kB | about 0.99 accuracy | IEEE Access 2024 | Secondary; UNVERIFIED |
 | Agentic KD (students) | Qwen2.5-0.5B; SmolLM2-135M | best 94.31% acc, 96.25% recall | arXiv 2602.10869 (VERIFIED title) | Validation set is teacher-generated synthetic, not real. Weak target |
 | URLNet char-CNN | not stated | not extracted | arXiv 1802.03162 | UNVERIFIED |
@@ -146,6 +154,7 @@ Backbone sizes (from model cards we fetched):
 - **IndicBERTv2-MLM-only** (ai4bharat): card states 278M parameters; 23 Indic languages + English; IndicCorp v2, 20.9B tokens; MIT. Layers and hidden size not on card. https://huggingface.co/ai4bharat/IndicBERTv2-MLM-only
 - **MuRIL base cased** (google/muril-base-cased): card says BERT-base architecture, 17 languages including transliterated, Apache-2.0. Parameter count not on card. Secondary source gives about 236M params with vocab 197,285, which matches base architecture plus that vocab (our arithmetic: about 86M + 151M embedding). The secondary's "24 layers, hidden 1024" conflicts with "BERT base" and is likely wrong. https://huggingface.co/google/muril-base-cased
 - **ModernBERT-base**: 149M params, 22 layers, 8,192 context, 2T tokens of English and code; limited non-English. https://huggingface.co/answerdotai/ModernBERT-base
+- **mmBERT** (added 2026-10-30; PARTIAL): `jhu-clsp/mmBERT-small` 140M total / 42M non-embedding; `jhu-clsp/mmBERT-base` 307M total / 110M non-embedding; both MIT, ModernBERT architecture, 1,800+ languages (HF search snippets; the repo overview did not print sizes). Paper arXiv 2509.06888 (title verified). "ICML 2026" seen only as a note on the HF collection page. https://huggingface.co/collections/jhu-clsp/mmbert-a-modern-multilingual-encoder
 - **multilingual-e5-small**: card fetch failed. Size UNVERIFIED.
 - **Qwen2.5-0.5B, SmolLM2-135M**: names imply 0.5B and 135M (UNVERIFIED on cards).
 
@@ -176,13 +185,14 @@ URLs:
 | Mishra & Soni Mendeley | acc | 97.9% (DSmishSMS); 97.40% (2022 NN) | NCA 2021 / SN CS 2022 (secondary) | Protocol unknown; overlaps UCI |
 | Nahapetyan S&P 2024 | classifier metric | none found | DOI 10.1109/SP54263.2024.00169 | Measurement paper; full text unreadable here |
 | Hinglish SMS spam | F1 / acc / MCC | 0.949 / 0.953 / 0.906 (HinSpam) | HF card, self-reported | UNVERIFIED; no peer-reviewed benchmark |
-| PhreshPhish (URL+HTML) | AP / P@R0.90 | 0.05%: 0.6050 / 0.0891; 1%: 0.8762 / 0.5426; 5%: 0.9382 / 0.8576 (GTE) | arXiv 2507.10854 v2 | Temporal, dedup, leakage filter. HTML-based; URL-only needs own row |
+| Indian financial SMS, policy-aligned (Gupta, GroundLM 2026) | FPR / recall | 270M XLM-R: 0.4% global FPR, 0.980 recall, on 1,294 policy-negatives (added 2026-10-30) | ACL Anthology 2026.groundlm-1.79 (abstract verified) | Workshop paper; LLM-adjudicated positives, so recall secondary; FPR is the primary endpoint |
+| PhreshPhish (URL+HTML) | AP / P@R0.90 | 0.05%: 0.6050 / 0.0891; 1%: 0.8762 / 0.5426; 5%: 0.9382 / 0.8576 (GTE, v2). Corrected 2026-10-30: v1 gives 0.7771 / 0.2222 at 0.05%, do not mix | arXiv 2507.10854 v2 (Table 2 checked against v2 HTML) | Temporal, dedup, leakage filter. HTML-based; URL-only needs own row |
 | URLTran | TPR at FPR 0.01% | 86.80% | MILCOM 2021, DOI 10.1109/milcom52596.2021.9653028 | Authors' own; not replicated |
 | GramBeddings | acc | 98.27% (800k balanced) | Comput. & Security 2022 (UNVERIFIED primary) | Random, in-distribution; live-URL tests 75-76% |
 | PhishStorm | acc / FPR | 94.91% / 1.44% | IEEE TNSM 2014 (snippet, UNVERIFIED) | 96,018 URLs; older |
 | PhiUSIIL | acc | 99.82% (BiGRU 60:40); 99.7% (DT, secondary) | Comput. & Security 2023 (DOI verified); downstream UNVERIFIED | Content features; random ceiling, not a headline |
 | COPS | acc | 98.15% smishing; 99.5% URL | CCNC 2024, DOI 10.1109/ccnc51664.2024.10454635 | Abstract only; dataset unknown |
-| Johnny (robustness) | acc under Homoglyph attack | BERT 41.3 (no AT) to 99.5 (full AT); mini AT 79.7 | arXiv 2609.01171 (preprint) | Random split; accuracy only; table inconsistencies |
+| Johnny (robustness) | acc under Homoglyph attack | BERT 41.3 (no AT) to 99.5 (full AT); mini AT 79.7 | arXiv 2609.01171 (preprint; EMNLP 2026 NOT FOUND, corrected 2026-10-30) | Random split; accuracy only; table inconsistencies |
 | Samsung on-device | acc / size | about 0.99 at about 127 kB; ASR 0.41 | IEEE Access 2024 (secondary) | UNVERIFIED |
 | PhishLang (small) | acc / F1 / memory | 0.96 / 0.96 at 74 MB memory (MobileBERT) | arXiv 2408.05667; NDSS 2026 | Dataset not extracted |
 | Agentic KD (small) | acc / recall | 94.31% / 96.25% (Qwen2.5-0.5B student) | arXiv 2602.10869 | Synthetic validation; weak |

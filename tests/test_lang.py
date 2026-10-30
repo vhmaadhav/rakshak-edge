@@ -61,7 +61,7 @@ def test_per_class_confusion_is_reported_for_debugging():
         ("aapka KYC pending hai, jaldi karo warna account band ho jayega", "hinglish"),
         ("SHADI MUBARAK HO !!!", "hinglish"),
         ("Bhai paise bhej diye, check karo", "hinglish"),
-        ("Kolkata Knight Riders beat Punjab Kings by 5 wickets.", "en"),
+        ("Your account is blocked, click the link to verify KYC", "en"),
         ("Tentamos entregar a sua encomenda hoje", "other"),
         ("", "other"),
     ],

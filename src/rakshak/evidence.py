@@ -86,11 +86,14 @@ class EvidencePackage:
     risk: Risk
     confidence_state: str
     evidence: list[Evidence]
-    allowed_actions: list[Action]
+    # Action codes from the package's domain: ``Action`` for SMS, ``NetAction`` for network.
+    allowed_actions: list[Action | StrEnum]
     urls: list[str] = field(default_factory=list)
     domains: list[str] = field(default_factory=list)
     phones: list[str] = field(default_factory=list)
     brand_domains: dict[str, list[str]] = field(default_factory=dict)
+    # "sms" (default, the original behaviour) or "network" (rakshak.nids).
+    domain: str = "sms"
 
     @property
     def evidence_ids(self) -> set[str]:

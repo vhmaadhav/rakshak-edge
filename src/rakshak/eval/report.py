@@ -117,10 +117,40 @@ def render_markdown(payload: Mapping) -> str:
                 f"cal: {sizes['cal']} rows ({sizes['cal_pos']} scam)."
             )
             lines.append("")
+        methods = {r.get("bootstrap", {}).get("method") for r in per_model.values()} - {None}
+        if methods:
+            lines.append("CIs: " + ", ".join(sorted(methods)) + " bootstrap.")
+            lines.append("")
         lines.append("| " + " | ".join(header) + " |")
         lines.append("|" + "|".join(["---"] * len(header)) + "|")
         for model_key, result in per_model.items():
             lines.append(_row(model_key, result, targets))
+        lines.append("")
+    for table in payload.get("tables") or []:
+        lines += [f"## {table['title']}", ""]
+        if table.get("note"):
+            lines += [table["note"], ""]
+        lines.append("| " + " | ".join(table["header"]) + " |")
+        lines.append("|" + "|".join(["---"] * len(table["header"])) + "|")
+        for row in table["rows"]:
+            lines.append("| " + " | ".join(str(c) for c in row) + " |")
+        lines.append("")
+    comparisons = payload.get("comparisons") or {}
+    if comparisons:
+        lines += ["## Paired comparisons", "",
+                  "Delta = A - B on the same test rows. p is the two-sided paired bootstrap",
+                  "p-value.",
+                  "",
+                  "| Pair | Metric | A | B | Delta | Delta 95% CI | p |",
+                  "|---|---|---|---|---|---|---|"]
+        for pair, per_metric in comparisons.items():
+            for metric, cmp_ in per_metric.items():
+                ci = cmp_.get("delta_ci") or [None, None]
+                lines.append(
+                    f"| {pair} | {metric} | {_fmt(cmp_.get('a'))} | {_fmt(cmp_.get('b'))} | "
+                    f"{_fmt(cmp_.get('delta'))} | [{_fmt(ci[0])}, {_fmt(ci[1])}] | "
+                    f"{_fmt(cmp_.get('p_value'))} |"
+                )
         lines.append("")
     return "\n".join(lines)
 

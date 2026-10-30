@@ -44,6 +44,9 @@ SOURCE_IMC25 = "imc25_fishing_for_smishing"
 SOURCE_SCAMSHIELD = "scamshield"
 SOURCE_ANMOL = "anmol_scam_ham_india"
 SOURCE_BOLEWARA = "bolewara_hinglish_scam"
+# External eval-only sets (never in training; see datasets/external.py).
+SOURCE_SMISHX = "smishx_soups2025"
+SOURCE_GROUNDLM = "groundlm_zenodo_20480151"
 
 SMS_SOURCES = [
     SOURCE_UCI,
@@ -265,8 +268,6 @@ SOURCE_OPENPHISH = "openphish_community_feed"
 SOURCE_LEGITPHISH = "legitphish_mendeley"
 SOURCE_PHRESHPHISH = "phreshphish"
 
-PHRESHPHISH_HF_ID = "phreshphish/phreshphish"
-
 
 def load_phishtank(raw_dir: Path) -> pd.DataFrame:
     with bz2.open(
@@ -334,59 +335,82 @@ def load_legitphish(raw_dir: Path) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=URL_RAW_COLUMNS)
 
 
+# The full official release (train + test) comes from the Kaggle extract job
+# (kaggle/jobs/phreshphish_extract.py) as one parquet. It is never merged into the general URL
+# pool: it has its own split family (url_phreshphish) built from its official split column.
+PHRESHPHISH_FILE = "phreshphish_urls.parquet"
+PHRESHPHISH_SPLITS = ("train", "test")
+PHRESHPHISH_RAW_COLUMNS = [
+    "source",
+    "row_key",
+    "url",
+    "label",
+    "date",
+    "brand",
+    "lang",
+    "split",
+    "bench_benign",
+    "bench_full",
+    "bench_subsets",
+]
+_PHRESHPHISH_READ = [
+    "sha256",
+    "url",
+    "label",
+    "target",
+    "date",
+    "lang",
+    "split",
+    "bench_benign",
+    "bench_full",
+    "bench_subsets",
+]
+
+
+def _text_or_none(value) -> str | None:
+    return None if value is None or (isinstance(value, float) and pd.isna(value)) else str(value)
+
+
 def load_phreshphish(src: str | Path) -> pd.DataFrame:
-    """PhreshPhish URL, label, date and target columns from local parquet or HF streaming.
+    """Official PhreshPhish release: every train and test row, with its official split.
 
-    ``src`` is either a directory / parquet file on disk, or a Hugging Face dataset id
-    (e.g. ``phreshphish/phreshphish``). The HF path streams rows with the ``datasets``
-    library (not a project dependency: install it in the Kaggle job) and keeps only the
-    four columns, so the 145 GB train split never has to be materialised locally.
+    ``src`` is the parquet file or the folder that holds ``phreshphish_urls.parquet``. label:
+    phish -> 1, benign -> 0. ``bench_benign`` and ``bench_full`` are the benchmark membership
+    flags from the extract job; ``bench_subsets`` lists the subset ids in which a row is a phish
+    sample. No row is dropped here: the release is already the paper's cleaned data.
     """
+    import pyarrow.parquet as pq
+
     path = Path(src)
-    cols = ["sha256", "url", "label", "target", "date"]
-    if path.exists():
-        import pyarrow.parquet as pq
-
-        files = sorted(path.glob("*.parquet")) if path.is_dir() else [path]
-        frames = []
-        for f in files:
-            table = pq.read_table(f, columns=cols)
-            frames.append(table.to_pandas())
-        records = pd.concat(frames, ignore_index=True).to_dict("records")
-    else:
-        from datasets import load_dataset  # optional; only used for the full HF dataset
-
-        streams = []
-        for split in ("train", "test"):
-            ds = load_dataset(str(src), split=split, streaming=True)
-            ds = ds.select_columns(cols)
-            streams.extend({**rec, "_split": split} for rec in ds)
-        records = streams
-    rows = []
-    for rec in records:
-        label = {"phish": 1, "benign": 0}.get(str(rec["label"]))
-        if label is None:
-            continue
-        date = rec.get("date")
-        date_s = (
-            str(date)[:10] if date is not None and str(date) not in ("", "NaT", "None") else None
-        )
-        target = rec.get("target")
-        rows.append(
-            dict(
-                source=SOURCE_PHRESHPHISH,
-                row_key=str(rec["sha256"]),
-                url=rec["url"],
-                label=label,
-                date=date_s,
-                brand=None if target in (None, "None", "") else str(target),
-            )
-        )
-    return pd.DataFrame(rows, columns=URL_RAW_COLUMNS)
+    if path.is_dir():
+        path = path / PHRESHPHISH_FILE
+    table = pq.read_table(path, columns=_PHRESHPHISH_READ).to_pandas()
+    label = table["label"].map({"phish": 1, "benign": 0})
+    if label.isna().any():
+        raise ValueError(f"{path.name}: label values other than phish/benign")
+    unknown = set(table["split"]) - set(PHRESHPHISH_SPLITS)
+    if unknown:
+        raise ValueError(f"{path.name}: unexpected splits {sorted(unknown)}")
+    return pd.DataFrame(
+        {
+            "source": SOURCE_PHRESHPHISH,
+            "row_key": table["sha256"].astype(str),
+            "url": table["url"].astype(str),
+            "label": label.astype(int),
+            "date": [None if d is None or pd.isna(d) else str(d)[:10] for d in table["date"]],
+            "brand": [_text_or_none(t) for t in table["target"]],
+            "lang": [_text_or_none(x) for x in table["lang"]],
+            "split": table["split"].astype(str),
+            "bench_benign": table["bench_benign"].astype(bool),
+            "bench_full": table["bench_full"].astype(bool),
+            "bench_subsets": [list(x) if x is not None else [] for x in table["bench_subsets"]],
+        },
+        columns=PHRESHPHISH_RAW_COLUMNS,
+    )
 
 
-def load_all_urls(raw_dir: Path, phreshphish_src: str | Path | None) -> pd.DataFrame:
+def load_all_urls(raw_dir: Path) -> pd.DataFrame:
+    """The general URL pool: PhishTank, OpenPhish and LegitPhish. PhreshPhish is excluded on
+    purpose (see load_phreshphish): it is evaluated as its own official split."""
     frames = [load_phishtank(raw_dir), load_openphish(raw_dir), load_legitphish(raw_dir)]
-    src = phreshphish_src if phreshphish_src is not None else raw_dir / "hf_phreshphish_shards"
-    frames.append(load_phreshphish(src))
     return pd.concat(frames, ignore_index=True)

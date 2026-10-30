@@ -14,8 +14,17 @@ from rakshak.url_features import (
 def test_features_are_floats_and_cover_core_keys():
     f = url_features("https://sbi-kyc.in/upd?x=1")
     assert all(isinstance(v, float) for v in f.values())
-    for key in ("url_len", "host_entropy", "n_subdomains", "shortener", "tld_risky",
-                "punycode", "ip_literal", "suspicious_token_count", "brand_host_mismatch"):
+    for key in (
+        "url_len",
+        "host_entropy",
+        "n_subdomains",
+        "shortener",
+        "tld_risky",
+        "punycode",
+        "ip_literal",
+        "suspicious_token_count",
+        "brand_host_mismatch",
+    ):
         assert key in f
 
 
@@ -83,3 +92,22 @@ def test_brands_json_is_well_formed():
         assert info["aliases"] and info["host_aliases"], name
     raw = resources.files("rakshak").joinpath("data/brands.json").read_text(encoding="utf-8")
     assert json.loads(raw)["version"] == 1
+
+
+def test_malformed_netloc_gets_a_manual_split_instead_of_raising():
+    from rakshak.url_features import _split, url_features
+
+    # A PhreshPhish row (bracketed userinfo, non-ASCII label): urllib raises ValueError on it.
+    url = (
+        "https://npaiaajvaxrjmmhagh.com\u2215[-randomstring1-]\u2215[-randomstring2-]"
+        "@npaiaajvaxrjmmhagh.\U0001d567\U0001d55a\U0001d563\U0001d561\U0001d55e\U0001d560"
+        "\U0001d55b.cn/caonima=[-randomstring4-].co.jp/"
+    )
+    scheme, host, _path, _query, parse_error = _split(url)
+    assert scheme == "https"
+    assert host.endswith(".cn")
+    assert parse_error is True
+    assert isinstance(url_features(url), dict)
+    # Brackets are dropped by the fallback, so a plain bracketed host reads as the bare text.
+    _, bracket_host, _, _, _ = _split("https://user@[bad/path?q")
+    assert bracket_host == "bad"

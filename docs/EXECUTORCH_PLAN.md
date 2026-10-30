@@ -233,3 +233,45 @@ These are vendor-reported numbers, not independent. The paper's authors are Meta
 - https://github.com/pytorch/executorch/issues/19476
 - https://arxiv.org/html/2605.08195v1
 - https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct (via HF connector `hub_repo_details`; gated)
+
+## Kaggle weights (checked 2026-10-30 with kaggle CLI 2.2.4)
+
+Source: `kaggle models get`, `kaggle models instances get`, `kaggle models instances versions list` and `... versions files`. The CLI has no `--format json` for `models get`, so the output was parsed as text. Nothing was downloaded.
+
+**Model.** `metaresearch/llama-3.2` (Meta, Llama 3.2 Community License, Kaggle model id 121027). Its instances are published under the PyTorch, Transformers and Keras frameworks (also 1B and 3B, base and instruct).
+
+| Instance ref (`--models`) | Format | Size (bytes) | Use |
+|---|---|---|---|
+| `metaresearch/llama-3.2/transformers/1b-instruct` | HF Transformers, fp16 safetensors | 2,480,831,539 | ELA eval (`llama_ela_eval`) |
+| `metaresearch/llama-3.2/pytorch/1b-instruct` | Meta native (`consolidated.00.pth`, `params.json`, `tokenizer.model` expected) | 2,473,861,448 | ExecuTorch export (`llama_export`) |
+| `metaresearch/llama-3.2/pytorch/1b-instruct-spinquant_int4_eo8` | Meta SpinQuant INT4 (EO8), version 2 | 1,623,520,362 | Export variant v1 (section 7 step 5), not yet exported |
+| `metaresearch/llama-3.2/pytorch/1b-instruct-qlora_int4_eo8` | Meta QAT+LoRA INT4 (EO8), version 2 | 1,646,138,277 | Export variant, not yet exported |
+
+Ref form is `OWNER/MODEL/FRAMEWORK/VARIATION`. The CLI accepts lowercase framework names (`pytorch`, `transformers`), and the output shows `MODEL_FRAMEWORK_PY_TORCH` and `MODEL_FRAMEWORK_TRANSFORMERS`. Whether `kernels push` wants `pytorch` or `pyTorch` in `model_sources` is **UNVERIFIED**. The kernel mount path is `/kaggle/input/<model>/...`, also **UNVERIFIED**. Both jobs search `/kaggle/input` for the files they need, so the exact path does not matter.
+
+**Licence consent (the gate).** `kaggle models instances versions files` returns **403 Forbidden** for `.../transformers/1b-instruct/1`, `.../pytorch/1b-instruct/1` and the two quantised 1B variants. Metadata calls work, so the gate is on the file level. We read this as the Llama 3.2 licence not yet being accepted on the Kaggle account in `~/.kaggle/kaggle.json`. The static Kaggle page rendered without the consent UI, so the exact button label is **UNVERIFIED**.
+
+**What Maadhav must click.**
+1. Log into kaggle.com as the account that owns `~/.kaggle/kaggle.json`.
+2. Open https://www.kaggle.com/models/metaresearch/llama-3.2 and open the 1B Instruct variations (Transformers and PyTorch, plus the SpinQuant and QLoRA ones if we use them).
+3. Accept the Llama 3.2 Community License (the "Request access" / accept prompt, if one appears). Do not sign in with any other account.
+4. Check the gate is open: `kaggle models instances versions files metaresearch/llama-3.2/transformers/1b-instruct/1` should list files instead of 403. Do not run a download to test it.
+
+**Quantised checkpoints.** SpinQuant and QLoRA exports are on Kaggle under `metaresearch` (the names match the HF repos `Llama-3.2-1B-Instruct-SpinQuant_INT4_EO8` and `-QLORA_INT4_EO8`). They are Meta checkpoints for the `llama_xnnpack_spinquant.yaml` and `llama_xnnpack_qat.yaml` configs, not ready-made `.pte` files. Whether their file layout matches what `export_llm` expects is **UNVERIFIED** until the file listing opens.
+
+**Launch commands (not run).**
+```bash
+kaggle/launch.sh llama_ela_eval --gpu t4 --internet \
+  --datasets maadhavvh/rakshak-data \
+  --models metaresearch/llama-3.2/transformers/1b-instruct
+kaggle/launch.sh llama_export --internet \
+  --models metaresearch/llama-3.2/pytorch/1b-instruct
+```
+
+**Export pins used by `kaggle/jobs/llama_export.py`** (from the v1.5.1 tag):
+- `executorch==1.5.1` on PyPI. Its requirements are `torchao>=0.18,<0.19` and `pytorch-tokenizers>=1.5.0`. The torch pin is not in its requirements.
+- `torch==2.14.0` from `https://download.pytorch.org/whl/cpu`. This is the torch version `install_executorch.py` names at v1.5.1, and the CPU wheel exists on that index.
+- `git clone --depth 1 --branch v1.5.1` for `extension/llm/tokenizers` and the `export_llm` module (`python -m extension.llm.export.export_llm`, run from the clone). The tag resolves to 3b60683.
+- The v1.5.1 `llama_xnnpack_spinquant.yaml` example confirms the `export.max_seq_length` and `max_context_length` keys, which the export YAML includes.
+
+**Still UNVERIFIED after this check:** the file layout inside the Kaggle instances; whether `pytorch/1b-instruct` contains `consolidated.00.pth` at its root; the Kaggle consent button label; the peak RSS and wall time of the export on Kaggle CPU (measured by the job, not yet run).

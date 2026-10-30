@@ -53,7 +53,7 @@ If `src/rakshak/__init__.py` or the job file is missing, the build exits with an
   printed or committed. `kaggle/out/` is gitignored, and the generated `run.py` holds the URL because the kernel is
   private.
 - The kernel posts one line at the end, including on exception:
-  `rakshak-<job> ok|fail git=<sha12> tree=<hash12>[+dirty] <summary>`. `summary` is set by the job in
+  `rakshak-<job> ok|partial|fail git=<sha12> tree=<hash12>[+dirty] <summary>`. `summary` is set by the job in
   `ctx.results['summary']`.
 - `wait_event.py` (run by `wait_event.sh`) opens one stream with `since=<launch epoch>`, so a fast job is not
   missed. It accepts only a message for this job and this build's git label, and writes
@@ -77,7 +77,9 @@ Add `kaggle/jobs/<name>.py` with `run(ctx) -> bool`:
 - `ctx.work` is `/kaggle/working`. `ctx.src` is the unpacked `src/` (already on `sys.path`, so `import rakshak` works).
 - `_common.py` gives `write_metrics`, `seed_everything`, `timed` and `env_report` (Python, CPU, `nvidia-smi` GPU, torch
   and CUDA when installed, and the project's package versions).
-- Return `False` for a clean failure. An exception sets `status: error` and still notifies.
+- Return `False` for a clean failure, or return `'partial'` when some units failed (the baseline and
+  teacher jobs use `Units` and `units.status()` from `_common.py`). An exception sets `status: error`
+  and still notifies, shown as `fail`. Failed units are listed in `results.json` under `failures`.
 
 The laptop runs none of this. `build_kernel.py` only bundles and writes files. `smoke` (CPU) and `gpu_smoke`
 (`--gpu t4`) are the jobs that have been run through the launcher.
@@ -90,6 +92,27 @@ never modified. It creates `data/processed/README.txt` as a placeholder if the f
 upload when no file other than that placeholder exists. The dataset license is set to `other` and should be
 set properly before any dataset is made public. Data stays private.
 
+## PhreshPhish URL extraction
+
+`kaggle/launch.sh phreshphish_extract --internet` (CPU, internet on, no datasets) reads
+`hf://datasets/phreshphish/phreshphish` without the `html` column. It requests only `sha256, url, label, target,
+date, lang` from each Parquet shard, so the HTML bytes are never requested. Each shard is one `Units` unit, and the
+parts are merged at the end. A stop at `--max-hours` (default 10) gives status `partial` with whatever finished.
+
+Outputs in `/kaggle/working`, fetched with `kaggle/fetch.sh phreshphish_extract`:
+
+- `phreshphish_urls.parquet`: `sha256, url, label, target, date, lang, split` plus `bench_benign` (in
+  `benchmark/benign.txt`), `bench_full` (in `benign.txt` or `phish.txt`) and `bench_subsets` (list such as
+  `benchmark-005/0`, the phish subset files that contain the row).
+- `benchmark_subsets.json`: `benign_sha256`, `full_phish_sha256`, and `subsets` with each subset's `phish_sha256`,
+  `rate_label` and `base_rate`. A subset is `benign_sha256` plus its phish ids.
+- `phreshphish_stats.json`: rows per split and label, date range, bytes read, wall time and integrity checks.
+
+Attaching the output to `src/rakshak/datasets/urls.py` later: publish the fetched folder as a private Kaggle dataset,
+then pass `--datasets OWNER/SLUG` to the consuming job. The Parquet appears under `/kaggle/input/<slug>/`. The loader
+then reads `phreshphish_urls.parquet` and filters on `split` and `bench_*`. Nothing in `src/rakshak/datasets/` reads
+this output yet.
+
 ## Files
 
 - `build_kernel.py`: bundles and writes the kernel (no compute, no push).
@@ -98,4 +121,6 @@ set properly before any dataset is made public. Data stays private.
 - `requirements-kaggle.txt`: pinned runtime set (numpy has one pin per Python range).
 - `jobs/_common.py`, `jobs/smoke.py`: shared helpers and the first job.
 - `jobs/gpu_smoke.py`: torch, CUDA device and one matmul checked against the CPU (`kaggle/launch.sh gpu_smoke --gpu t4 --internet`).
+- `jobs/phreshphish_extract.py`: PhreshPhish URL rows and benchmark id lists, no HTML (see above). Its tests run locally
+  on a synthetic fixture: `tests/test_phreshphish_extract.py`.
 - `out/`: generated kernels, launch epochs, downloads and logs. Gitignored.

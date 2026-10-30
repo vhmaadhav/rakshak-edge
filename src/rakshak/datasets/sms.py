@@ -16,6 +16,7 @@ from rakshak.datasets.loaders import (
     SOURCE_SCAMSHIELD,
     SOURCE_UCI,
 )
+from rakshak.datasets.taxonomy import policy_for
 from rakshak.datasets.template import template_key
 
 # Exact-duplicate representative = first row in this source order (provenance strength).
@@ -34,6 +35,8 @@ SMS_COLUMNS = [
     "text_canon",
     "label_binary",
     "label_fine",
+    "label_policy",
+    "label_scam",
     "source",
     "subsource",
     "source_split",
@@ -84,6 +87,14 @@ def build_sms_frame(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     df = df.sort_values(["source_rank", "synth_rank", "row_order"]).reset_index(drop=True)
 
     df = mark_exact_duplicates(df, "dedup_key")
+    policies = [
+        policy_for(src, fine, bool(conflict))
+        for src, fine, conflict in zip(
+            df["source"], df["label_fine"], df["label_conflict"], strict=True
+        )
+    ]
+    df["label_policy"] = [p.label_policy for p in policies]
+    df["label_scam"] = pd.array([p.label_scam for p in policies], dtype="Int8")
     df, campaign_diag = assign_campaigns(df)
 
     df["eval_ok"] = [

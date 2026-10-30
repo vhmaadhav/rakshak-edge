@@ -20,3 +20,8 @@ accelerate==1.15.0
 optuna==5.0.0
 sentencepiece==0.2.2
 protobuf==7.36.2
+# ONNX export and parity check for the student models (kaggle/jobs/sms_student.py). Newest PyPI
+# releases at least two weeks old on 2026-10-30: onnx 1.23.2 (2026-10-06), onnxruntime 1.31.0
+# (2026-10-09). fasttext is not pinned: no cp313 wheel exists (see sms_student.py).
+onnx==1.23.2
+onnxruntime==1.31.0
