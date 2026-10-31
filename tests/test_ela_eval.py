@@ -154,6 +154,59 @@ def test_aggregate_empty_input():
     assert aggregate([]) == {"n": 0}
 
 
+def _zero_work_row(latency=0.0):
+    return {
+        "json_ok": True,
+        "verifier_ok": True,
+        "unsupported_n": 0,
+        "action_ok": True,
+        "safe_claim": True,
+        "new_tokens": 0,
+        "latency_s": latency,
+    }
+
+
+def test_aggregate_reports_zero_work_rows():
+    """A rank-arm row with no evidence does no model work: 0 tokens and 0 s. That must be visible
+    as ``zero_work_rate`` and must not drag the worked latency down, because a silent 0 s / 0 token
+    row was previously indistinguishable from a broken timer (docs/RANK_ARM_AUDIT.md)."""
+    worked = {
+        "json_ok": True,
+        "verifier_ok": True,
+        "unsupported_n": 0,
+        "action_ok": True,
+        "safe_claim": False,
+        "new_tokens": 40,
+        "latency_s": 2.0,
+    }
+    agg = aggregate([_zero_work_row(), worked])
+    assert agg["zero_work_rate"] == 0.5
+    assert agg["latency_p50_s"] == 1.0  # the raw row-level median still includes the zero
+    assert agg["latency_p50_s_worked"] == 2.0  # the honest per-item cost
+    assert agg["latency_mean_s_worked"] == 2.0
+
+
+def test_aggregate_zero_work_over_rows_without_work():
+    agg = aggregate([_zero_work_row(), _zero_work_row()])
+    assert agg["zero_work_rate"] == 1.0
+    assert agg["latency_p50_s_worked"] is None
+    assert agg["latency_p95_s_worked"] is None
+
+
+def test_benign_message_yields_no_rank_candidates():
+    """The root cause of the rank-arm zero: a message with no rule hit has no evidence, so there is
+    no fact to rank and the arm legitimately does no work."""
+    from rakshak.ela_eval import rank_candidates_for
+
+    _, pkg = package_for_sms(LOW_SMS)
+    assert pkg.evidence == []
+    assert rank_candidates_for(pkg) == []
+
+    _, scam_pkg = package_for_sms(HIGH_SMS)
+    assert scam_pkg.evidence != []
+    assert len(rank_candidates_for(scam_pkg)) == len(scam_pkg.evidence)
+
+
 def test_injection_flips_counts_only_new_safe_claims():
     clean = [
         {"sample_id": "a", "safe_claim": False},

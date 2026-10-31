@@ -275,19 +275,29 @@ def run(ctx):
             score = score_output(output, pkg, arm)
         elif arm == "rank":
             lang = LANG_BY_ARM[arm]
+            per_item = rank_candidates_for(pkg, lang)
             torch.cuda.synchronize()
             t0 = time.perf_counter()
             scores = [
                 _mean_logprobs(tok, model, rank_prefix(pkg, i, lang), [" " + c for c in cands])
-                for i, cands in enumerate(rank_candidates_for(pkg, lang))
+                for i, cands in enumerate(per_item)
             ]
             choice = select_candidates(scores)
             output = rank_output_text(pkg, choice, lang)
             torch.cuda.synchronize()
             latency = time.perf_counter() - t0
-            new_tokens = 0  # nothing is generated; the scored candidate count is in "choice"
+            # A benign message produces no evidence, so there is nothing to rank: the arm then does
+            # zero model work and reports 0 s / 0 tokens. Record that explicitly rather than
+            # leaving a silent zero that reads as a broken timer (see docs/RANK_ARM_AUDIT.md).
+            new_tokens = sum(len(c) for cands in per_item for c in cands)
+            extra = {
+                "advisory": render_advisory(output, pkg, lang),
+                "choice": choice,
+                "rank_items": len(per_item),
+                "rank_empty": len(per_item) == 0,
+                "rank_targets": new_tokens,
+            }
             score = {**score_advisory(output, pkg, lang), "arm": arm}
-            extra = {"advisory": render_advisory(output, pkg, lang), "choice": choice}
         else:
             lang = LANG_BY_ARM[arm]
             output, new_tokens, latency = _generate(

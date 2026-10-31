@@ -161,7 +161,8 @@ report_usage() {
 
 log "== $(date -u +%FT%TZ) launch $JOB gpu=$GPU cpu=$CPU high_mem=$HIGH_MEM data=$DATA budget_h=${BUDGET_H:-none} dry_run=$DRY_RUN"
 log "session: $SESSION (stopped on any failure of this start phase; kept running on success)"
-GPU="${GPU^^}"
+# Upper-case without ${VAR^^}: that expansion is bash 4+, and /bin/bash on macOS is 3.2.
+GPU="$(printf '%s' "$GPU" | tr '[:lower:]' '[:upper:]')"
 case "$GPU" in
   T4|L4|A100|H100) ;;
   *) die "unknown GPU '$GPU': choose T4 (default), L4, A100 or H100" ;;
@@ -222,7 +223,10 @@ if [ "$DATA" = 1 ]; then
     die "--data: $REPO/data/processed does not exist"
   fi
   if [ "${#DATA_PATTERNS[@]}" -eq 0 ]; then
-    mapfile -t DATA_PATTERNS < <(default_data_patterns "$JOB")
+    # `mapfile` is bash 4+; read the patterns the same way without it (macOS bash is 3.2).
+    while IFS= read -r _pattern; do
+      DATA_PATTERNS+=("$_pattern")
+    done < <(default_data_patterns "$JOB")
     log "data: default patterns for $JOB: ${DATA_PATTERNS[*]}"
   else
     log "data: patterns from --data-files: ${DATA_PATTERNS[*]}"

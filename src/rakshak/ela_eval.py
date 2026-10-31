@@ -246,6 +246,12 @@ def aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
     latencies = [float(r["latency_s"]) for r in rows]
     tokens = [float(r["new_tokens"]) for r in rows]
+    # Rows where the arm did no model work at all. For the rank arm that happens when the evidence
+    # package is empty (a benign message has no facts to rank), which shows up as 0 s / 0 tokens and
+    # is easy to misread as a broken timer. Report it so a zero-work run can never hide again.
+    zero_work = [i for i, t in enumerate(tokens) if t <= 0]
+    worked = [latencies[i] for i in range(n) if i not in set(zero_work)]
+
     out: dict[str, Any] = {
         "n": n,
         "json_parse_rate": rate("json_ok"),
@@ -257,6 +263,11 @@ def aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "latency_mean_s": round(sum(latencies) / n, 4),
         "latency_p50_s": _percentile(latencies, 50),
         "latency_p95_s": _percentile(latencies, 95),
+        "zero_work_rate": round(len(zero_work) / n, 4),
+        # Latency over rows that actually did work: the honest cost of the arm on a real item.
+        "latency_mean_s_worked": round(sum(worked) / len(worked), 4) if worked else None,
+        "latency_p50_s_worked": _percentile(worked, 50),
+        "latency_p95_s_worked": _percentile(worked, 95),
     }
     if "mode" in rows[0]:  # ELA v2 rows (score_advisory)
         total_points = sum(int(r["points_n"]) for r in rows)
