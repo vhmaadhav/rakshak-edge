@@ -37,15 +37,15 @@ Phone = SMS/URL device. Pi 5 = reproducibility target and the network-IDS device
 | What | Where |
 |---|---|
 | Code, docs, tests | GitHub `vhmaadhav/rakshak-edge` (branch `main`) |
-| Processed data (private) | HF dataset `vhmaadhav/rakshak-data`. Move to org `highestintheroom/rakshak-data` **pending** |
-| Teacher, students, ONNX, results (private) | HF model `vhmaadhav/rakshak-models`. Move to org `highestintheroom/rakshak-models` **pending** |
+| Processed data (private) | HF dataset `highestintheroom/rakshak-data` (moved from `vhmaadhav/rakshak-data` on 2026-10-31, DONE) |
+| Teacher, students, ONNX, results (private) | HF model `highestintheroom/rakshak-models` (moved from `vhmaadhav/rakshak-models` on 2026-10-31, DONE) |
 | Kernel input data | Kaggle dataset `maadhavvh/rakshak-data` ([link](https://www.kaggle.com/datasets/maadhavvh/rakshak-data)). Shared with Kaggle user `sachin0496` (done) |
 | Teacher transfer logits | Kaggle dataset `maadhavvh/rakshak-teacher-logits` ([link](https://www.kaggle.com/datasets/maadhavvh/rakshak-teacher-logits)). Shared with `sachin0496` (done) |
 | Kaggle kernels | `maadhavvh/rakshak-<job>` (for example `rakshak-sms-student`, `rakshak-llama-ela-eval`). Private |
 | Job outputs | `kaggle/out/<job>/output/` (gitignored). Small results are in the HF repo under `results/` |
 | Session log, decisions | `docs/STATUS.md`, `docs/CONTEXT.md`, `docs/RUNLOG.md` if present |
 
-Data licences are mixed. See `docs/DATACARD.md` section 1. Keep both HF repos and the Kaggle datasets private.
+Data licences are mixed. See `docs/DATACARD.md` section 1. Keep both HF repos and the Kaggle datasets private. HF access requires an org-scoped token with read (and write, to push) on `highestintheroom`.
 
 ## 4. How to run
 
@@ -138,6 +138,7 @@ KD fixes the Hinglish collapse (lang_shift F1 0.36 to 0.80) with no campaign los
 5. **Pi 5 benchmarks and `llama_main`.** Install `executorch==1.5.1` on 64-bit Pi OS. Run the `.pte` through `executorch.runtime` first. Build `llama_main` natively only if needed. *Acceptance:* p50/p95 latency, tok/s, peak RSS, thermals (stop at 85 °C) on a Pi 5 **4 GB** and 8 GB if available, or a documented out-of-memory result.
 6. **Android app.** Share-to-scan and paste UX (Play restricts READ_SMS). Runs the student and the `.pte` on device. *Acceptance:* a build that works in airplane mode with an on-device latency number. AppFunctions is Phase 2 only.
 7. **Report and demo.** Technical report and demo video for the challenge. *Acceptance:* every number traceable to a `results/` file; claims limited per `docs/CONTEXT.md`.
+8. **HF cleanup (needs an org-scoped token).** The HF model card still says `vhmaadhav/rakshak-data`. The teacher folder `mmbert-base-campaign-s0` holds the scamshield-holdout run (see section 5). Fix both once an org-scoped token is available.
 
 ## 8. Working rules
 

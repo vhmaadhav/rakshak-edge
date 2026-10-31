@@ -259,10 +259,10 @@ General pool kept counts (rebuild 2026-10-30): PhishTank 52,665 (raw 53,457); Le
 
 ## Data store
 
-A private copy of the processed data, the teacher logits and the licence-cleared raw files lives at `hf://datasets/vhmaadhav/rakshak-data` (private; not public). It is being moved to the HF org `highestintheroom` as `highestintheroom/rakshak-data` (move pending, so the vhmaadhav path is current until then). It holds `processed/`, `teacher_logits/mmbert-base-s0/` (no checkpoints), `raw/` (only sources whose licence allows it) and the dataset card. Pull it with:
+A private copy of the processed data, the teacher logits and the licence-cleared raw files lives at `hf://datasets/highestintheroom/rakshak-data` (private; not public). It is in the HF org `highestintheroom` (moved from `vhmaadhav/rakshak-data` on 2026-10-31, DONE). It holds `processed/`, `teacher_logits/mmbert-base-s0/` (no checkpoints), `raw/` (only sources whose licence allows it) and the dataset card. Pull it with:
 
 ```bash
-hf download vhmaadhav/rakshak-data --repo-type dataset --local-dir data/hf   # after the org move: highestintheroom/rakshak-data
+hf download highestintheroom/rakshak-data --repo-type dataset --local-dir data/hf
 ```
 
-Requires a Hugging Face login with access to the private repo. Do not make the repo public without a per-source licence review.
+Requires an org-scoped Hugging Face token with read access on `highestintheroom`. Do not make the repo public without a per-source licence review.
