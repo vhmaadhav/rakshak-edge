@@ -273,7 +273,7 @@ def test_train_quantize_and_checkpoint_roundtrip(tmp_path):
         assert np.allclose(predict_scores(loaded, spec2, cal, "cpu"), scores)
 
 
-def test_teacher_distillation_path_runs_and_ignores_missing_rows():
+def test_distillation_path_runs_with_unlabeled_rows_and_missing_teacher():
     torch = _torch()
     from rakshak.models.student import ModelSpec, TrainConfig, train_student
 
@@ -281,36 +281,76 @@ def test_teacher_distillation_path_runs_and_ignores_missing_rows():
     feats = featurize(texts)
     train_idx = np.arange(0, len(texts), 2)
     cal_idx = np.arange(1, len(texts), 2)
-    margins = np.where(np.arange(len(train_idx)) % 3 == 0, np.nan, 2.0 * labels[train_idx] - 1)
+    # Teacher logits [logit_0, logit_1] aligned with the training rows; every third row unknown.
+    teacher = np.stack([np.where(labels[train_idx] == 1, -2.0, 2.0),
+                        np.where(labels[train_idx] == 1, 2.0, -2.0)], axis=1)
+    teacher[np.arange(len(train_idx)) % 3 == 0] = np.nan
+    # Append unlabeled rows (NaN label): they get the KD term only.
+    extra = np.arange(1, 9, 2)
+    rows = np.concatenate([train_idx, extra])
+    labels_pool = np.concatenate([labels[train_idx].astype(float), np.full(len(extra), np.nan)])
+    teacher_pool = np.concatenate([teacher, np.stack([[0.5, -0.5]] * len(extra))])
     spec = ModelSpec("charcnn", "base", "canon", False)
     cfg = TrainConfig(epochs=2, batch_size=16, seed=2)
-    model, info = train_student(spec, feats.take(train_idx), labels[train_idx],
+    model, info = train_student(spec, featurize(texts).take(rows), labels_pool,
                                 feats.take(cal_idx), labels[cal_idx], cfg,
-                                device=torch.device("cpu"), teacher=margins)
+                                device=torch.device("cpu"), teacher=teacher_pool)
     assert np.isfinite([h["train_loss"] for h in info["history"]]).all()
+    assert info["rows"]["labelled"] == len(train_idx)
+    assert info["rows"]["unlabeled"] == len(extra)
     with pytest.raises(ValueError):
-        train_student(spec, feats.take(train_idx), labels[train_idx], feats.take(cal_idx),
-                      labels[cal_idx], cfg, device=torch.device("cpu"), teacher=margins[:-1])
+        train_student(spec, feats.take(train_idx), labels[train_idx].astype(float),
+                      feats.take(cal_idx), labels[cal_idx], cfg, device=torch.device("cpu"),
+                      teacher=teacher[:-1])
 
 
-def test_teacher_margin_loader(tmp_path):
-    _torch()
-    import pandas as pd
+def test_distillation_loss_terms_and_sign():
+    torch = _torch()
+    from rakshak.models.student import distillation_loss
 
-    from rakshak.models.student import load_teacher_margins, teacher_rows
+    pos_w = torch.tensor(1.0)
+    nan = float("nan")
+    # Teacher margin logit_1 - logit_0 = 4 for the first row, -4 for the second.
+    teacher = torch.tensor([[0.0, 4.0], [0.0, -4.0]])
+    alpha, temp = 0.7, 2.0
 
-    frame = pd.DataFrame({
-        "id": ["1", "2", "3", "1"],
-        "split": ["train", "train", "test", "cal"],
-        "logit_0": [0.0, 1.0, 0.0, 0.0],
-        "logit_1": [3.0, 0.5, 9.0, 9.0],
-    })
-    path = tmp_path / "teacher.parquet"
-    frame.to_parquet(path, index=False)
-    margins = load_teacher_margins(path)
-    assert margins == {"1": 3.0, "2": -0.5}
-    rows = teacher_rows(["1", "9"], margins)
-    assert rows[0] == 3.0 and np.isnan(rows[1])
+    # KL is zero when the student margin equals the teacher margin; unlabeled rows contribute
+    # only the KD term, so the loss is exactly zero.
+    matched = torch.tensor([4.0, -4.0])
+    unlabeled = torch.tensor([nan, nan])
+    loss0 = distillation_loss(matched, unlabeled, teacher, pos_weight=pos_w, alpha=alpha,
+                              temp=temp)
+    assert float(loss0) == pytest.approx(0.0, abs=1e-6)
+
+    # Labelled rows with a teacher: (1 - alpha) BCE + alpha T^2 KL, checked against the formula.
+    logits = torch.tensor([1.0, 0.5])
+    labels = torch.tensor([1.0, 0.0])
+    got = distillation_loss(logits, labels, teacher, pos_weight=pos_w, alpha=alpha, temp=temp)
+    bce = torch.nn.functional.binary_cross_entropy_with_logits(logits, labels, reduction="none")
+    p_t = torch.softmax(teacher / temp, dim=1)
+    p_s = torch.softmax(torch.stack([torch.zeros(2), logits], dim=1) / temp, dim=1)
+    kl = (p_t * (p_t.log() - p_s.log())).sum(dim=1)
+    want = ((1 - alpha) * bce + alpha * temp * temp * kl).mean()
+    assert torch.isclose(got, want, atol=1e-5)
+    assert float(kl.min()) >= 0.0
+
+    # Labelled rows without a teacher get plain BCE with pos_weight.
+    no_teacher = torch.full((2, 2), nan)
+    plain = distillation_loss(logits, labels, no_teacher, pos_weight=torch.tensor(2.0),
+                              alpha=alpha, temp=temp)
+    want_plain = torch.nn.functional.binary_cross_entropy_with_logits(
+        logits, labels, pos_weight=torch.tensor(2.0))
+    assert torch.isclose(plain, want_plain, atol=1e-6)
+
+    # Sign: the KD gradient pushes a too-high student margin down and a too-low one up.
+    z = torch.tensor([6.0, -6.0], requires_grad=True)
+    kd_only = distillation_loss(z, unlabeled, teacher, pos_weight=pos_w, alpha=1.0, temp=temp)
+    kd_only.backward()
+    assert z.grad[0] > 0 and z.grad[1] < 0
+
+    # Unlabeled rows with no teacher contribute nothing.
+    assert float(distillation_loss(logits[:1], unlabeled[:1], no_teacher[:1], pos_weight=pos_w,
+                                   alpha=alpha, temp=temp)) == 0.0
 
 
 def test_onnx_export_and_checkpoint_parity(tmp_path):

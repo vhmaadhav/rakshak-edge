@@ -34,10 +34,17 @@ Flags go through ``kaggle/launch.sh sms_student --job-args="..."``:
   --weight-decay FLOAT       (default 1e-4)
   --patience INT             early-stop patience on cal PR-AUC (default 3)
   --adv-aug P                perturb each training row with probability P (default 0)
-  --teacher-logits PATH      sms_teacher logits parquet (id, split, logit_0, logit_1); enables
-                             distillation (default off). Teacher logits on train rows are in-sample,
-                             so cross-fitted logits are preferred.
-  --kd-alpha FLOAT           distillation weight (default 0.5)
+  --teacher-logits-dir DIR   folder (or the attached dataset, or its parent) holding the sms_teacher
+                             transfer files transfer_<teacher>_s<seed>_<run>.parquet and an optional
+                             manifest.json. Enables distillation (default off). Each run takes the
+                             file whose run name matches it (never the same file for two runs), and
+                             the run's test ids must not appear in it.
+  --teacher-seed INT         teacher seed of the transfer files to use (default 0)
+  --kd-unlabeled / --no-kd-unlabeled
+                             add the transfer file's unlabeled rows to training, with the KD term
+                             only (default on; needs --teacher-logits-dir)
+  --kd-alpha FLOAT           distillation weight alpha (default 0.7): labelled rows get
+                             (1-alpha) BCE + alpha T^2 KL(teacher || student)
   --kd-temp FLOAT            distillation temperature T (default 2.0)
   --no-rules                 drop the rule side features
   --buckets INT              fastText hash buckets (default 131072)
@@ -76,13 +83,19 @@ from rakshak.eval import report
 from rakshak.eval.protocol import evaluate_scores, headline
 from rakshak.eval.robustness import ATTACK_SEEDS, robustness_report
 from rakshak.models.charcnn import CONFIGS
+from rakshak.models.distill import (
+    build_pool,
+    find_transfer_file,
+    load_transfer,
+    resolve_teacher_dir,
+    verify_manifest,
+)
 from rakshak.models.features import Featurized, featurize
 from rakshak.models.student import (
     ModelSpec,
     TrainConfig,
     export_onnx,
     latency_ms,
-    load_teacher_margins,
     onnx_parity,
     param_count,
     pick_device,
@@ -91,7 +104,6 @@ from rakshak.models.student import (
     save_checkpoint,
     score_texts,
     state_bytes,
-    teacher_rows,
     train_student,
 )
 
@@ -115,8 +127,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--patience", type=int, default=3)
     p.add_argument("--adv-aug", type=float, default=0.0)
-    p.add_argument("--teacher-logits", default=None)
-    p.add_argument("--kd-alpha", type=float, default=0.5)
+    p.add_argument("--teacher-logits-dir", default=None)
+    p.add_argument("--teacher-seed", type=int, default=0)
+    p.add_argument("--kd-unlabeled", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--kd-alpha", type=float, default=0.7)
     p.add_argument("--kd-temp", type=float, default=2.0)
     p.add_argument("--no-rules", action="store_true")
     p.add_argument("--buckets", type=int, default=2**17)
@@ -131,6 +145,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     args = p.parse_args(argv or [])
     if not 0.0 <= args.adv_aug <= 1.0:
         p.error("--adv-aug must be in [0, 1]")
+    if not 0.0 <= args.kd_alpha <= 1.0:
+        p.error("--kd-alpha must be in [0, 1]")
+    if args.kd_temp <= 0.0:
+        p.error("--kd-temp must be positive")
     return args
 
 
@@ -163,7 +181,8 @@ class RunData:
     pos_test: list[str]
     neg_test: list[str]
     test_texts: list[str]
-    teacher: np.ndarray | None
+    teacher: np.ndarray | None  # (rows, 2) teacher logits aligned with train, NaN where unknown
+    pool_info: dict | None      # transfer file and pool counts, when distilling
 
 
 def fit_and_evaluate(rd: RunData, spec: ModelSpec, seed: int, args, device, keep: bool,
@@ -219,14 +238,29 @@ def _checkpoint(ctx, root, splits: dict, student: dict) -> None:
 
 
 def _build_run(run_, sms_texts: list[str], full: Featurized, labels, ids, sms,
-               margins, cluster_col: str | None) -> RunData:
+               teacher_dir, args, cluster_col: str | None) -> RunData:
+    """One run's data. Without a teacher folder the training pool is the run's train rows. With
+    one, the pool is the labelled train rows (with teacher logits from this run's own transfer
+    file) plus, when --kd-unlabeled, that file's unlabeled rows (KD term only)."""
     te = run_.test
+    if teacher_dir is None:
+        train_pos, y_train, teacher, pool_info = (run_.train,
+                                                  labels[run_.train].astype(np.float64),
+                                                  None, None)
+    else:
+        tfile = find_transfer_file(teacher_dir, run_.name, args.teacher_seed)
+        entry = verify_manifest(teacher_dir, run_.name, tfile)
+        pool = build_pool(run_, ids, labels, load_transfer(tfile),
+                          include_unlabeled=args.kd_unlabeled)
+        train_pos, y_train, teacher = pool.positions, pool.labels, pool.teacher
+        pool_info = {"file": tfile.name, "manifest_sha256": (entry or {}).get("sha256"),
+                     **pool.stats()}
     return RunData(
         name=run_.name,
-        train=full.take(run_.train),
+        train=full.take(train_pos),
         cal=full.take(run_.cal),
         test=full.take(te),
-        y_train=labels[run_.train],
+        y_train=y_train,
         y_cal=labels[run_.cal],
         y_test=labels[te],
         groups=D.group_values(sms, te),
@@ -234,7 +268,8 @@ def _build_run(run_, sms_texts: list[str], full: Featurized, labels, ids, sms,
         pos_test=[sms_texts[i] for i in te if labels[i] == 1],
         neg_test=[sms_texts[i] for i in te if labels[i] == 0],
         test_texts=[sms_texts[i] for i in te],
-        teacher=(teacher_rows(ids[run_.train], margins) if margins is not None else None),
+        teacher=teacher,
+        pool_info=pool_info,
     )
 
 
@@ -261,10 +296,11 @@ def run(ctx) -> bool:
     cluster_col = D.CLUSTER_COLUMNS["sms"] if D.CLUSTER_COLUMNS["sms"] in sms.columns else None
     ctx.log(f"bootstrap clusters: {cluster_col or 'iid'}")
 
-    margins = None
-    if args.teacher_logits:
-        margins = load_teacher_margins(args.teacher_logits)
-        ctx.log(f"teacher margins: {len(margins)} train ids from {args.teacher_logits}")
+    teacher_dir = None
+    if args.teacher_logits_dir:
+        teacher_dir = resolve_teacher_dir(args.teacher_logits_dir)
+        ctx.log(f"teacher transfer folder: {teacher_dir} (seed {args.teacher_seed}, "
+                f"alpha {args.kd_alpha}, T {args.kd_temp}, unlabeled {args.kd_unlabeled})")
 
     specs = candidates(args)
     ctx.log(f"candidates: {[f'{s.label}/{s.variant}' for s in specs]} seeds {args.seeds}")
@@ -278,6 +314,7 @@ def run(ctx) -> bool:
     splits: dict[str, dict] = {}
     student: dict = {"units": {}, "skipped_runs": {}}
     fitted: dict[tuple[str, str], dict] = {}
+    teacher_pools: dict[str, dict] = {}
     for run_ in runs:
         ctx.log(f"run {run_.name}: sizes {run_.notes['sizes']}")
         reason = single_class_reason(labels[run_.test], run_.name)
@@ -285,13 +322,13 @@ def run(ctx) -> bool:
             record_skip(ctx, run_.name, reason)
             continue
         rd = units.run({"split": run_.name, "model": "features", "variant": "-"},
-                       _build_run, run_, sms_texts, full, labels, ids, sms, margins,
+                       _build_run, run_, sms_texts, full, labels, ids, sms, teacher_dir, args,
                        cluster_col)
         if rd is None:
             continue
-        if margins is not None:
-            covered = float(np.mean(~np.isnan(rd.teacher)))
-            ctx.log(f"  teacher coverage on train rows: {covered:.4f}")
+        if rd.pool_info is not None:
+            teacher_pools[run_.name] = rd.pool_info
+            ctx.log(f"  teacher pool {run_.name}: {rd.pool_info}")
         block: dict[str, dict] = splits.setdefault(run_.name, {})
         is_primary = run_.name == primary_name
         for spec in specs:
@@ -340,6 +377,7 @@ def run(ctx) -> bool:
                    for k, v in latency.items()}
         ctx.log(f"latency p50/p95 ms: {summary}")
     student["latency_cpu_1thread"] = latency
+    student["teacher_pools"] = teacher_pools
 
     onnx_info = None
     student_keys = [k for _, k in ranking
@@ -371,7 +409,9 @@ def run(ctx) -> bool:
             "device": str(device),
             "bootstrap_clusters": cluster_col or "iid",
             "best_student": onnx_info["key"] if onnx_info else None,
-            "teacher_logits": args.teacher_logits,
+            "teacher_logits_dir": str(teacher_dir) if teacher_dir else None,
+            "kd": ({"alpha": args.kd_alpha, "temp": args.kd_temp, "unlabeled": args.kd_unlabeled,
+                    "teacher_seed": args.teacher_seed} if teacher_dir else None),
             "env": env,
         },
         "splits": splits,

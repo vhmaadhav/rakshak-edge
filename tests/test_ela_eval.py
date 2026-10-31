@@ -54,7 +54,7 @@ def test_ela_prompt_never_contains_raw_sms():
     _, pkg = package_for_sms(HIGH_SMS)
     prompt = ela_prompt(pkg)
     assert "share your OTP to avoid" not in prompt
-    assert "EVIDENCE PACKAGE" in prompt
+    assert "FACTS (" in prompt
 
 
 def test_ela_prompt_drops_url_path_but_keeps_registered_domain():

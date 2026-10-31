@@ -12,10 +12,19 @@ kaggle/launch.sh smoke --internet                     # build + kaggle kernels p
 kaggle/wait_event.sh smoke --timeout 540              # ONE blocking ntfy subscription; exit 0 on completion
 kaggle/fetch.sh smoke                                 # downloads outputs once into kaggle/out/smoke/output/
 kaggle/push_data.sh                                   # creates/versions private dataset maadhavvh/rakshak-data
+kaggle/push_teacher_logits.sh                        # creates/versions private dataset maadhavvh/rakshak-teacher-logits
 ```
 
 `launch.sh` takes the build flags below after the job name. `wait_event.sh` never polls, sleeps or retries. Run it
 once after a launch. It exits 124 if `--timeout` passes first, and nothing is written in that case.
+
+Parallel runs of one job (`--run-name NAME`, see below), for a run named `b`:
+
+```bash
+kaggle/launch.sh smoke --run-name b --internet        # kernel maadhavvh/rakshak-smoke-b
+kaggle/wait_event.sh smoke-b --timeout 540            # or: kaggle/wait_event.sh smoke --run-name b
+kaggle/fetch.sh smoke-b                               # or: kaggle/fetch.sh smoke --run-name b
+```
 
 ## Build flags (`build_kernel.py`, also passed through by `launch.sh`)
 
@@ -27,6 +36,26 @@ once after a launch. It exits 124 if `--timeout` passes first, and nothing is wr
 | `--models OWNER/MODEL/...` | Attach Kaggle model sources. |
 | `--job-args="FLAGS"` | Flags for the job, passed to `run(ctx)` as `ctx.argv`, e.g. `--job-args="--hpo 8 --adv-aug 0.3"`. Use the `=` form when the first flag starts with `-`. Kernels get no argv, so this is how jobs take their options. |
 | `--require-clean` | Refuse to build while `src/rakshak/`, `kaggle/jobs/_common.py` or the job file has uncommitted or untracked changes. |
+| `--run-name NAME` | Another run of the same job as its own kernel (see below). `NAME` is 1 to 20 characters of `a-z`, `0-9` and `-`. Kaggle only, not `--platform colab`. |
+
+## Parallel runs (`--run-name`)
+
+`--run-name NAME` lets the same job run as several Kaggle kernels at once, one per name. With `--run-name b` on job
+`<job>`:
+
+- kernel: `maadhavvh/rakshak-<job>-b` (underscores in `<job>` become hyphens, as before);
+- output: `kaggle/out/<job>-b/` (`kernel/`, `launch_epoch`, `completion.json`, `output/`);
+- notification: the line starts with `rakshak-<job>-b`, so `wait_event` only matches this run;
+- `kaggle/out/latest_launch.json` records `{"job": "<job>", "run_name": "b"}`. Without `--run-name` it is `{"job": "<job>"}`
+  as before, and `wait_event.sh` with no argument follows the latest launch, including its run name.
+
+`wait_event.sh` and `fetch.sh` name the run either way: `<job>-b` or `<job> --run-name b`. Both refer to the same
+folder. The job itself is read from the kernel's `run.py`, and the output is checked against the job name in
+`results.json`.
+
+Without `--run-name`, the generator writes the same `run.py` and `kernel-metadata.json` as before, apart from the bundle
+and build time that depend on the working tree. Avoid a job whose name is `<job>-<name>` when `<job>` also has a run
+named `<name>`: both would push to the same kernel slug.
 
 GPU mechanism: `kaggle kernels push` reads `machine_shape` from the metadata (or `--accelerator`). Kaggle CLI 2.2.4
 (`kagglesdk`) lists exactly two GPU shapes, `NvidiaTeslaT4` and `NvidiaTeslaP100`. There is no "T4 x2" value, so
@@ -118,6 +147,8 @@ this output yet.
 - `build_kernel.py`: bundles and writes the kernel (no compute, no push).
 - `launch.sh`, `fetch.sh`, `wait_event.sh` + `wait_event.py`: push, download, and the one-shot notification wait.
 - `push_data.sh`: the dataset upload.
+- `push_teacher_logits.sh`: the teacher transfer logits (six `transfer_*.parquet` plus `manifest.json`, sha256 per split)
+  as the private dataset `maadhavvh/rakshak-teacher-logits`, for `sms_student --teacher-logits-dir`.
 - `requirements-kaggle.txt`: pinned runtime set (numpy has one pin per Python range).
 - `jobs/_common.py`, `jobs/smoke.py`: shared helpers and the first job.
 - `jobs/gpu_smoke.py`: torch, CUDA device and one matmul checked against the CPU (`kaggle/launch.sh gpu_smoke --gpu t4 --internet`).

@@ -1,12 +1,17 @@
 """Training, scoring, INT8 dynamic quantisation, latency, ONNX export and checkpoints for the
 student models (char-CNN single and dual view, and the fastText-style baseline).
 
-Training: class-weighted BCE (pos_weight = n_neg / n_pos), AdamW, early stop on cal PR-AUC with the
-best cal checkpoint kept. Optional adversarial augmentation (``adv_p``): each training row is
-perturbed with probability p by a random family from rakshak.perturb; the raw view gets the
-perturbed text and the canonical view gets canonicalize(perturbed). Optional distillation
-(``teacher``, margins logit_1 - logit_0 aligned to the training rows, NaN where unknown): a
-temperature-T soft BCE term, scaled by T^2, mixed in with weight ``kd_alpha``.
+Training: class-weighted BCE (pos_weight = n_neg / n_pos over the labelled rows), AdamW, early stop
+on cal PR-AUC with the best cal checkpoint kept. Optional adversarial augmentation (``adv_p``): each
+training row is perturbed with probability p by a random family from rakshak.perturb; the raw view
+gets the perturbed text and the canonical view gets canonicalize(perturbed). The teacher logit of a
+row is looked up by row index, so a perturbed row keeps the teacher logit of its clean text
+(attack-consistency distillation).
+
+Distillation (``teacher``, an (n, 2) array of teacher logits [logit_0, logit_1] aligned with the
+training rows, NaN where unknown). Labels are NaN on unlabeled rows. Per row, see
+``distillation_loss``: labelled rows get (1 - alpha) BCE + alpha T^2 KL(teacher || student);
+unlabeled rows get the KD term only.
 """
 
 from __future__ import annotations
@@ -72,7 +77,7 @@ class TrainConfig:
     weight_decay: float = 1e-4
     patience: int = 3
     adv_p: float = 0.0
-    kd_alpha: float = 0.5
+    kd_alpha: float = 0.7
     kd_temp: float = 2.0
     seed: int = 0
 
@@ -143,24 +148,67 @@ def _state_on_cpu(model: nn.Module) -> dict:
     return {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
 
 
+def distillation_loss(logits: Tensor, labels: Tensor, teacher: Tensor, *, pos_weight: Tensor,
+                      alpha: float, temp: float) -> Tensor:
+    """Mean loss over the rows of a batch that carry any signal.
+
+    ``logits`` (B,) are student logits, ``labels`` (B,) are 0/1 with NaN on unlabeled rows, and
+    ``teacher`` (B, 2) holds teacher logits [logit_0, logit_1] with NaN where unknown. Per row:
+
+    - labelled, teacher known:    (1 - alpha) BCE(label) + alpha T^2 KL(p_t || p_s)
+    - labelled, teacher unknown:  BCE(label)
+    - unlabeled, teacher known:   alpha T^2 KL(p_t || p_s)
+    - unlabeled, teacher unknown: no term (left out of the mean)
+
+    where p_t = softmax(teacher / T) and p_s = softmax([0, logit] / T) are the two-class
+    distributions of teacher and student at temperature T. BCE uses ``pos_weight``. The KL is
+    zero exactly when the student logit equals the teacher margin logit_1 - logit_0.
+    """
+    if not 0.0 <= alpha <= 1.0:
+        raise ValueError("alpha must be in [0, 1]")
+    if temp <= 0.0:
+        raise ValueError("temperature must be positive")
+    lab = (~torch.isnan(labels)).float()
+    tea = (~torch.isnan(teacher).any(dim=1)).float()
+    bce = F.binary_cross_entropy_with_logits(logits, torch.nan_to_num(labels, nan=0.0),
+                                             pos_weight=pos_weight, reduction="none")
+    student_log = F.log_softmax(torch.stack([torch.zeros_like(logits), logits], dim=1) / temp,
+                                dim=1)
+    p_teacher = F.softmax(torch.nan_to_num(teacher, nan=0.0) / temp, dim=1)
+    kl = F.kl_div(student_log, p_teacher, reduction="none").sum(dim=1)
+    coef_bce = lab * (1.0 - alpha * tea)
+    coef_kd = alpha * tea
+    per_row = coef_bce * bce + coef_kd * (temp * temp) * kl
+    signal_rows = (lab + tea - lab * tea).sum().clamp_min(1.0)
+    return per_row.sum() / signal_rows
+
+
 def train_student(spec: ModelSpec, train: Featurized, y_train, cal: Featurized, y_cal,
                   cfg: TrainConfig, *, device, teacher: np.ndarray | None = None,
                   log: Callable[[str], None] = lambda msg: None) -> tuple[nn.Module, dict]:
     """Fit one model on ``train``, early-stop on cal PR-AUC. Returns the model (best cal
-    checkpoint, on CPU) and the training history."""
+    checkpoint, on CPU) and the training history. ``y_train`` is 0/1, NaN on unlabeled rows."""
     torch.manual_seed(cfg.seed)
     rng = np.random.default_rng(cfg.seed)
     model = build_model(spec).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    y = np.asarray(y_train, dtype=np.int64)
-    n_pos = int(y.sum())
-    n_neg = int(len(y) - n_pos)
+    y = np.asarray(y_train, dtype=np.float64)
+    labelled = ~np.isnan(y)
+    n_pos = int((y[labelled] == 1).sum())
+    n_neg = int((y[labelled] == 0).sum())
     if n_pos == 0 or n_neg == 0:
         raise ValueError("training split needs both classes")
     pos_weight = torch.tensor(n_neg / n_pos, dtype=torch.float32, device=device)
     families = list(FAMILIES)
-    if teacher is not None and len(teacher) != len(y):
-        raise ValueError("teacher margins must align with the training rows")
+    if teacher is None:
+        teacher = np.full((len(y), 2), np.nan)
+    teacher = np.asarray(teacher, dtype=np.float64)
+    if teacher.shape != (len(y), 2):
+        raise ValueError("teacher logits must be (rows, 2) and aligned with the training rows")
+    has_teacher = ~np.isnan(teacher).any(axis=1)
+    rows_info = {"rows": int(len(y)), "labelled": int(labelled.sum()),
+                 "unlabeled": int((~labelled).sum()), "with_teacher": int(has_teacher.sum()),
+                 "labelled_with_teacher": int((labelled & has_teacher).sum())}
     y_cal_arr = np.asarray(y_cal, dtype=np.int64)
 
     best_pr, best_state, best_epoch, stale = -np.inf, None, -1, 0
@@ -176,20 +224,10 @@ def train_student(spec: ModelSpec, train: Featurized, y_train, cal: Featurized, 
             if cfg.adv_p > 0:
                 batch = _augment(batch, rng, cfg.adv_p, families)
             yb = torch.as_tensor(y[idx], dtype=torch.float32, device=device)
+            tb = torch.as_tensor(teacher[idx], dtype=torch.float32, device=device)
             logits = forward_feats(model, spec, batch, device)
-            loss = F.binary_cross_entropy_with_logits(logits, yb, pos_weight=pos_weight)
-            if teacher is not None:
-                t = teacher[idx]
-                known = ~np.isnan(t)
-                if known.any():
-                    tt = torch.as_tensor(np.nan_to_num(t), dtype=torch.float32, device=device)
-                    mk = torch.as_tensor(known, dtype=torch.float32, device=device)
-                    temp = cfg.kd_temp
-                    soft = torch.sigmoid(tt / temp)
-                    kd_each = F.binary_cross_entropy_with_logits(logits / temp, soft,
-                                                                 reduction="none")
-                    kd = (kd_each * mk).sum() / mk.sum() * temp * temp
-                    loss = (1.0 - cfg.kd_alpha) * loss + cfg.kd_alpha * kd
+            loss = distillation_loss(logits, yb, tb, pos_weight=pos_weight, alpha=cfg.kd_alpha,
+                                     temp=cfg.kd_temp)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
@@ -211,7 +249,7 @@ def train_student(spec: ModelSpec, train: Featurized, y_train, cal: Featurized, 
     info = {"best_epoch": best_epoch, "best_cal_pr_auc": float(best_pr)
             if best_state is not None else None,
             "epochs_run": len(history), "seconds": round(time.perf_counter() - start_time, 2),
-            "history": history}
+            "rows": rows_info, "history": history}
     return model.cpu(), info
 
 
@@ -324,18 +362,3 @@ def load_checkpoint(path: Path) -> tuple[nn.Module, ModelSpec, float]:
     return model.eval(), spec, float(blob["threshold"])
 
 
-def load_teacher_margins(path: str | Path) -> dict[str, float]:
-    """id -> teacher margin (logit_1 - logit_0) from an sms_teacher logits parquet. Only split
-    'train' rows are used when the file has a split column."""
-    import pandas as pd
-
-    df = pd.read_parquet(path)
-    if "split" in df.columns:
-        df = df[df["split"] == "train"]
-    margin = df["logit_1"].to_numpy(dtype=np.float64) - df["logit_0"].to_numpy(dtype=np.float64)
-    return dict(zip(df["id"].astype(str).tolist(), margin.tolist(), strict=True))
-
-
-def teacher_rows(ids: Sequence[str], margins: dict[str, float]) -> np.ndarray:
-    """Teacher margin per row, NaN where the id has no teacher logit."""
-    return np.asarray([margins.get(str(i), np.nan) for i in ids], dtype=np.float64)

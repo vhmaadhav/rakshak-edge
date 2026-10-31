@@ -24,7 +24,9 @@ Flags go through ``kaggle/launch.sh sms_teacher --gpu t4 --internet --job-args="
   --models NAME...        Hugging Face model ids (default: mdeberta-v3-base, xlm-roberta-base,
                           muril-base-cased, IndicBERTv2-MLM-only)
   --seeds INT...          seeds (default 0)
-  --runs GLOB...          run-name patterns (default: campaign)
+  --splits NAME...        split-file stems, as sms_student reads them (default: campaign).
+                          campaign, lang_shift, temporal, source_holdout (every fold), legacy_*
+                          (glob patterns allowed)
   --hpo N                 Optuna trials per run (default 0 = fixed hyperparameters)
   --budget-h FLOAT        total wall-clock budget in hours (default 8.0)
   --adv-aug FLOAT         probability of perturbing a training message (default 0)
@@ -33,17 +35,26 @@ Flags go through ``kaggle/launch.sh sms_teacher --gpu t4 --internet --job-args="
   --batch-size INT        training batch (default 32)
   --eval-batch-size INT   inference batch (default 128)
   --epochs INT            max epochs without HPO (default 4)
-  --lr FLOAT              learning rate without HPO (default 3e-5)
+  --lr FLOAT              learning rate without HPO (default 3e-5; ignored with --hpo)
   --weight-decay FLOAT    default 0.01
   --warmup-ratio FLOAT    default 0.1
   --patience INT          early-stopping patience in epochs (default 2)
-  --no-fp16               disable fp16 autocast
+  --no-fp16               true fp32: no autocast, no GradScaler, no bf16; weights are forced to
+                          fp32 after load. The effective precision is logged per unit.
+  --transfer-texts        also dump logits for every sms.parquet row outside the split's test
+                          partition (train, cal and unlabeled rows) to transfer_*.parquet. Test
+                          rows are never written there (checked before the write).
   --data-root PATH        data root (default: $RAKSHAK_DATA, /kaggle/input/rakshak-data,
                           then data/processed, then a search of /kaggle/input)
   --n-boot INT            bootstrap resamples (default 1000; campaign-clustered bootstrap)
   --no-robustness         skip the attack harness
   --robust-seeds INT...   attack seeds (default 0 1 2)
-  --max-robust-pos INT    cap scams in the attack harness (default all)
+  --max-robust-pos INT    cap on scam rows and on benign rows in the attack harness, each a
+                          seeded subsample (default 2000; 0 = all rows)
+
+NaN guard: a non-finite training loss, training logit, gradient norm (fp32 only) or eval logit
+fails the unit at once with the step, lr, dtype and last finite loss. Grad clipping at 1.0 and
+AdamW eps 1e-6 are always on. Loss and grad norm are logged every 200 steps.
 """
 
 from __future__ import annotations
@@ -53,7 +64,6 @@ import random
 import shutil
 import time
 from dataclasses import dataclass
-from fnmatch import fnmatch
 
 import numpy as np
 import pandas as pd
@@ -63,6 +73,7 @@ from _common import (
     env_report,
     log_input_tree,
     record_skip,
+    require_finite,
     seed_everything,
     single_class_reason,
     timed,
@@ -93,13 +104,17 @@ PRIMARY_SPLIT = "campaign"
 TRAIN_FRACTION_OF_RUN = 0.85
 BEST_DIR = "best_checkpoint"
 NO_DECAY = ("bias", "LayerNorm.weight", "layer_norm", "layernorm")
+MAX_GRAD_NORM = 1.0
+ADAM_EPS = 1e-6
+LOG_EVERY = 200
+ROBUST_SAMPLE_SEED = 0
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="sms_teacher")
     p.add_argument("--models", nargs="*", default=list(DEFAULT_MODELS))
     p.add_argument("--seeds", nargs="*", type=int, default=[0])
-    p.add_argument("--runs", nargs="*", default=["campaign"])
+    p.add_argument("--splits", nargs="*", default=[PRIMARY_SPLIT])
     p.add_argument("--hpo", type=int, default=0)
     p.add_argument("--budget-h", type=float, default=8.0)
     p.add_argument("--adv-aug", type=float, default=0.0)
@@ -113,16 +128,21 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--warmup-ratio", type=float, default=0.1)
     p.add_argument("--patience", type=int, default=2)
     p.add_argument("--no-fp16", action="store_true")
+    p.add_argument("--transfer-texts", action="store_true")
     p.add_argument("--data-root", default=None)
     p.add_argument("--n-boot", type=int, default=1000)
     p.add_argument("--no-robustness", action="store_true")
     p.add_argument("--robust-seeds", nargs="*", type=int, default=list(ATTACK_SEEDS))
-    p.add_argument("--max-robust-pos", type=int, default=None)
+    p.add_argument("--max-robust-pos", type=int, default=2000)
     args = p.parse_args(argv or [])
     if not 0.0 <= args.adv_aug <= 1.0:
         p.error("--adv-aug must be in [0, 1]")
     if args.budget_h <= 0:
         p.error("--budget-h must be positive")
+    if args.max_robust_pos < 0:
+        p.error("--max-robust-pos must be 0 (all rows) or positive")
+    if args.lr <= 0:
+        p.error("--lr must be positive")
     return args
 
 
@@ -184,6 +204,7 @@ def predict_logits(model, tokenizer, texts, cfg, device) -> np.ndarray:
         with torch.autocast("cuda", dtype=torch.float16, enabled=cfg.fp16):
             logits = model(**enc).logits.float()
         out[idx] = logits.cpu().numpy()
+    require_finite(out, f"eval logits over {len(texts)} rows", dtype=cfg.dtype_label)
     return out
 
 
@@ -211,15 +232,27 @@ class Config:
     patience: int
     adv_aug: float
     train_canon: bool
+    log: object  # callable(str); the unit's log line
+
+    @property
+    def dtype_label(self) -> str:
+        return "fp16 autocast over fp32 weights" if self.fp16 else "fp32 (no autocast, no bf16)"
 
 
 def train_once(cfg: Config, hp: dict, model_name: str, seed: int, tokenizer, device, data,
                deadline: float) -> dict:
-    """Fine-tune once and return the best-epoch model (on CPU) with its cal PR-AUC."""
+    """Fine-tune once and return the best-epoch model (on CPU) with its cal PR-AUC.
+
+    Raises NonFiniteError at the first non-finite training loss, training logit or (fp32)
+    gradient norm, so the unit fails instead of training on NaN.
+    """
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2).to(device)
+    # .float() forces fp32 weights whatever dtype the checkpoint is stored in.
+    model = (AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2)
+             .float().to(device))
+    cfg.log(f"    precision: {cfg.dtype_label}; weights {next(model.parameters()).dtype}")
     train_ds = MessageSet(data["train_raw"], data["train_y"], canon=cfg.train_canon,
                           adv_p=cfg.adv_aug, seed=seed)
     loader = DataLoader(
@@ -232,7 +265,7 @@ def train_once(cfg: Config, hp: dict, model_name: str, seed: int, tokenizer, dev
     opt = torch.optim.AdamW(
         [{"params": decay, "weight_decay": hp["weight_decay"]},
          {"params": no_decay, "weight_decay": 0.0}],
-        lr=hp["lr"],
+        lr=hp["lr"], eps=ADAM_EPS,
     )
     total = len(loader) * hp["epochs"]
     sched = get_linear_schedule_with_warmup(opt, int(hp["warmup"] * total), total)
@@ -246,23 +279,41 @@ def train_once(cfg: Config, hp: dict, model_name: str, seed: int, tokenizer, dev
     bad = 0
     start = time.time()
     out_of_time = False
+    step = 0
+    last_finite_loss = None
     for epoch in range(hp["epochs"]):
         model.train()
         last_loss = float("nan")
         for batch in loader:
+            step += 1
             batch = {k: v.to(device) for k, v in batch.items()}
             labels = batch.pop("labels")
+            lr_now = sched.get_last_lr()[0]
+            diag = {"step": step, "lr": lr_now, "dtype": cfg.dtype_label,
+                    "last_finite_loss": last_finite_loss}
             with torch.autocast("cuda", dtype=torch.float16, enabled=cfg.fp16):
                 logits = model(**batch).logits
             loss = loss_fn(logits.float(), labels)
+            loss_val = float(loss.detach())
+            logits_np = logits.detach().float().cpu().numpy()
+            require_finite(loss_val, "training loss", **diag)
+            require_finite(logits_np, "training logits", **diag)
+            last_finite_loss = loss_val
             opt.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
             scaler.unscale_(opt)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            grad_norm = float(torch.nn.utils.clip_grad_norm_(model.parameters(), MAX_GRAD_NORM))
+            # With fp16 the GradScaler skips a step whose grads overflow, which is expected.
+            # In fp32 a non-finite grad norm means the weights would go NaN, so it fails.
+            if not cfg.fp16:
+                require_finite(grad_norm, "gradient norm", **diag)
             scaler.step(opt)
             scaler.update()
             sched.step()
-            last_loss = float(loss.detach())
+            last_loss = loss_val
+            if step % LOG_EVERY == 0:
+                cfg.log(f"    step {step} epoch {epoch} lr {lr_now:.3g} loss {loss_val:.4f} "
+                        f"grad-norm {grad_norm:.3f} ({cfg.dtype_label})")
             if time.time() > deadline:
                 out_of_time = True
                 break
@@ -336,10 +387,11 @@ def run(ctx) -> bool:
     cfg = Config(
         fp16=not args.no_fp16, max_len=args.max_len, batch_size=args.batch_size,
         eval_batch_size=args.eval_batch_size, patience=args.patience, adv_aug=args.adv_aug,
-        train_canon=args.train_input == "canon",
+        train_canon=args.train_input == "canon", log=ctx.log,
     )
     seed_everything(args.seeds[0])
     env = env_report()
+    env["precision"] = cfg.dtype_label
     ctx.log(f"env: {env}")
     try:
         root = D.resolve_data_root(args.data_root)
@@ -350,15 +402,16 @@ def run(ctx) -> bool:
     sms = D.load_sms(root)
     labels = sms["label_binary"].to_numpy().astype(np.int64)
     texts = sms["text"].to_numpy(dtype=object)
-    runs = [r for r in D.load_runs(root, sms, patterns=None, labels=labels, mask=D.eval_mask(sms))
-            if any(fnmatch(r.name, p) for p in args.runs)]
-    if not runs:
-        raise FileNotFoundError(f"no run matches {args.runs}")
+    runs = D.load_runs(root, sms, patterns=args.splits, labels=labels, mask=D.eval_mask(sms))
     n_jobs = len(args.models) * len(args.seeds) * len(runs)
     total_s = args.budget_h * 3600.0
     per_run_s = total_s / n_jobs
-    ctx.log(f"runs {[r.name for r in runs]}; {n_jobs} model-seed-run jobs; "
-            f"budget {args.budget_h} h = {per_run_s / 60:.1f} min per job")
+    ctx.log(f"splits {[r.name for r in runs]}; {n_jobs} model-seed-run jobs; "
+            f"budget {args.budget_h} h = {per_run_s / 60:.1f} min per job; "
+            f"lr {args.lr} (no HPO), clip {MAX_GRAD_NORM}, eps {ADAM_EPS}, "
+            f"precision {cfg.dtype_label}")
+    cluster_col = D.CLUSTER_COLUMNS["sms"] if D.CLUSTER_COLUMNS["sms"] in sms.columns else None
+    ctx.log(f"bootstrap clusters: {cluster_col or 'iid'}")
 
     budget = {"total_budget_h": args.budget_h, "per_job_min": round(per_run_s / 60, 2),
               "jobs": n_jobs, "trials": []}
@@ -375,6 +428,23 @@ def run(ctx) -> bool:
             {"title": "SMS teacher", "meta": {"budget_h": args.budget_h}, "splits": splits},
             ctx.work,
         )
+
+    def dump_transfer(run_, model, tokenizer, short: str, seed: int, safe_run: str) -> None:
+        """Teacher logits for every row outside the split's test partition, for distillation on
+        a broad transfer set. Test rows are excluded by position and checked again by id before
+        the write."""
+        tpos = D.transfer_positions(len(sms), run_.test_all)
+        D.assert_no_test_rows(ids[tpos], ids[run_.test_all])
+        prepped = ([D.canon_text(t) for t in texts[tpos]] if cfg.train_canon
+                   else list(texts[tpos]))
+        logits = predict_logits(model, tokenizer, prepped, cfg, device)
+        membership = np.where(np.isin(tpos, run_.train), "train",
+                              np.where(np.isin(tpos, run_.cal), "cal", "unlabeled"))
+        frame = pd.DataFrame({"id": ids[tpos], "split": membership,
+                              "logit_0": logits[:, 0], "logit_1": logits[:, 1]})
+        path = logits_dir / f"transfer_{short}_s{seed}_{safe_run}.parquet"
+        frame.to_parquet(path, index=False)
+        ctx.log(f"   transfer logits: {len(frame)} rows -> {path.name}")
 
     def train_model(run_, model_name: str, short: str, seed: int, data: dict) -> dict:
         """Unit: fine-tune one (model, seed) on one run, write its logits, and keep the best
@@ -427,6 +497,8 @@ def run(ctx) -> bool:
         safe_run = run_.name.replace(":", "_")
         logits_path = logits_dir / f"logits_{short}_s{seed}_{safe_run}.parquet"
         pd.concat(frame, ignore_index=True).to_parquet(logits_path, index=False)
+        if args.transfer_texts:
+            dump_transfer(run_, model, tokenizer, short, seed, safe_run)
 
         if result["cal_pr_auc"] > best_global["cal_pr_auc"]:
             best_global.update({"cal_pr_auc": result["cal_pr_auc"], "model": model_name,
@@ -451,7 +523,7 @@ def run(ctx) -> bool:
         ev = evaluate_scores(
             labels[ca], s_cal, labels[te], s_test,
             groups=groups, n_boot=args.n_boot, seed=seed,
-            cluster_ids=D.cluster_values(sms, te, "campaign_id"),
+            cluster_ids=(D.cluster_values(sms, te, cluster_col) if cluster_col else None),
         )
         ev["teacher"] = {"model": trained["model_name"], "seed": seed, "hp": trained["hp"],
                          "cal_pr_auc": result["cal_pr_auc"], "best_epoch": result["best_epoch"],
@@ -460,10 +532,11 @@ def run(ctx) -> bool:
         thr = ev["thresholds"]["max_f1"]["threshold"]
         if not args.no_robustness:
             with timed(f"{run_.name}|{key_base}|{variant}|robust_s", timings):
+                # pos_test and neg_test are already capped (seeded) in the run loop.
                 ev["robustness"] = robustness_report(
                     lambda ts, s=score: s(ts, cached=False),
                     pos_test, neg_test, thr,
-                    seeds=args.robust_seeds, max_positives=args.max_robust_pos,
+                    seeds=args.robust_seeds, max_positives=None,
                 )
         block[f"{key_base}/{variant}"] = ev
         ctx.log(f"   {variant}: F1 {ev['operating_points']['max_f1']['f1']:.4f} "
@@ -482,8 +555,16 @@ def run(ctx) -> bool:
             "cal_prepped": [D.canon_text(t) for t in texts[ca]] if cfg.train_canon
             else list(texts[ca]),
         }
-        pos_test = texts[te][labels[te] == 1].tolist()
-        neg_test = texts[te][labels[te] == 0].tolist()
+        # The attack harness runs on a capped, seeded sample of scam and benign test rows, so a
+        # big hold-out (76k ScamShield rows) does not take hours. Thresholds and the protocol
+        # metrics still use every test row.
+        pos_test = D.sample_cap(texts[te][labels[te] == 1].tolist(), args.max_robust_pos,
+                                ROBUST_SAMPLE_SEED)
+        neg_test = D.sample_cap(texts[te][labels[te] == 0].tolist(), args.max_robust_pos,
+                                ROBUST_SAMPLE_SEED)
+        ctx.log(f"  attack harness rows: {len(pos_test)} scam, {len(neg_test)} benign "
+                f"(test has {int(np.sum(labels[te] == 1))} scam, "
+                f"{int(np.sum(labels[te] == 0))} benign)")
         block: dict[str, dict] = splits.setdefault(run_.name, {})
         for model_name in args.models:
             short = model_name.split("/")[-1]
@@ -512,8 +593,11 @@ def run(ctx) -> bool:
     ctx.results["budget"] = budget
     meta = {
         "data_root": str(root), "models": args.models, "seeds": args.seeds,
-        "hpo_trials_per_job": args.hpo, "adv_aug": args.adv_aug,
-        "train_input": args.train_input, "best_checkpoint": best_global,
+        "splits": args.splits, "hpo_trials_per_job": args.hpo, "adv_aug": args.adv_aug,
+        "train_input": args.train_input, "precision": cfg.dtype_label,
+        "lr": args.lr, "max_grad_norm": MAX_GRAD_NORM, "adam_eps": ADAM_EPS,
+        "transfer_texts": args.transfer_texts, "max_robust_pos": args.max_robust_pos,
+        "bootstrap_clusters": cluster_col or "iid", "best_checkpoint": best_global,
         "env": env,
     }
     report.write_report({"title": "SMS teacher", "meta": meta, "splits": splits}, ctx.work)

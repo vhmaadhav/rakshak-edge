@@ -146,6 +146,34 @@ def single_class_reason(y_test, split: str) -> str | None:
             'a test split needs both classes')
 
 
+class NonFiniteError(RuntimeError):
+    """A loss, logits or gradient norm held NaN or inf. The unit that raised it fails."""
+
+
+def non_finite_message(what: str, *, step=None, lr=None, dtype=None, last_finite_loss=None,
+                       detail: str = '') -> str:
+    """One diagnostic line for a non-finite value. Unknown fields print as n/a."""
+
+    def fmt(value, spec: str) -> str:
+        return 'n/a' if value is None else format(value, spec)
+
+    text = (f'non-finite {what} at step {fmt(step, "d")}: lr {fmt(lr, ".3g")}, '
+            f'dtype {dtype or "n/a"}, last finite loss {fmt(last_finite_loss, ".6g")}')
+    return f'{text} ({detail})' if detail else text
+
+
+def require_finite(values, what: str, **diagnostics) -> None:
+    """Raise NonFiniteError when ``values`` (a float or any array) holds NaN or inf. The keyword
+    diagnostics (step, lr, dtype, last_finite_loss) go into the message."""
+    import numpy as np
+
+    arr = np.asarray(values, dtype=np.float64)
+    bad = int((~np.isfinite(arr)).sum())
+    if bad:
+        raise NonFiniteError(non_finite_message(what, detail=f'{bad} of {arr.size} values',
+                                                **diagnostics))
+
+
 def record_skip(ctx, split: str, reason: str) -> None:
     """Log a skipped split and keep the reason in results.json under 'skipped'."""
     ctx.results.setdefault('skipped', {})[split] = reason

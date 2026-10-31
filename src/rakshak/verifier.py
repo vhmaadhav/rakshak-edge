@@ -17,9 +17,11 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
+from importlib import resources
 from typing import Any
 
-from rakshak.evidence import Action, EvidencePackage, Risk
+from rakshak.evidence import Action, EvidencePackage, Risk, choose_action
 from rakshak.nids.evidence import NETWORK_DOMAIN, NetAction
 
 MAX_SUMMARY = 280
@@ -247,8 +249,8 @@ _SAFE_TEXT = {
 }
 
 
-def template_explanation(package: EvidencePackage, lang: str = "en") -> dict[str, Any]:
-    """Deterministic explanation that always passes ``verify`` for the same package."""
+def _template_summary(package: EvidencePackage, lang: str) -> str:
+    """Deterministic summary sentence(s) for a package, at most MAX_SUMMARY characters."""
     if lang not in _TYPE_PHRASE:
         raise ValueError(f"lang must be 'en' or 'hinglish', got {lang!r}")
     phrases = _TYPE_PHRASE[lang]
@@ -269,8 +271,12 @@ def template_explanation(package: EvidencePackage, lang: str = "en") -> dict[str
         summary = f"{prefix} {base}"
     else:
         summary = base
+    return summary[:MAX_SUMMARY]
 
-    summary = summary[:MAX_SUMMARY]
+
+def template_explanation(package: EvidencePackage, lang: str = "en") -> dict[str, Any]:
+    """Deterministic explanation that always passes ``verify`` for the same package."""
+    summary = _template_summary(package, lang)
 
     action = next(
         (a for a in _ACTION_PRIORITY if a in package.allowed_actions),
@@ -278,3 +284,357 @@ def template_explanation(package: EvidencePackage, lang: str = "en") -> dict[str
     )
     reasons = [e.id for e in package.evidence]
     return {"summary": summary, "reasons": reasons, "action": action.value}
+
+
+# ---------------------------------------------------------------------------
+# ELA verifier v2: the points contract. ``verify`` above stays as the v1 contract that the
+# network path (rakshak.nids.pi_monitor) still uses.
+#
+# The explainer returns {"summary": str, "points": [str, ...]} (and an optional "lang"), with one
+# point per evidence item in package order. The system attaches the ids and the action, so the
+# output never carries them. ``check_points`` says what passes. ``render_advisory`` swaps each
+# failing point, and the summary when it fails, for the deterministic template sentence.
+# ---------------------------------------------------------------------------
+
+TYPE_PHRASE = _TYPE_PHRASE  # public name used by rakshak.prompts
+MAX_POINT = 160
+V2_LANGS = ("en", "hinglish")
+_V2_KEYS = frozenset({"summary", "points", "lang"})
+_LEXICON_FILE = "data/ela_lexicon.json"
+
+# Hinglish imperatives that instruct the reader. Bare "karein" is not listed: "verify karein" is
+# advice to check, not an action request. "do" is not listed because "Do not" is common.
+_HINGLISH_POSITIVE_RE = re.compile(
+    r"(?i)\b(bhejo|bhejein|bhejiye|bhejen|batao|bataiye|bataye|dijiye|dijie|dein|daalo|dalo|"
+    r"kholo|kholein|dabao|dabayein|click karo|click karein|call karo|call karein|"
+    r"share karo|share karein|pay karo|pay karein|install karo|install karein|"
+    r"download karo|download karein)\b"
+)
+_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)*")
+_CURRENCY_BEFORE_RE = re.compile(r"(?i)(?:rs\.?|inr|₹|rupees?)\s*$")
+
+
+@lru_cache(maxsize=1)
+def load_lexicon() -> dict[str, dict[str, re.Pattern[str]]]:
+    """Compiled per-language, per-type keyword patterns from src/rakshak/data/ela_lexicon.json.
+
+    A keyword matches at a word start (case-insensitive), so "block" also matches "blocked".
+    """
+    raw = json.loads(
+        resources.files("rakshak").joinpath(_LEXICON_FILE).read_text(encoding="utf-8")
+    )
+    compiled: dict[str, dict[str, re.Pattern[str]]] = {}
+    for lang in V2_LANGS:
+        table: dict[str, re.Pattern[str]] = {}
+        for etype, words in raw[lang].items():
+            alts = [r"\s+".join(re.escape(p) for p in w.split()) for w in words]
+            table[etype] = re.compile(r"(?<![a-z0-9])(?:" + "|".join(alts) + ")", re.IGNORECASE)
+        compiled[lang] = table
+    return compiled
+
+
+def has_lexicon_keyword(text: str, lang: str, etype: str) -> bool:
+    pattern = load_lexicon()[lang].get(etype)
+    return bool(pattern is not None and pattern.search(text))
+
+
+def _object_span(raw: str) -> tuple[int, int] | None:
+    """Span of the first balanced {...} object, skipping braces inside JSON strings."""
+    start = raw.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_str = False
+    escaped = False
+    for i in range(start, len(raw)):
+        ch = raw[i]
+        if in_str:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return start, i + 1
+    return None
+
+
+def json_complete(raw: str) -> bool:
+    """True once ``raw`` contains a complete top-level JSON object (used as a stop rule)."""
+    return _object_span(raw) is not None
+
+
+def extract_json_object(raw: str) -> dict[str, Any] | None:
+    """The first balanced JSON object in ``raw`` as a dict, or None. Text around it is ignored."""
+    span = _object_span(raw or "")
+    if span is None:
+        return None
+    try:
+        obj = json.loads(raw[span[0] : span[1]])
+    except ValueError:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
+def _blank(text: str, spans: list[tuple[int, int]]) -> str:
+    chars = list(text)
+    for s, e in spans:
+        for k in range(s, e):
+            chars[k] = " "
+    return "".join(chars)
+
+
+def _slot_numbers(package: EvidencePackage) -> set[str]:
+    """Digit strings that the package itself contains (evidence text, URLs, domains, phones)."""
+    brand = [d for doms in package.brand_domains.values() for d in doms]
+    vocab = " ".join(
+        [*(e.text for e in package.evidence), *package.urls, *package.domains, *brand,
+         *package.phones]
+    )
+    nums = {re.sub(r"\D", "", t) for t in _NUMBER_RE.findall(vocab)}
+    nums.update(package.phones)
+    return nums
+
+
+def ungrounded_claims(text: str, package: EvidencePackage) -> list[str]:
+    """URLs, domains, phone numbers and amounts in ``text`` that the package does not contain.
+
+    A number is checked when it has three or more digits or follows a currency word. Small
+    numbers such as "24 hours" are allowed.
+    """
+    problems: list[str] = []
+    package_urls = " ".join(package.urls).lower()
+    url_spans: list[tuple[int, int]] = []
+    for m in _URL_RE.finditer(text):
+        url_spans.append(m.span())
+        if m.group(0).lower() not in package_urls:
+            problems.append(f"URL not in package: {m.group(0)!r}")
+    spans = list(url_spans)
+    for m in _DOMAIN_RE.finditer(text):
+        if any(s <= m.start() < e for s, e in url_spans):
+            continue
+        spans.append(m.span())
+        if not _grounded_domain(m.group(0), package):
+            problems.append(f"domain not in package: {m.group(0)!r}")
+    bare = _blank(text, spans)
+    phones = set(package.phones)
+    phone_spans: list[tuple[int, int]] = []
+    for m in _PHONE_RE.finditer(bare):
+        phone_spans.append(m.span())
+        if re.sub(r"\D", "", m.group(0)) not in phones:
+            problems.append(f"phone number not in package: {m.group(0)!r}")
+    bare = _blank(bare, phone_spans)
+    slots = _slot_numbers(package)
+    for m in _NUMBER_RE.finditer(bare):
+        digits = re.sub(r"\D", "", m.group(0))
+        currency = bool(_CURRENCY_BEFORE_RE.search(bare[max(0, m.start() - 10) : m.start()]))
+        if (len(digits) >= 3 or currency) and digits not in slots:
+            problems.append(f"number not in package: {m.group(0)!r}")
+    return problems
+
+
+def _text_problems(
+    text: Any, package: EvidencePackage, lang: str, role: str, etype: str | None = None
+) -> list[str]:
+    """Checks shared by points and the summary. ``role`` is "point" or "summary"."""
+    if not isinstance(text, str):
+        return [f"{role} is not a string"]
+    body = text.strip()
+    problems: list[str] = []
+    if not body:
+        problems.append(f"{role} is empty")
+    limit = MAX_POINT if role == "point" else MAX_SUMMARY
+    if len(body) > limit:
+        problems.append(f"{role} is {len(body)} chars, limit {limit}")
+    problems.extend(ungrounded_claims(body, package))
+    if package.risk in (Risk.HIGH, Risk.MEDIUM):
+        for word in _positive_matches(_SAFE_RE, body):
+            problems.append(
+                f"{role} calls the message {word.lower()} while risk is {package.risk.value}"
+            )
+    for verb in _positive_matches(_ACTION_VERB_RE, body) + _positive_matches(
+        _HINGLISH_POSITIVE_RE, body
+    ):
+        problems.append(f"{role} gives a positive instruction: {verb!r}")
+    if _INJECTION_RE.search(body):
+        problems.append(f"{role} has prompt-injection phrasing")
+    if etype is not None and not has_lexicon_keyword(body, lang, etype):
+        problems.append(f"no {lang} lexicon keyword for {etype}")
+    return problems
+
+
+@dataclass
+class PointCheck:
+    index: int
+    type: str
+    ok: bool
+    problems: list[str] = field(default_factory=list)
+
+
+@dataclass
+class PointsVerdict:
+    """``ok`` is the full pass: schema, every point and the summary pass."""
+
+    ok: bool
+    schema_ok: bool
+    schema_problems: list[str]
+    summary_ok: bool
+    summary_problems: list[str]
+    points: list[PointCheck]
+    parsed: dict[str, Any] | None
+    lang: str
+
+
+def _schema_failed(
+    problems: list[str], types: list[str], parsed: dict[str, Any] | None, lang: str
+) -> PointsVerdict:
+    checks = [PointCheck(i, t, False, ["schema failed"]) for i, t in enumerate(types)]
+    return PointsVerdict(
+        ok=False,
+        schema_ok=False,
+        schema_problems=problems,
+        summary_ok=False,
+        summary_problems=["schema failed"],
+        points=checks,
+        parsed=parsed,
+        lang=lang,
+    )
+
+
+def check_points(llm_output: str, package: EvidencePackage, lang: str = "en") -> PointsVerdict:
+    """Check an explainer output against the points contract for ``package``.
+
+    Schema: a JSON object with exactly the keys summary and points (lang is optional and must be
+    en or hinglish when present), and points is a list of exactly N strings, N being the number
+    of evidence items. Any schema problem fails every point.
+    Points and summary: see ``_text_problems``. Point i must contain a lexicon keyword for the
+    type of evidence item i in ``lang``.
+    """
+    if lang not in V2_LANGS:
+        raise ValueError(f"lang must be 'en' or 'hinglish', got {lang!r}")
+    types = [e.type for e in package.evidence]
+    n = len(types)
+    obj = extract_json_object(llm_output or "")
+    if obj is None:
+        return _schema_failed(["output is not a JSON object"], types, None, lang)
+
+    problems: list[str] = []
+    extra = sorted(set(obj) - _V2_KEYS)
+    if extra:
+        problems.append(f"unexpected keys: {extra}")
+    for key in ("summary", "points"):
+        if key not in obj:
+            problems.append(f"missing key: {key}")
+    if "lang" in obj and obj["lang"] not in V2_LANGS:
+        problems.append(f"lang {obj['lang']!r} is not en or hinglish")
+    if "summary" in obj and not isinstance(obj["summary"], str):
+        problems.append("summary must be a string")
+    if "points" in obj:
+        points = obj["points"]
+        if not isinstance(points, list):
+            problems.append("points must be a list")
+        elif len(points) != n:
+            problems.append(f"points has {len(points)} items, expected {n}")
+        elif not all(isinstance(p, str) for p in points):
+            problems.append("points must be strings")
+    if problems:
+        return _schema_failed(problems, types, obj, lang)
+
+    checks = []
+    for i, (etype, text) in enumerate(zip(types, obj["points"], strict=True)):
+        probs = _text_problems(text, package, lang, "point", etype)
+        checks.append(PointCheck(i, etype, not probs, probs))
+    summary_probs = _text_problems(obj["summary"], package, lang, "summary")
+    return PointsVerdict(
+        ok=all(c.ok for c in checks) and not summary_probs,
+        schema_ok=True,
+        schema_problems=[],
+        summary_ok=not summary_probs,
+        summary_problems=summary_probs,
+        points=checks,
+        parsed=obj,
+        lang=lang,
+    )
+
+
+def template_point(etype: str, lang: str = "en") -> str:
+    """Deterministic one-sentence point for an evidence type. Passes ``check_points`` (tested)."""
+    if lang not in V2_LANGS:
+        raise ValueError(f"lang must be 'en' or 'hinglish', got {lang!r}")
+    prefix = "This message " if lang == "en" else "Yeh message "
+    return f"{prefix}{_TYPE_PHRASE[lang][etype]}."
+
+
+def render_advisory(llm_output: str, package: EvidencePackage, lang: str = "en") -> dict[str, Any]:
+    """The advisory a user sees: the system's action and ids, and each point from the explainer
+    where it passed or from the template where it failed.
+
+    ``mode`` is "llm" (full pass), "partial" (some points or the summary fell back) or
+    "template" (the schema failed, so every sentence is the template).
+    """
+    verdict = check_points(llm_output, package, lang)
+    points_out: list[dict[str, Any]] = []
+    for i, e in enumerate(package.evidence):
+        if verdict.schema_ok and verdict.points[i].ok:
+            text, source = verdict.parsed["points"][i].strip(), "llm"
+        else:
+            text, source = template_point(e.type, lang), "template"
+        points_out.append({"evidence_id": e.id, "type": e.type, "text": text, "source": source})
+    if verdict.summary_ok:
+        summary, summary_source = verdict.parsed["summary"].strip(), "llm"
+    else:
+        summary, summary_source = _template_summary(package, lang), "template"
+    if verdict.ok:
+        mode = "llm"
+    elif not verdict.schema_ok:
+        mode = "template"
+    else:
+        mode = "partial"
+    return {
+        "lang": lang,
+        "mode": mode,
+        "action": choose_action(package).value,
+        "reasons": [e.id for e in package.evidence],
+        "summary": summary,
+        "summary_source": summary_source,
+        "points": points_out,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Rank arm: K deterministic candidate sentences per evidence type. The explainer does not write
+# them. It only scores each candidate by log-likelihood (see the job), and the best one is kept.
+# Every candidate is a template, so every candidate passes ``check_points`` (tested).
+# ---------------------------------------------------------------------------
+
+RANK_K = 4
+_RANK_FRAMES = {
+    "en": (
+        "This message {p}.",
+        "Be careful: this message {p}.",
+        "Note that this message {p}.",
+        "Warning sign: this message {p}.",
+    ),
+    "hinglish": (
+        "Yeh message {p}.",
+        "Dhyan rakhein: yeh message {p}.",
+        "Chetavni: yeh message {p}.",
+        "Saavdhan rahein: yeh message {p}.",
+    ),
+}
+
+
+def rank_candidates(etype: str, lang: str = "en") -> list[str]:
+    """The K candidate sentences for one evidence type, the first being ``template_point``."""
+    if lang not in V2_LANGS:
+        raise ValueError(f"lang must be 'en' or 'hinglish', got {lang!r}")
+    phrase = _TYPE_PHRASE[lang][etype]
+    return [frame.format(p=phrase) for frame in _RANK_FRAMES[lang]]

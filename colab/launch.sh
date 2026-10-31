@@ -1,30 +1,32 @@
 #!/usr/bin/env bash
-# Usage: colab/launch.sh JOB [--gpu T4|L4|A100|H100 | --cpu] [--high-mem] [--job-args="FLAGS"]
+# Usage: colab/launch.sh JOB [--gpu T4|L4|A100|H100 | --cpu] [--high-mem] [--job-args="FLAGS"] [--budget-h H]
 #                            [--data | --data-files PATTERN...] [--yes-paid] [--dry-run]
 #
-# Runs one rakshak job on a Google Colab VM: the Colab counterpart of kaggle/launch.sh. Steps:
-#   1. build the runner: kaggle/build_kernel.py --platform colab -> colab/out/JOB/kernel/run.py
-#   2. (--data, or --data-files) select files under data/processed, pack them into an archive,
-#      split it into parts of at most RAKSHAK_COLAB_CHUNK_MB MiB, and write a manifest with sha256
-#      sums (colab/data_bundle.py). Then colab upload the manifest and each part, and
-#      colab/remote_unpack_data.py joins, verifies and unpacks them into /content/rakshak-data.
-#   3. colab new (default GPU T4, or no accelerator with --cpu). The runner is uploaded to
-#      /content/rakshak_run.py, then ONE blocking colab exec of colab/remote_run_job.py, which runs the
-#      runner in a fresh Python process (the caller backgrounds the launch; nothing here polls).
-#   4. colab exec packs /content/out; colab download saves it to colab/out/JOB/output/out.tar.gz
-#   5. colab stop. This is always run: an EXIT/INT/TERM trap stops the VM once colab new was requested.
+# Start phase of one rakshak job on a Google Colab VM. It returns as soon as the runner is detached on
+# the VM; it does not wait for the job. Steps:
+#   1. build the runner: kaggle/build_kernel.py --platform colab -> colab/out/JOB/kernel/run.py, with
+#      a hard wall-clock limit (--budget-h plus 30 min; 11.5 h when --budget-h is not given).
+#   2. (--data, or --data-files) select files under data/processed, pack them into an archive, split it
+#      into parts of at most RAKSHAK_COLAB_CHUNK_MB MiB, and write a manifest with sha256 sums
+#      (colab/data_bundle.py). Then colab upload the manifest and each part, and colab/remote_unpack_data.py
+#      joins, verifies and unpacks them into /content/rakshak-data.
+#   3. colab new (default GPU T4, or no accelerator with --cpu), then colab upload of the runner to
+#      /content/rakshak_run.py.
+#   4. one SHORT colab exec of colab/remote_start_job.py, which starts the runner detached on the VM
+#      (its own session, output to /content/out/runner.stdout.log, PID in /content/out/runner.pid).
+#   5. colab/out/JOB/session.json is written. The VM is NOT stopped on success.
+# Then: colab/wait.sh JOB waits for the completion line; colab/finish.sh JOB fetches the output and stops
+# the VM. Any failure before step 5 stops the VM (EXIT/INT/TERM trap). Nothing here polls or sleeps.
 # Any GPU other than T4, and --high-mem, spend Colab compute units. They are refused unless --yes-paid
 # is passed for that run, and Maadhav gives that approval per run. --dry-run prints every colab command
-# and runs none of them (the local bundle is still built, under colab/out). Everything is logged to
-# colab/out/JOB/launch.log. Nothing here polls or sleeps.
-# Auth and config: colab/README.md. RAKSHAK_COLAB_AUTH=adc adds --auth adc to every colab call (default:
-# oauth2). RAKSHAK_COLAB_TIMEOUT sets the runner's colab exec timeout in seconds (default 43200).
-# RAKSHAK_COLAB_CHUNK_MB sets the upload part size in MiB (default 32, at most 50: a 50 MiB upload
-# succeeded in the probe and 100 MiB was rejected with HTTP 400).
+# and runs none of them (the local bundle and runner are still built, under colab/out).
+# Everything is logged to colab/out/JOB/launch.log. Auth and config: colab/README.md.
+# RAKSHAK_COLAB_AUTH=adc adds --auth adc to every colab call (default: oauth2).
+# RAKSHAK_COLAB_CHUNK_MB sets the upload part size in MiB (default 32, at most 50).
 set -euo pipefail
 
 usage() {
-  echo 'usage: colab/launch.sh JOB [--gpu T4|L4|A100|H100 | --cpu] [--high-mem] [--job-args="FLAGS"] [--data | --data-files PATTERN...] [--yes-paid] [--dry-run]' >&2
+  echo 'usage: colab/launch.sh JOB [--gpu T4|L4|A100|H100 | --cpu] [--high-mem] [--job-args="FLAGS"] [--budget-h H] [--data | --data-files PATTERN...] [--yes-paid] [--dry-run]' >&2
 }
 
 # default_data_patterns JOB: the data a job needs when --data is given without --data-files.
@@ -36,6 +38,10 @@ default_data_patterns() {
     *) printf '%s\n' '**' ;;
   esac
 }
+# The runner's hard wall-clock limit: the job's --budget-h plus this margin, or NO_BUDGET_WALL_H when the
+# job's budget is not given (Colab free sessions end after about 12 h anyway).
+MARGIN_H=0.5
+NO_BUDGET_WALL_H=11.5
 LOG=""
 die() {
   echo "launch: $*" >&2
@@ -61,6 +67,7 @@ GPU_GIVEN=0
 CPU=0
 HIGH_MEM=0
 JOB_ARGS=""
+BUDGET_H=""
 DATA=0
 DATA_PATTERNS=()
 YES_PAID=0
@@ -73,6 +80,8 @@ while [ "$#" -gt 0 ]; do
     --high-mem) HIGH_MEM=1; shift ;;
     --job-args) [ "$#" -ge 2 ] || die "--job-args needs a value"; JOB_ARGS="$2"; shift 2 ;;
     --job-args=*) JOB_ARGS="${1#--job-args=}"; shift ;;
+    --budget-h) [ "$#" -ge 2 ] || die "--budget-h needs a value"; BUDGET_H="$2"; shift 2 ;;
+    --budget-h=*) BUDGET_H="${1#--budget-h=}"; shift ;;
     --data) DATA=1; shift ;;
     --data-files)
       DATA=1
@@ -97,7 +106,6 @@ LOG="$OUT/launch.log"
 RUNNER="$OUT/kernel/run.py"
 DATA_OUT="$OUT/data"
 CHUNK_MB="${RAKSHAK_COLAB_CHUNK_MB:-32}"
-EXEC_TIMEOUT="${RAKSHAK_COLAB_TIMEOUT:-43200}"
 # A new name per launch: a failed colab new can never stop a session that another run is using.
 SESSION="rakshak-$SLUG-$(date -u +%y%m%d%H%M%S)"
 COLAB=(colab)
@@ -133,7 +141,7 @@ stop_vm() {
   [ "$STOP_PENDING" = 1 ] || return 0
   STOP_PENDING=0
   if ! run "${COLAB[@]}" stop -s "$SESSION"; then
-    log "launch: colab stop -s $SESSION did not succeed. If the VM is still listed, stop it by hand."
+    log "launch: colab stop -s $SESSION did not succeed. If the VM is still listed, stop it with colab/finish.sh $JOB --abort."
   fi
 }
 on_exit() {
@@ -151,8 +159,8 @@ report_usage() {
   run "${COLAB[@]}" usage || log "launch: colab usage failed ($1); continuing"
 }
 
-log "== $(date -u +%FT%TZ) launch $JOB gpu=$GPU cpu=$CPU high_mem=$HIGH_MEM data=$DATA dry_run=$DRY_RUN"
-log "session: $SESSION (stopped on exit)"
+log "== $(date -u +%FT%TZ) launch $JOB gpu=$GPU cpu=$CPU high_mem=$HIGH_MEM data=$DATA budget_h=${BUDGET_H:-none} dry_run=$DRY_RUN"
+log "session: $SESSION (stopped on any failure of this start phase; kept running on success)"
 GPU="${GPU^^}"
 case "$GPU" in
   T4|L4|A100|H100) ;;
@@ -172,6 +180,20 @@ fi
 if [ -n "$PAID" ] && [ "$YES_PAID" != 1 ]; then
   die "refusing $PAID: it spends Colab compute units. Only the default T4 without --high-mem runs unless Maadhav approves this run; then pass --yes-paid."
 fi
+# The runner's hard limit in hours. A bad --budget-h is refused before anything is built or allocated.
+if [ -n "$BUDGET_H" ]; then
+  WALL_H="$(python3 -c '
+import sys
+try:
+    budget = float(sys.argv[1])
+except ValueError:
+    budget = 0.0
+if not budget > 0:
+    sys.exit(1)
+print("%g" % (budget + float(sys.argv[2])))' "$BUDGET_H" "$MARGIN_H")" || die "--budget-h must be a positive number of hours (got '$BUDGET_H')"
+else
+  WALL_H="$NO_BUDGET_WALL_H"
+fi
 if [ "$DATA" = 1 ]; then
   if ! [[ "$CHUNK_MB" =~ ^[1-9][0-9]*$ ]] || [ "$CHUNK_MB" -gt 50 ]; then
     die "RAKSHAK_COLAB_CHUNK_MB must be a whole number of MiB from 1 to 50 (got '$CHUNK_MB')"
@@ -182,7 +204,13 @@ if [ "$DRY_RUN" != 1 ]; then
 fi
 
 # 1. The runner. build_kernel.py writes only under colab/out/JOB/kernel; it runs in dry-run too.
-run_local python3 "$REPO/kaggle/build_kernel.py" --platform colab --job "$JOB" "--job-args=$JOB_ARGS"
+run_local python3 "$REPO/kaggle/build_kernel.py" --platform colab --job "$JOB" "--job-args=$JOB_ARGS" \
+  "--wall-limit-h=$WALL_H"
+if [ -n "$BUDGET_H" ]; then
+  log "runner: hard wall-clock limit ${WALL_H} h (--budget-h $BUDGET_H h + $MARGIN_H h margin)"
+else
+  log "runner: hard wall-clock limit ${WALL_H} h (no --budget-h: default limit)"
+fi
 if [ "$(wc -c <"$RUNNER")" -ge $((50 * 1024 * 1024)) ]; then
   die "the runner $RUNNER is 50 MiB or more; colab upload is not used for files that large"
 fi
@@ -207,7 +235,7 @@ fi
 
 report_usage before
 
-# 3. The VM. STOP_PENDING is set before colab new, so a failed allocation is still stopped.
+# 3. The VM. STOP_PENDING is set before colab new, so a failed allocation or upload is still stopped.
 STOP_PENDING=1
 NEW_ARGS=(new -s "$SESSION")
 if [ "$CPU" != 1 ]; then
@@ -229,35 +257,43 @@ if [ "$DATA" = 1 ]; then
   done
   run "${COLAB[@]}" exec -s "$SESSION" -f "$HERE/remote_unpack_data.py" --timeout 900
 fi
-# The runner is a file on the VM, not a cell run in the kernel: remote_run_job.py starts it in a fresh
-# interpreter, so its pip install cannot upgrade numpy under the kernel's live imports.
 run "${COLAB[@]}" upload -s "$SESSION" "$RUNNER" /content/rakshak_run.py
 
-# 4. The one blocking run. colab exec's default timeout is 30 s, so the runner's is set explicitly.
-EXEC_RC=0
-run "${COLAB[@]}" exec -s "$SESSION" -f "$HERE/remote_run_job.py" --timeout "$EXEC_TIMEOUT" || EXEC_RC=$?
+# 4. Start the runner detached. The cell only starts it and returns (about a second), so no connection
+#    has to stay open for the length of the job.
+if ! run "${COLAB[@]}" exec -s "$SESSION" -f "$HERE/remote_start_job.py" --timeout 120; then
+  log "launch: the runner did not start on $SESSION; the VM is stopped"
+  exit 1
+fi
 
-# 5. Output. Downloaded even when the runner failed, since a partial run's files are still useful.
-PACK_RC=0
-run "${COLAB[@]}" exec -s "$SESSION" -f "$HERE/remote_pack_out.py" --timeout 600 || PACK_RC=$?
-DOWNLOAD_RC=0
-run rm -rf "$OUT/output"
-run mkdir -p "$OUT/output"
-run "${COLAB[@]}" download -s "$SESSION" /content/rakshak-out.tar.gz "$OUT/output/out.tar.gz" || DOWNLOAD_RC=$?
+# 5. Record the session. From here the VM stays up: the runner is running on it.
+if [ "$DRY_RUN" != 1 ]; then
+  LAUNCH_EPOCH="$(cat "$OUT/launch_epoch")"
+  python3 - "$OUT/session.json" "$SESSION" "$JOB" "$GPU" "$HIGH_MEM" "$LAUNCH_EPOCH" "$WALL_H" \
+    "${BUDGET_H:-}" <<'PY'
+import json
+import sys
 
-stop_vm
-report_usage after
-
+path, session, job, accelerator, high_mem, epoch, wall_h, budget_h = sys.argv[1:]
+data = {
+    'job': job,
+    'session': session,
+    'accelerator': accelerator,
+    'high_mem': high_mem == '1',
+    'launch_epoch': int(epoch),
+    'budget_h': float(budget_h) if budget_h else None,
+    'wall_limit_h': float(wall_h),
+    'wall_limit_s': round(float(wall_h) * 3600),
+    'state': 'running',
+}
+with open(path, 'w', encoding='utf-8') as out:
+    out.write(json.dumps(data, indent=2) + '\n')
+PY
+fi
+STOP_PENDING=0
 if [ "$DRY_RUN" = 1 ]; then
   log "launch: dry run complete; no colab command was executed"
   exit 0
 fi
-if [ "$EXEC_RC" -ne 0 ]; then
-  log "launch: colab exec of the runner exited $EXEC_RC; see $LOG and $OUT/output"
-  exit "$EXEC_RC"
-fi
-if [ "$PACK_RC" -ne 0 ] || [ "$DOWNLOAD_RC" -ne 0 ]; then
-  log "launch: could not fetch /content/out (pack exit $PACK_RC, download exit $DOWNLOAD_RC)"
-  exit 1
-fi
-log "launch: done. Output tarball: $OUT/output/out.tar.gz (extract with tar -xzf there)"
+log "launch: runner started detached on $SESSION; the VM keeps running."
+log "launch: next: colab/wait.sh $JOB (waits for the completion line, then runs colab/finish.sh $JOB)"

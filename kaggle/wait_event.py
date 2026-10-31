@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """One ntfy push subscription for a rakshak Kaggle job, replaying events since the launch.
 
-Usage: kaggle/wait_event.py [JOB] [--timeout SECONDS] [--platform kaggle|colab]
+Usage: kaggle/wait_event.py [JOB | JOB-NAME] [--run-name NAME] [--timeout SECONDS]
+                            [--platform kaggle|colab]
 (kaggle/wait_event.sh runs this). --platform colab reads colab/out/JOB and waits for
 rakshak-colab-<job>; it needs the JOB name, since there is no latest Colab launch.
+
+A run started with launch.sh --run-name NAME lives in kaggle/out/JOB-NAME/ and its notification
+prefix is rakshak-JOB-NAME. It is named JOB-NAME, or JOB with --run-name NAME; the folder's kernel
+says which JOB it is.
 
 Opens one stream on the job's notify topic, replays cached messages since
 kaggle/out/JOB/launch_epoch, and returns on the first completion message for this job and this
@@ -21,6 +26,7 @@ import argparse
 import ast
 import json
 import os
+import re
 import signal
 import sys
 import urllib.parse
@@ -31,6 +37,7 @@ KAGGLE = Path(__file__).resolve().parent
 OUT = KAGGLE / 'out'
 COLAB_OUT = KAGGLE.parent / 'colab' / 'out'
 NAMES = ('JOB', 'GIT_LABEL', 'NOTIFY_URL')
+RUN_NAME_RE = re.compile(r'[a-z0-9-]{1,20}')
 
 
 def runner_constants(path: Path) -> dict:
@@ -60,7 +67,11 @@ def matches(event: dict, slug: str, label: str, since: int, platform: str = 'kag
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('job', nargs='?')
+    parser.add_argument('job', nargs='?',
+                        help='the job, or JOB-NAME for a run started with launch.sh '
+                             '--run-name NAME')
+    parser.add_argument('--run-name', default=None, metavar='NAME',
+                        help='the run of JOB started with launch.sh --run-name NAME (Kaggle only)')
     parser.add_argument('--timeout', type=int, default=0,
                         help='seconds before giving up (0 = no limit)')
     parser.add_argument('--platform', choices=('kaggle', 'colab'), default='kaggle',
@@ -68,18 +79,37 @@ def main() -> int:
     args = parser.parse_args()
 
     job = args.job
+    run_name = args.run_name
     platform = args.platform
     if job is None and platform == 'kaggle' and (OUT / 'latest_launch.json').exists():
-        job = json.loads((OUT / 'latest_launch.json').read_text())['job']
+        latest = json.loads((OUT / 'latest_launch.json').read_text())
+        job = latest['job']
+        if run_name is None:
+            run_name = latest.get('run_name')
     if not job or not job.replace('_', '').replace('-', '').isalnum() or '/' in job:
         parser.error('a valid job name is required' + (
             '' if platform == 'colab' else ' (or run kaggle/launch.sh first)'))
 
     colab = platform == 'colab'
-    folder = (COLAB_OUT if colab else OUT) / job
+    if run_name is not None:
+        if colab:
+            parser.error('--run-name is a Kaggle option; colab runs one kernel per job')
+        if not RUN_NAME_RE.fullmatch(run_name):
+            parser.error('--run-name must be 1 to 20 characters of a-z, 0-9 and hyphen')
+        key = f'{job}-{run_name}'
+    else:
+        key = job
+    # The folder is named by the key (JOB or JOB-NAME); the kernel's JOB constant says which job
+    # it is.
+    folder = (COLAB_OUT if colab else OUT) / key
     constants = runner_constants(folder / 'kernel' / 'run.py')
-    if constants['JOB'] != job:
-        raise SystemExit(f"wait_event: the kernel in {folder} is for job {constants['JOB']!r}")
+    kernel_job = constants['JOB']
+    if key == kernel_job:
+        run = None
+    elif key.startswith(kernel_job + '-') and RUN_NAME_RE.fullmatch(key[len(kernel_job) + 1:]):
+        run = key[len(kernel_job) + 1:]
+    else:
+        raise SystemExit(f"wait_event: the kernel in {folder} is for job {kernel_job!r}")
     url = constants['NOTIFY_URL']
     if not url:
         parser.error('this kernel was built without --internet, so it sends no notification; '
@@ -87,9 +117,9 @@ def main() -> int:
     label = constants['GIT_LABEL']
     if not (folder / 'launch_epoch').exists():
         launcher = 'colab/launch.sh' if colab else 'kaggle/launch.sh'
-        parser.error(f'no launch recorded for {job}; run {launcher} {job} first')
+        parser.error(f'no launch recorded for {key}; run {launcher} {key} first')
     since = int((folder / 'launch_epoch').read_text())
-    slug = job.replace('_', '-')
+    slug = key.replace('_', '-')
     request_url = url.rstrip('/') + '/json?' + urllib.parse.urlencode({'since': since})
 
     if args.timeout > 0:
@@ -107,7 +137,9 @@ def main() -> int:
                 if not matches(event, slug, label, since, platform):
                     continue
                 receipt = {key: event.get(key) for key in ('event', 'time', 'message')}
-                receipt.update(job=job, git_label=label)
+                receipt.update(job=kernel_job, git_label=label)
+                if run is not None:
+                    receipt['run_name'] = run
                 (folder / 'completion.json').write_text(json.dumps(receipt, indent=2) + '\n')
                 print(json.dumps(receipt), flush=True)
                 return 0

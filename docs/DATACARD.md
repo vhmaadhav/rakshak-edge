@@ -256,3 +256,13 @@ General pool kept counts (rebuild 2026-10-30): PhishTank 52,665 (raw 53,457); Le
 10. **Scam sub-labels are heuristic.** The spam-versus-scam split in ScamShield follows an intent label.
 11. **Legacy protocols** use the dedup pool, so counts differ from the published protocols and their numbers are not directly comparable.
 12. **Licences unverified** for Mishra & Soni, LegitPhish, PhishTank terms and the OpenPhish feed (see section 1).
+
+## Data store
+
+A private copy of the processed data, the teacher logits and the licence-cleared raw files lives at `hf://datasets/vhmaadhav/rakshak-data` (private; not public). It holds `processed/`, `teacher_logits/mmbert-base-s0/` (no checkpoints), `raw/` (only sources whose licence allows it) and the dataset card. Pull it with:
+
+```bash
+hf download vhmaadhav/rakshak-data --repo-type dataset --local-dir data/hf
+```
+
+Requires a Hugging Face login with access to the private repo. Do not make the repo public without a per-source licence review.

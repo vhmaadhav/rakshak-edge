@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "note": "Per-point consistency lexicon for the ELA verifier v2. A point must contain at least one keyword for its evidence type. A keyword matches as a word prefix (case-insensitive), so 'block' also matches 'blocked'. Hinglish lists include the English words that are used in Hinglish text.",
+  "en": {
+    "credential_request": ["otp", "pin", "mpin", "password", "passcode", "cvv", "verification code", "one time password", "one-time password"],
+    "upi_collect_or_pay": ["upi", "collect", "payment", "request", "pay"],
+    "kyc_block_urgency": ["kyc", "block", "blocked", "deactivate", "deactivated", "urgent", "urgently"],
+    "account_suspension": ["account", "card", "suspend", "suspended", "suspension", "blocked", "frozen", "deactivated"],
+    "prize_lottery": ["prize", "lottery", "won", "winner", "reward", "gift", "lucky draw", "congratulations", "voucher"],
+    "apk_install": ["install", "installation", "apk", "app", "download"],
+    "remote_access_app": ["remote", "access", "anydesk", "teamviewer", "quicksupport", "app"],
+    "electricity_disconnect": ["electricity", "power", "disconnect", "disconnection", "bill"],
+    "parcel_customs": ["parcel", "customs", "courier", "delivery", "fee", "shipment", "package"],
+    "job_task_scam": ["job", "task", "offer", "earn", "earning", "earnings", "income", "part-time", "part time"],
+    "investment_returns": ["investment", "invest", "returns", "return", "profit", "guaranteed", "trading"],
+    "digital_arrest": ["police", "government", "cbi", "agency", "arrest", "court", "officer", "cyber", "ncb"],
+    "brand_domain_mismatch": ["link", "links", "website", "domain", "official", "url", "site", "page"],
+    "shortened_url": ["shortened", "short link", "short url", "link", "links", "tinyurl", "bit.ly"],
+    "suspicious_url": ["link", "links", "url", "website", "site", "suspicious"],
+    "urgency": ["urgent", "urgently", "immediately", "immediate", "now", "today", "hurry", "hours", "time pressure", "turant", "abhi", "aaj", "jaldi"]
+  },
+  "hinglish": {
+    "credential_request": ["otp", "pin", "mpin", "password", "passcode", "cvv", "code", "verification code", "one time password"],
+    "upi_collect_or_pay": ["upi", "collect", "payment", "request", "pay", "paisa"],
+    "kyc_block_urgency": ["kyc", "block", "blocked", "band", "dhamki", "dar", "deactivate", "urgent", "turant", "abhi"],
+    "account_suspension": ["account", "card", "suspend", "suspended", "band", "block", "blocked", "khata", "frozen"],
+    "prize_lottery": ["prize", "lottery", "inaam", "inam", "won", "winner", "reward", "gift", "jeeta", "bonus"],
+    "apk_install": ["install", "installation", "apk", "app", "application", "download"],
+    "remote_access_app": ["remote", "access", "anydesk", "teamviewer", "quicksupport", "app"],
+    "electricity_disconnect": ["electricity", "bijli", "power", "disconnect", "disconnection", "katne", "kat", "dhamki"],
+    "parcel_customs": ["parcel", "customs", "courier", "fee", "delivery", "shipment", "package"],
+    "job_task_scam": ["job", "task", "offer", "earn", "kamai", "kamaai", "income", "part time", "part-time"],
+    "investment_returns": ["investment", "invest", "return", "returns", "profit", "guaranteed", "vaada", "nivesh"],
+    "digital_arrest": ["police", "sarkari", "government", "agency", "cbi", "arrest", "court", "officer", "ncb"],
+    "brand_domain_mismatch": ["link", "links", "domain", "website", "site", "official", "brand", "url"],
+    "shortened_url": ["shortened", "short", "link", "links", "chhota", "url"],
+    "suspicious_url": ["link", "links", "url", "site", "website", "shaq", "suspicious"],
+    "urgency": ["urgent", "urgently", "immediately", "turant", "abhi", "aaj", "jaldi", "ghante", "hours", "today", "now"]
+  }
+}

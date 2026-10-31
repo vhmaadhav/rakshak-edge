@@ -185,3 +185,28 @@ def build_package(
         phones=phones,
         brand_domains=mentioned_brand_domains(canon.normalized),
     )
+
+
+def choose_action(package: EvidencePackage) -> Action:
+    """Advisory action for an SMS package, picked by the system and never by the explainer.
+
+    Rule (documented, deterministic): walk the evidence from highest weight to lowest, keeping the
+    list order for ties. The first item whose type has an ``ACTION_MAP`` entry gives the first
+    action of that entry (the entry's order is its priority). ``urgency`` is the only evidence
+    type with no entry, so it is skipped. With no such item, LOW risk gives ``IGNORE`` and any
+    other risk gives ``VERIFY_INDEPENDENTLY``. The result is always one of ``allowed_actions``.
+    """
+    if package.domain != "sms":
+        raise ValueError("choose_action covers SMS packages; network packages use NET_ACTION_MAP")
+    ranked = sorted(enumerate(package.evidence), key=lambda iv: (-iv[1].weight, iv[0]))
+    chosen: Action | None = None
+    for _, e in ranked:
+        entry = ACTION_MAP.get(e.type)
+        if entry:
+            chosen = entry[0]
+            break
+    if chosen is None:
+        chosen = Action.IGNORE if package.risk is Risk.LOW else Action.VERIFY_INDEPENDENTLY
+    if chosen not in package.allowed_actions:
+        raise ValueError(f"chosen action {chosen} is not in the package's allowed actions")
+    return chosen

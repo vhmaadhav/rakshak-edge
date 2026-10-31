@@ -162,6 +162,9 @@ class Run:
     train: np.ndarray
     cal: np.ndarray
     test: np.ndarray
+    # Every row of the split's test partition, before the eval mask. ``test`` drops masked rows,
+    # so transfer sets must exclude ``test_all``, not ``test``.
+    test_all: np.ndarray
     notes: dict
 
 
@@ -216,6 +219,7 @@ def make_run(
     index = pd.Index(df["id"])
     train, miss_tr = _positions(index, body["train"])
     test, miss_te = _positions(index, body["test"])
+    test_all = test
     has_cal = "cal" in body
     cal, miss_ca = _positions(index, body.get("cal", []))
     notes: dict = {"missing_ids": {"train": miss_tr, "test": miss_te, "cal": miss_ca}}
@@ -239,7 +243,33 @@ def make_run(
     if np.intersect1d(train, cal).size:
         raise ValueError(f"{name}: rows appear in both train and cal")
     notes["sizes"] = {"train": int(len(train)), "cal": int(len(cal)), "test": int(len(test))}
-    return Run(name=name, train=train, cal=cal, test=test, notes=notes)
+    return Run(name=name, train=train, cal=cal, test=test, test_all=test_all, notes=notes)
+
+
+def sample_cap(items: Sequence, cap: int | None, seed: int) -> list:
+    """Seeded subsample of ``items`` to at most ``cap`` entries, kept in their original order.
+    ``None`` or a cap of 0 or less keeps everything."""
+    items = list(items)
+    if not cap or cap <= 0 or len(items) <= cap:
+        return items
+    keep = np.random.default_rng(seed).choice(len(items), cap, replace=False)
+    return [items[i] for i in sorted(keep)]
+
+
+def transfer_positions(n_rows: int, test_all: np.ndarray) -> np.ndarray:
+    """Row positions of the transfer set: every row of the table except the split's test
+    partition (``Run.test_all``, which includes rows the eval mask drops)."""
+    keep = np.ones(n_rows, dtype=bool)
+    keep[np.asarray(test_all, dtype=np.int64)] = False
+    return np.flatnonzero(keep).astype(np.int64)
+
+
+def assert_no_test_rows(transfer_ids, test_ids) -> None:
+    """Raise when any transfer id is a test id. Test-row logits must never reach a
+    distillation file. Raises rather than asserts, so it also holds under ``python -O``."""
+    overlap = sorted(set(map(str, transfer_ids)) & set(map(str, test_ids)))
+    if overlap:
+        raise ValueError(f"transfer set holds {len(overlap)} test ids, e.g. {overlap[:3]}")
 
 
 def load_runs(

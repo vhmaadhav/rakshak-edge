@@ -1,25 +1,44 @@
 #!/usr/bin/env bash
-# Usage: kaggle/fetch.sh JOB
+# Usage: kaggle/fetch.sh JOB [--run-name NAME]     (or kaggle/fetch.sh JOB-NAME for a run started with --run-name)
 #
-# Downloads the outputs of maadhavvh/rakshak-JOB once into kaggle/out/JOB/output/ and prints the summary
-# from results.json. If kaggle/out/JOB/completion.json exists, the downloaded results.json must match its job
-# and git label, so a stale or other run is rejected.
+# Downloads the outputs of maadhavvh/rakshak-JOB (or rakshak-JOB-NAME) once into kaggle/out/JOB/output/
+# (kaggle/out/JOB-NAME/output/) and prints the summary from results.json. If completion.json exists in that
+# folder, the downloaded results.json must match its job and git label, so a stale or other run is rejected.
 set -euo pipefail
 
-if [ "$#" -ne 1 ]; then
-  echo "usage: kaggle/fetch.sh JOB" >&2
+usage() {
+  echo "usage: kaggle/fetch.sh JOB [--run-name NAME]" >&2
   exit 2
+}
+if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
+  usage
 fi
 JOB="$1"
+shift
+RUN_NAME=""
+if [ "$#" -gt 0 ]; then
+  if [ "$#" -ne 2 ] || [ "$1" != "--run-name" ]; then
+    usage
+  fi
+  RUN_NAME="$2"
+  if ! [[ "$RUN_NAME" =~ ^[a-z0-9-]{1,20}$ ]]; then
+    echo "fetch: --run-name must be 1 to 20 characters of a-z, 0-9 and hyphen" >&2
+    exit 2
+  fi
+fi
 if ! [[ "$JOB" =~ ^[a-z][a-z0-9_-]*$ ]]; then
   echo "fetch: the job name must start with a letter and use only lowercase letters, digits and hyphens" >&2
   exit 2
 fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KERNEL="maadhavvh/rakshak-${JOB//_/-}"
-OUT="$HERE/out/$JOB/output"
-LOG="$HERE/out/fetch-$JOB.log"
+KEY="$JOB"
+if [ -n "$RUN_NAME" ]; then
+  KEY="$JOB-$RUN_NAME"
+fi
+KERNEL="maadhavvh/rakshak-${KEY//_/-}"
+OUT="$HERE/out/$KEY/output"
+LOG="$HERE/out/fetch-$KEY.log"
 mkdir -p "$OUT"
 
 # Start from an empty folder: the CLI skips files that are newer locally, and a failed download must not
@@ -44,16 +63,19 @@ if [ ! -f "$OUT/results.json" ]; then
   exit 1
 fi
 echo "fetch: $OUT"
-python3 - "$OUT/results.json" "$HERE/out/$JOB/completion.json" "$JOB" <<'SUMMARY'
+python3 - "$OUT/results.json" "$HERE/out/$KEY/completion.json" "$KEY" <<'SUMMARY'
 import json
 import re
 import sys
 from pathlib import Path
 result = json.loads(Path(sys.argv[1]).read_text())
 receipt = Path(sys.argv[2])
-job = sys.argv[3]
-if result.get('job') != job:
-    raise SystemExit(f"fetch: results.json is for job {result.get('job')!r}, not {job!r}")
+key = sys.argv[3]
+# results.json names the job (JOB), the folder key is JOB or JOB-NAME for a run started with --run-name.
+job = str(result.get('job'))
+run = key[len(job) + 1:] if key.startswith(job + '-') else ''
+if key != job and not (run and re.fullmatch(r'[a-z0-9-]{1,20}', run)):
+    raise SystemExit(f"fetch: results.json is for job {job!r}, not {key!r}")
 if receipt.exists():
     expected = json.loads(receipt.read_text())
     message = str(expected.get('message', ''))

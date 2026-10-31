@@ -66,7 +66,7 @@ backend:
     enabled: True
     extended_ops: True
 export:
-  output_name: llama3_2_1b_8da4w_xnnpack.pte
+  output_name: Llama-3.2-1B-Instruct-8da4w-xnnpack.pte
 ```
 
 Command:
@@ -236,6 +236,8 @@ These are vendor-reported numbers, not independent. The paper's authors are Meta
 
 ## Kaggle weights (checked 2026-10-30 with kaggle CLI 2.2.4)
 
+**Superseded on 2026-10-31.** The Llama jobs no longer attach Kaggle models. They download the pinned, ungated Hugging Face snapshots in `src/rakshak/llama_source.py` (see "Ungated sources" below). The Kaggle gate is kept here as a record only; `kaggle/launch.sh` no longer needs `--models` for `llama_ela_eval` or `llama_export`.
+
 Source: `kaggle models get`, `kaggle models instances get`, `kaggle models instances versions list` and `... versions files`. The CLI has no `--format json` for `models get`, so the output was parsed as text. Nothing was downloaded.
 
 **Model.** `metaresearch/llama-3.2` (Meta, Llama 3.2 Community License, Kaggle model id 121027). Its instances are published under the PyTorch, Transformers and Keras frameworks (also 1B and 3B, base and instruct).
@@ -275,3 +277,37 @@ kaggle/launch.sh llama_export --internet \
 - The v1.5.1 `llama_xnnpack_spinquant.yaml` example confirms the `export.max_seq_length` and `max_context_length` keys, which the export YAML includes.
 
 **Still UNVERIFIED after this check:** the file layout inside the Kaggle instances; whether `pytorch/1b-instruct` contains `consolidated.00.pth` at its root; the Kaggle consent button label; the peak RSS and wall time of the export on Kaggle CPU (measured by the job, not yet run).
+
+## Ungated sources (read 2026-10-31)
+
+Read from the Hub with `GET https://huggingface.co/api/models/<repo>` (field `sha`) and the `hf_fs` listings. None of the three repos is gated or private. No model file was downloaded to the laptop.
+
+| Repo | Pinned revision | Files (bytes) | Use |
+|---|---|---|---|
+| `unsloth/Llama-3.2-1B-Instruct` | `5a8abab4a5d6f164389b1079fb721cfab8d7126c` | `model.safetensors` 2,471,645,608 (bf16), `tokenizer.json` 17,209,920, `config.json` 894, `generation_config.json`, `tokenizer_config.json`, `special_tokens_map.json`, `chat_template.jinja` | ELA eval (fp16 `from_pretrained`); export input (`llama_export`) |
+| `executorch-community/Llama-3.2-1B-Instruct-SpinQuant_INT4_EO8-ET` | `911221e0f49d3354cbd4697a9c09feee25cadec7` | `Llama-3.2-1B-Instruct-SpinQuant_INT4_EO8.pte` 1,135,951,488, `tokenizer.model` 2,183,982, `params.json` 273, `config.json` 27 | prebuilt `.pte`, sanity check and output copy |
+| `executorch-community/Llama-3.2-1B-Instruct-QLORA_INT4_EO8-ET` | `9b418bfbb3391d77d8dc6ecaf936d5253ba0783c` | `Llama-3.2-1B-Instruct-QLORA_INT4_EO8.pte` 1,181,451,008, `tokenizer.model` 2,183,982, `params.json` 332, `config.json` 27 | prebuilt `.pte`, sanity check and output copy |
+
+All three carry `license:llama3.2`. `unsloth/Llama-3.2-1B-Instruct` has `lm_head` tied to the embedding (`tie_word_embeddings: true`), so the converted checkpoint has no `output.weight`.
+
+**Conversion caveat (UNVERIFIED until a Kaggle run).** ExecuTorch 1.5.1 has no `llama3_2` HF converter. Its `hf_download.py` path covers Qwen, SmolLM2, Phi-4-mini and LFM2 only. `llama3_2` is absent from `HUGGING_FACE_REPO_IDS` in `export_llama_lib.py`, so no conversion runs and a Meta checkpoint must be supplied. So `src/rakshak/llama_source.py` maps the HF keys to Meta names and undoes the rotary permutation on q and k (the inverse of transformers' `convert_llama_weights_to_hf`). The tests check the permutation round trip and the shapes. They do not check numerical parity with HF. The export job's `export_metrics.json` records the conversion and the sanity check results.
+
+**Sources of the code paths.** Upstream file checks at tag `v1.5.1`: `examples/models/llama/convert_weights.py` (LoRA adapter key map only), `examples/models/llama/hf_download.py`, `examples/models/llama/export_llama_lib.py` (`HUGGING_FACE_REPO_IDS`).
+
+**Launch commands (no model attachment; internet on).**
+```bash
+python3 kaggle/build_kernel.py --job llama_ela_eval --gpu t4 --internet --datasets maadhavvh/rakshak-data
+python3 kaggle/build_kernel.py --job llama_export --internet
+kaggle/launch.sh llama_ela_eval --gpu t4 --internet --datasets maadhavvh/rakshak-data
+kaggle/launch.sh llama_export --internet
+```
+
+## Llama 3.2 licence obligations
+
+Applies to every Llama-derived file this project publishes or redistributes: the `.pte` files, the converted checkpoint, and any model shipped with the device bundle. Licence: Llama 3.2 Community License, https://www.llama.com/llama3_2/license/ (it redirects to https://developer.meta.com/ai/llama3_2/license/). The points below come from a fetched summary of that page on 2026-10-31, not from a verbatim copy. Re-check the page before any release.
+
+- **"Built with Llama"**: display it prominently on any related website, user interface, blog post, about page or product documentation.
+- **Licence copy**: provide a copy of the licence with any redistributed Llama material. Include the Notice text: "Llama 3.2 is licensed under the Llama 3.2 Community License, Copyright © Meta Platforms, Inc. All Rights Reserved."
+- **Derivative names**: a distributed AI model created, trained, fine-tuned or improved from Llama must have "Llama" at the beginning of its name. The export is named `Llama-3.2-1B-Instruct-8da4w-xnnpack.pte`. The prebuilt files keep their executorch-community names, which already start with "Llama".
+- **Acceptable Use Policy**: comply with it, https://developer.meta.com/ai/llama3_2/use-policy (incorporated into the licence by reference).
+- **Kaggle consent**: not needed for these jobs any more, since they read ungated Hugging Face repos.
