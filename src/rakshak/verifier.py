@@ -24,6 +24,11 @@ from typing import Any
 from rakshak.evidence import Action, EvidencePackage, Risk, choose_action
 from rakshak.nids.evidence import NETWORK_DOMAIN, NetAction
 
+# Deliberately looser than the prompt tells the model. The prompt asks for "at most 200
+# characters" (rakshak.prompts, POINTS_SYSTEM) while this accepts 280, and MAX_POINT is 160 in both.
+# Instructing conservatively and verifying generously avoids throwing away a sound explanation for
+# a length overrun the user would not notice; the limit exists to stop a rambling output, not to
+# enforce the exact number in the instructions. Do not "fix" the mismatch by tightening this.
 MAX_SUMMARY = 280
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
