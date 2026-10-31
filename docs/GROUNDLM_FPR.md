@@ -163,3 +163,46 @@ k = sum(bool(package_for_sms(r.text)[1].evidence) for r in scr.itertuples())
 print(f"{k}/{len(scr)} = {k/len(scr):.4%}")
 PY
 ```
+
+## 8. The cost of the fix, measured on a second dataset
+
+The GroundLM test only counts false positives, so it cannot see what the fix gave up. Measured
+separately on the **real ScamShield sample** (3,000 uniform rows, seed 13; fraud = `is_scam==1` and
+intent not "General Spam / Telemarketing", so promotions are excluded):
+
+| Slice | n | flagged (any evidence) | `>= UNCERTAIN` | `>= MEDIUM` |
+|---|---:|---:|---:|---:|
+| fraud | 266 | 162 (60.9%) | 147 (55.3%) | 145 (54.5%) |
+| benign | 1,891 | 46 (2.43%) | 26 (1.37%) | 26 (1.37%) |
+
+Net effect of the urgency change: **15 fraud rows stop reaching a verdict (−5.6 pp recall) and 20
+benign rows stop being flagged (−1.06 pp false-positive rate).**
+
+That is close to break-even on raw counts, but it is **not** obviously the right trade, and it should
+be stated plainly rather than sold:
+
+- Verdict-level recall for fraud is already low (55%) because the rules layer is a *component*, not
+  the detector. The fusion model is meant to carry recall; the rules contribute evidence.
+- 14 of the 15 lost fraud rows were `urgency`-only packages, and several are real scams with
+  genuinely thin wording, e.g. a Paytm KYC-expiry message that the rule set only caught via
+  "immediately" and an Indian-Post parcel-stuck notice caught only via "तुरंत". Those are recall
+  the *rules* absence causes, not the downgrade: the right fix is to give `kyc_block_urgency` and
+  `parcel_customs` the coverage they need (see `docs/RANK_ARM_AUDIT.md` section 6), after which
+  those messages would carry a specific type and no longer be urgency-only.
+- The benign 2.43% is dominated by the same mechanism, so this is one lever, not two independent
+  ones. Any further widening must be re-measured on both slices.
+
+**Recommendation: keep the change.** It is required to pass the go/kill line that the project defined
+for itself, the failures it prevents are in the population the challenge names as the primary safety
+objective (legitimate Indian bank/UPI/OTP/delivery SMS, and specifically a genuine credit-card due
+reminder), and the recall it costs sits in a mechanism that a rules-coverage fix recovers properly
+rather than by re-inflating a generic keyword.
+
+## 9. Open follow-ups
+
+1. **Rule coverage** — the 15 urgency-only fraud rows above are the same population measured in
+   `docs/RANK_ARM_AUDIT.md`: specific rules (`kyc_block_urgency`, `parcel_customs`, `job_task_scam`)
+   are too narrow. Widening them converts urgency-only hits into typed hits and recovers the recall.
+2. **`apk_install` false positive** — the single surviving GroundLM FPR fires on a bare "download"
+   verb in Devanagari conversational text at weight 0.9 (HIGH). It should require an app/APK object.
+3. **Model-side FPR** — still needs Kaggle; see section 6.
