@@ -25,28 +25,34 @@ Instead the single needed member was extracted with HTTP range requests:
 - read the 9,450-byte central directory to list the 70 entries;
 - fetched only the local-header range for `scamshield_emnlp_artifact_v4/data/cleaned_test_1393.csv`
   (53,205 bytes compressed), inflated the raw deflate stream, and repacked it into a minimal zip at
-  the path the loader expects.
+  the path the loader expects;
+- **verified against the CRC32 and uncompressed size recorded in the original central directory**
+  (`e42764c9` / 205,858 bytes), so the member is byte-identical to upstream.
 
 The member path matches `GROUNDLM_MEMBER` in `src/rakshak/datasets/external.py` exactly, so
-`load_groundlm` reads it unchanged. 1,656 MB avoided, 53 KB fetched.
+`load_groundlm` reads it unchanged. 1,656 MB avoided, 53 KB fetched, and the 53 KB is provably the right 53 KB.
 
 ## 3. The set, as loaded
 
 | Quantity | Value | Handoff/datacard expectation |
 |---|---:|---|
-| Rows in `cleaned_test_1393.csv` | 1,391 | 1,393 |
-| `label_cleaned == 0` (policy negatives) | **1,292** | 1,294 |
-| Text present | 1,222 | — |
+| Rows in `cleaned_test_1393.csv` | 1,393 | 1,393 ✓ |
+| `label_cleaned == 0` (policy negatives) | **1,294** | 1,294 ✓ |
+| Text present | 1,233 | — |
 | Hash-only (text unavailable) | **169** | **169** ✓ |
-| Scoreable policy negatives | **1,131** | 1,133 |
+| Scoreable policy negatives | **1,133** | 1,133 ✓ |
 | Fraud rows (`label_cleaned == 1`) | 99 | — |
 
-Two rows fewer than the datacard throughout (1,391 vs 1,393 and 1,292 vs 1,294), and
-1,131 vs 1,133 scoreable. The difference is consistent across every count, so it is most likely the
-v4 file having one row pair fewer than whatever snapshot the datacard was written from, not a
-parsing loss. **The 169 hash-only rows match exactly**, which is the number the task singled out.
-FPR denominators below use 1,131, the same convention the datacard sets ("the FPR denominator is
-1,133, not 1,294").
+Every count matches the datacard exactly, including the 1,133 scoreable denominator the datacard
+names ("the FPR denominator is 1,133, not 1,294").
+
+> **Integrity note.** The first extraction was truncated by 30 bytes: the range request ended at the
+> local-header end rather than the end of the deflate stream, so the archive inflated to 205,540 of
+> 205,858 bytes and the last two rows were lost (1,391 rows instead of 1,393). It was caught by an
+> independent md5/count check against the artefact, then fixed and proven correct by comparing the
+> **CRC32 recorded in the original zip's central directory** against the CRC32 of the extracted file:
+> `e42764c9` both sides, and `205858` bytes on both sides. So the CSV is byte-identical to the
+> upstream member, not merely row-count-equal.
 
 External-overlap handling is unchanged from the build: pool rows overlapping this set are dropped
 from every TRAIN partition, and the 169 text-less rows keep their labels but cannot be scored.
@@ -57,25 +63,31 @@ Measured with the deterministic pipeline the repo ships —
 `package_for_sms(text)` = canonicalise → `run_rules` → `build_package`, using the label-free
 `proxy_scam_state`. No model weights are involved in this path.
 
-| Detector | Fire criterion | False positives | FPR on 1,131 | vs <=1% target |
+| Detector | Fire criterion | False positives | FPR on 1,133 | vs <=1% target |
 |---|---|---:|---:|---|
-| Rules only, **before** this change | any evidence | 12 | **1.0610%** | **FAIL** |
-| Rules only, **after** this change | any evidence | 1 | **0.0884%** | **PASS** |
+| Rules only, **before** this change | any evidence | 12 | 1.0591% | **FAIL** |
+| Rules only, **after** this change | any evidence | 1 | **0.0883%** | **PASS** |
 
-The single remaining false positive is one Devanagari message triggering `apk_install` on
-"डाउनलोड करें" ("download") in conversational text, at UNCERTAIN, not HIGH/MEDIUM.
+The single remaining false positive is one Devanagari message that triggers `apk_install` (weight
+0.9) on "डाउनलोड करें" ("download") in conversational text. Because that weight clears the 0.85
+HIGH cut it lands at **HIGH** — the worst bucket — and it is the only row above LOW. The 11
+urgency-only rows are still *flagged* (they keep their evidence) but sit at LOW, so they do not count
+against a verdict. This one is worth a follow-up: the rule fires on a bare "download" verb with no
+app/APK noun, which is the shape of false positive to tighten.
 
-Because the only surviving hit is already the lowest non-LOW rung, the FPR is identical at every
-risk threshold:
+Because exactly one row clears the ladder and no row sits strictly between LOW and HIGH, the FPR is
+identical at every risk threshold:
 
 | Threshold | FPR |
 |---|---:|
-| `>= UNCERTAIN` | 0.0884% |
-| `>= MEDIUM` | 0.0884% |
-| `>= HIGH` | 0.0884% |
+| `>= UNCERTAIN` | 0.0883% |
+| `>= MEDIUM` | 0.0883% |
+| `>= HIGH` | 0.0883% |
 
 So on this set the result is **threshold-insensitive**, which is the useful property for a
-calibrated-abstention claim: nothing benign is being pushed into a high-risk bucket.
+calibrated-abstention claim. The caveat is honest: the eleven urgency-only rows are still *flagged*
+at LOW and would still be surfaced to the explainer. What the fix bought is that they no longer set a
+verdict, which is what the `<=1%` criterion measures.
 
 ## 5. Root cause and the fix
 
@@ -125,9 +137,9 @@ Verification: full suite `786 passed, 19 skipped` before and after; no test chan
   an org member), and the Kaggle datasets are not shared with `sachin0496`. The *model* half of the
   test must run on Kaggle. What is reported here is the **rules-only** detector, which is a shipped
   component and the one whose failure mode this test exposed.
-- **Campaign-clustered CI.** With 1 false positive in 1,131 the Wilson interval is `[0.0156%,
-  0.4993%]`. A campaign-clustered bootstrap is not meaningful at this event count (one cluster); the
-  honest statement is "1 flag in 1,131, exact 95% Wilson upper bound 0.50%".
+- **Campaign-clustered CI.** With 1 false positive in 1,133 the exact 95% Wilson interval is
+  approximately `[0.0156%, 0.4986%]`. A campaign-clustered bootstrap is not meaningful at this event
+  count (one cluster); the honest statement is "1 flag in 1,133, 95% upper bound 0.50%".
 - Handoff section 5 has **not** been edited; that is a shared results table and should be updated
   when the model numbers land alongside it.
 
