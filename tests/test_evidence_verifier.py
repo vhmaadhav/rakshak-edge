@@ -44,6 +44,32 @@ def test_uncertain_without_evidence_stays_uncertain():
     assert Action.VERIFY_INDEPENDENTLY in pkg.allowed_actions
 
 
+def test_bare_urgency_does_not_escalate_a_legitimate_message():
+    """``urgency`` is generic and fires on ordinary conversation ("I am leaving early", "बहुत
+    जल्दी"). On its own it must not set a verdict, or legitimate Indian transactional SMS get
+    flagged: urgency-only packages caused 12 of the 13 false positives on the GroundLM
+    policy-negative set, a 1.06% FPR against a <=1% target (docs/GROUNDLM_FPR.md)."""
+    pkg = package_for("I am leaving early for home, very jaldi today", state="benign")
+    assert [e.type for e in pkg.evidence] == ["urgency"]
+    assert pkg.risk is Risk.LOW
+
+
+def test_bare_urgency_with_fusion_scam_state_still_warns():
+    """The downgrade must not override fusion: if fusion says scam, bare urgency is UNCERTAIN."""
+    pkg = package_for("I am leaving early for home, very jaldi today", state="scam")
+    assert [e.type for e in pkg.evidence] == ["urgency"]
+    assert pkg.risk is Risk.UNCERTAIN
+
+
+def test_urgency_alongside_a_real_type_still_escalates():
+    """Only *bare* urgency is downgraded. Urgency next to a specific type keeps that type's risk."""
+    pkg = package_for("Turant KYC verify karo warna account block ho jayega", state="uncertain")
+    types = {e.type for e in pkg.evidence}
+    assert "urgency" in types
+    assert types - {"urgency"}, "expected at least one specific evidence type"
+    assert pkg.risk in {Risk.MEDIUM, Risk.HIGH}
+
+
 def test_invalid_scam_state_rejected():
     with pytest.raises(ValueError):
         build_package(canonicalize(LOW_TEXT), [], "maybe")
