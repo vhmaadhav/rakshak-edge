@@ -16,6 +16,12 @@ Commits (all pushed to `main`):
 | `a9d3a1a` | GroundLM: corrected to full 1,393-row data, CRC32-verified |
 | `65a260c` | GroundLM: measured cost of the fix on real data |
 | `d25e011` | Data fetch status: GroundLM entries corrected |
+| `058b230` | Build: actionable error when PhreshPhish is absent |
+| `2951c9b` | Verifier: document MAX_SUMMARY 280 vs prompt 200 |
+| `d90213b` | E2E detection harness + rules-path measurement |
+| `e2cfa62` | E2E: lang_shift and temporal split results |
+| `dc223d3` | Rules: sentence-scoped parcel/job/prize widening |
+| `63f9323` | Verifier: LOW-risk summary no longer reassures |
 
 **Closed: handoff task 1 (GroundLM FPR).** `docs/GROUNDLM_FPR.md`. Rules-only FPR on the 1,133
 scoreable policy negatives went **1.0591% -> 0.0883%**, passing the <=1% go/kill line. Root cause:
@@ -45,10 +51,38 @@ lang_shift test 1,677. Seven of eight targets fetched and loader-verified; Groun
 1.66 GB archive by HTTP range request (53 KB fetched, CRC32-verified byte-identical). PhreshPhish
 not fetched (5.25 GB) and its Hub columns cannot satisfy `load_phreshphish` anyway.
 
+**NEW: `scripts/e2e_detection.py` + `docs/E2E_DETECTION.md`.** Scores the full local path
+(`package_for_sms` -> three-state decision) on a held-out split, `--json` for diffing. Headline on
+`campaign/test` (22,145 rows): **precision 0.9259, recall 0.0201, F1 0.0393, FPR 0.17%, abstention
+5.9%, and 83.8% of fraud produces no evidence at all.** The document's whole point is that this is
+*not* a detector result: the rules are a high-precision evidence extractor, and the 54% "accuracy on
+decided rows" is the arithmetic of a component that mostly says nothing. Handoff section 5's F1 0.98
+comes from the learned teacher/student, not this path.
+
+Two consequences that constrain everything else: (a) because the Llama layer may only verbalise
+package evidence, **only 16.2% of real fraud has anything to explain** — the binding constraint on
+the ELA claim; (b) at 5.9% abstention the calibrated three-state design has collapsed to two states.
+Cross-checked on `label_scam` (recall 0.0157), so the promotions-inflate-recall caveat is real but
+immaterial. `lang_shift` recall is 3x `campaign` recall (6.2% vs 2.0%), the *opposite* of the learned
+student's Hinglish collapse — do not assert "the rules fail on Hinglish". `temporal` is degenerate
+(0 true positives).
+
+**Rules widened** (`docs/RULE_COVERAGE.md`, subagent work, independently re-verified). New
+sentence-scoped subject+trigger pairing with guard phrases. Fraud with no evidence 39.10% -> 36.09%
+on the 3,000-row sample, benign `>=UNCERTAIN` unchanged at 1.38%; whole corpus 43.65% -> 41.27%,
+benign 1.23% -> 1.25%. On `campaign/test` independently: scam no-evidence 84.60% -> 83.78%,
+`prize_lottery` 370 -> 423, tp/fp/fn unchanged — it widens what the explainer can cite on ~1 pp more
+fraud and does not move recall.
+
+**Safety fix.** The LOW-risk template said "No scam signals were found by the rules", which is what a
+user sees for the 83.8% of real scams that produce no evidence — a clean bill of health for four out
+of five scams. Reworded to state the limit of the check and keep the caution, with a regression test
+verified to fail on the old wording.
+
 ## Still open
 
 1. Model-side GroundLM FPR (needs Kaggle/HF access).
-2. Rules coverage widening — in flight this session, see `docs/RULE_COVERAGE.md` when it lands.
+2. ~~Rules coverage widening~~ — **done**, `docs/RULE_COVERAGE.md`.
 3. Rank-arm GPU rerun for the real latency/token numbers.
 4. PhreshPhish URL pipeline: needs the Kaggle extract job, not the Hub parquet.
 5. Temporal split rests on 77 dated smishing rows — do not quote temporal F1 as robust.
