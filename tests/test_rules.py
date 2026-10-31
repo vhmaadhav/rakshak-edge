@@ -84,3 +84,92 @@ def test_devanagari_and_hinglish_scam_fires_the_new_types():
 def test_devanagari_negated_otp_warning_stays_benign():
     types = {e.type for e in run_rules(canonicalize("ओटीपी किसी को न बताएं"))}
     assert "credential_request" not in types
+
+
+# ---------------------------------------------------------------------------
+# Clause-scoped windows. A flat character window misses a scam when the subject and the
+# payment demand land in different clauses of the same sentence, which is the commonest
+# phrasing in the real corpus ("parcel ... due to an unpaid shipping fee").
+# ---------------------------------------------------------------------------
+
+
+def _types(text):
+    return {e.type for e in run_rules(canonicalize(text))}
+
+
+def test_clause_window_fires_across_a_sentence_phrase():
+    """Subject and demand inside one sentence but further apart than the old 50-char window."""
+    text = (
+        "Post Office Your parcel have be redirect to your local Post Office branch due to an "
+        "unpaid shipping fee To reschedule a delivery please visit "
+        "http://postoffice-tracking updates.com"
+    )
+    assert "parcel_customs" in _types(text)
+
+
+def test_clause_window_does_not_span_sentences():
+    """A parcel mention in one sentence and an unrelated fee in the next must not pair up."""
+    text = "Your parcel arrived at the depot. The coffee here costs a small fee."
+    assert "parcel_customs" not in _types(text)
+
+
+def test_plain_delivery_notification_stays_clean():
+    """Delivery confirmations with no money demand must stay clean."""
+    for text in (
+        "Your Flipkart package has been delivered to the reception desk. Track it in the app.",
+        "Your parcel is out for delivery and will arrive between 2pm and 4pm.",
+    ):
+        assert "parcel_customs" not in _types(text), text
+
+
+def test_legit_order_confirmation_with_amount_stays_clean():
+    """An ordinary order confirmation can mention an amount payable without being a scam."""
+    text = (
+        "Your Snapdeal order will be delivered by Blue Dart. Amount payable is Rs 439. "
+        "Track on http://bluedart.in/?79125099782"
+    )
+    assert "parcel_customs" not in _types(text)
+
+
+def test_job_rule_fires_on_daily_salary_recruitment():
+    """Recruit + promised daily salary in one sentence is the Telegram-job signature."""
+    text = "Part-time daily salary of 3,000 rupee no time limit no fee, contact wa.me/919999999999"
+    assert "job_task_scam" in _types(text)
+
+
+def test_job_rule_does_not_join_separate_sentences():
+    """The pairing is sentence-scoped on purpose: a job ad and a later salary line stay apart."""
+    text = "We are hiring part time staff. Daily salary 3000 pesos. Apply on wa.me/919999999999"
+    assert "job_task_scam" not in _types(text)
+
+
+def test_job_rule_ignores_personal_job_talk():
+    """Genuine chat about a temporary job with an ordinary hourly rate must stay clean."""
+    text = (
+        "I got this temp job 2 promote IT stuff at NUS fro 28 jul-1 aug "
+        "pay ard 5.50-7.50 u interested?"
+    )
+    assert "job_task_scam" not in _types(text)
+
+
+def test_job_rule_ignores_ordinary_job_ads():
+    for text in (
+        "Looking for a new job? A good CV should be short and relevant.",
+        "My job is somehow related to machine learning and I like it.",
+    ):
+        assert "job_task_scam" not in _types(text), text
+
+
+def test_prize_rule_fires_on_plural_prizes():
+    """"prizes" (plural) is an unambiguous prize claim and used to be missed."""
+    assert "prize_lottery" in _types("Win exciting prizes worth Rs 1 crore, call 1800 now")
+
+
+def test_prize_rule_ignores_ordinary_use_of_lucky():
+    assert "prize_lottery" not in _types("I swear today is my lucky day")
+
+
+def test_otp_warning_stays_clean_after_widening():
+    """A genuine, negated OTP warning must never become credential_request."""
+    text = "Your OTP is 482913. Do not share it with anyone. -SBI"
+    assert "credential_request" not in _types(text)

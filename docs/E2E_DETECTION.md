@@ -141,7 +141,28 @@ Three things worth noting:
 - FPR is stable at 0.17-0.46% across all three, so the false-positive behaviour is the one property
   that does transfer. That is consistent with the GroundLM result (0.0883%).
 
-## 6. Reproduce / extend
+## 6. Effect of the widened rules (`src/rakshak/rules.py`)
+
+The sentence-scoped `parcel_customs` / `job_task_scam` and the `prizes?` / "win ... prize" additions
+were merged after the measurements above. Re-running the same harness on `campaign/test` and
+comparing against the pre-change tree (`git stash`, same command):
+
+| Quantity | before | after |
+|---|---:|---:|
+| scam rows with no evidence | 84.60% | **83.78%** |
+| `prize_lottery` hits | 370 | **423** |
+| tp / fp / fn (scam decision) | 225 / 18 / 10968 | 225 / 18 / 10968 |
+
+So roughly **92 more fraud rows in the test split now produce evidence** (0.82 pp of 11,193), almost
+all from the lottery plural fix, and the scam verdict counts are untouched. That is consistent with
+the independent measurement in `docs/RULE_COVERAGE.md` (sample fraud no-evidence 39.10% → 36.09%,
+benign `>=UNCERTAIN` unchanged at 1.38%, whole-corpus benign 1.23% → 1.25%).
+
+Read that effect for what it is: **this widens what the explainer can talk about, not what the
+detector catches.** Recall against `label_binary` did not move at all. Verdict-level recall is a
+model/fusion problem (section 4); rule coverage buys the *narrative* on ~1 pp more fraud.
+
+## 7. Reproduce / extend
 
 `scripts/e2e_detection.py` takes `--split` and `--part`, so the same measurement is available for
 `lang_shift` (the Hinglish collapse), `temporal` (77 dated positives — do not quote as robust) and
