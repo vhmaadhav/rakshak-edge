@@ -116,7 +116,32 @@ This is why the two halves of the project are not separable: the ML detector sup
 rules supply the grist for the explanation, and the numbers above show the rules half is
 under-supplying.
 
-## 5. Reproduce / extend
+## 5. The other frozen splits (same harness)
+
+All three frozen partitions, same path, same decision rule:
+
+| Split | n | pos. share | Precision | Recall | F1 | FPR | Abstain | fraud w/ no evidence |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `campaign/test` | 22,145 | 50.5% | 0.9259 | 0.0201 | 0.0393 | 0.17% | 5.9% | 83.8% |
+| `lang_shift/test` | 1,677 | 21.3% | 0.7857 | **0.0616** | 0.1143 | 0.46% | 2.6% | 70.3% |
+| `temporal/test` | 11,029 | 0.7% | 0.0000 | 0.0000 | 0.0000 | 0.17% | 0.5% | 88.3% |
+
+Three things worth noting:
+
+- **`lang_shift` recall is 3x the campaign recall (6.2% vs 2.0%)**, not worse. That is the opposite
+  of the Hinglish collapse seen for the *learned* student (`docs/HANDOFF.md`: lang_shift F1 0.36
+  without KD), and it makes sense: the rules are hand-written bilingual keyword lists, so they fire
+  on romanised Hindi ("OTP bhejo", "account band") just as readily as English. The learned model's
+  Hinglish weakness is a different failure mode and this measurement neither confirms nor excuses
+  it. It does mean "the rules fail on Hinglish" should not be asserted.
+- **`temporal` is degenerate for this component** — 0 true positives at any threshold, with 68 of
+  its 77 positives producing no evidence. This is the 77-dated-row caveat in
+  `docs/DATA_FETCH_STATUS.md` showing up as a hard number: quote nothing from this row except as
+  evidence that the split is too thin to measure a rules path.
+- FPR is stable at 0.17-0.46% across all three, so the false-positive behaviour is the one property
+  that does transfer. That is consistent with the GroundLM result (0.0883%).
+
+## 6. Reproduce / extend
 
 `scripts/e2e_detection.py` takes `--split` and `--part`, so the same measurement is available for
 `lang_shift` (the Hinglish collapse), `temporal` (77 dated positives — do not quote as robust) and
