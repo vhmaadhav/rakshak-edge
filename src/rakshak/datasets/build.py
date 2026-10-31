@@ -381,6 +381,20 @@ def build_phreshphish(src: Path, out_dir: Path, rep: dict) -> None:
     the official train and test id lists. There is no cal partition: the PhreshPhish protocol
     (AP and precision at 90% recall) takes no threshold.
     """
+    if not src.exists():
+        # A missing release is a normal state on a fresh checkout: the corpus is 5 GB and is
+        # git-ignored. Fail with an actionable message instead of a bare pyarrow traceback, and
+        # record it in the report so a run that skips this family is obviously incomplete.
+        raise SystemExit(
+            f"PhreshPhish release not found at {src}.\n"
+            "It is not committed (about 5 GB). Either fetch it, or skip this family:\n"
+            "  python -m rakshak.datasets.build --skip-urls\n"
+            "  python -m rakshak.datasets.build --phreshphish /path/to/phreshphish_full\n"
+            "Note: the Hugging Face parquet copy does NOT work here. Its columns are "
+            "(sha256, url, label, target, date, lang, lang_score, html); this loader needs the "
+            "official release with split/bench_* columns, produced by the Kaggle extract job "
+            "kaggle/jobs/phreshphish_extract.py."
+        )
     raw = load_phreshphish(src)
     urls = build_phreshphish_frame(raw)
     urls["group"] = urls["reg_domain"].where(urls["reg_domain"] != "", urls["url_norm"])

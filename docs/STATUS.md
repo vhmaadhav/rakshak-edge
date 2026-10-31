@@ -1,3 +1,61 @@
+# Status — 2026-10-31 (Sachin session)
+
+## Session log: 2026-10-31
+
+Environment: macOS arm64, 10 cores, 16 GB, ~5.7 GB free disk. No HF token (not in org
+`highestintheroom`), Kaggle account `sachin0496` has no access to `maadhavvh/rakshak-*`, no ntfy
+topic. So: no model training this session; everything below is rules/data/eval code plus a full
+public-data rebuild.
+
+Commits (all pushed to `main`):
+
+| Commit | What |
+|---|---|
+| `b2a5ab5` | Rank-arm audit + bash-3.2 portability fix + evidence-coverage measurement |
+| `f29521a` | GroundLM FPR test (first open handoff task) |
+| `a9d3a1a` | GroundLM: corrected to full 1,393-row data, CRC32-verified |
+| `65a260c` | GroundLM: measured cost of the fix on real data |
+| `d25e011` | Data fetch status: GroundLM entries corrected |
+
+**Closed: handoff task 1 (GroundLM FPR).** `docs/GROUNDLM_FPR.md`. Rules-only FPR on the 1,133
+scoreable policy negatives went **1.0591% -> 0.0883%**, passing the <=1% go/kill line. Root cause:
+`urgency` (generic, fires on "जल्दी"/"I'm leaving early"/legitimate "your bill is due") could set
+`Risk.UNCERTAIN` on its own; 11 of 12 false positives were urgency-only. Fix in
+`evidence.py::_risk` downgrades a package whose evidence is *entirely* urgency, unless fusion
+already called it a scam. Cost, measured on real ScamShield: -5.6 pp fraud recall for -1.06 pp
+benign FP; that recall sits in 14 urgency-only rows whose real defect is narrow
+`kyc_block_urgency` / `parcel_customs` coverage, so it is recoverable by rules work, not by
+re-inflating the keyword.
+
+**Half-closed: handoff task 2a (rank-arm audit).** `docs/RANK_ARM_AUDIT.md`. The 0 s / 0 token
+reading was not a broken timer. `rank_candidates_for()` returns one entry per evidence item, so an
+empty evidence package (any benign message) makes the arm do zero model work. `new_tokens` was
+hardcoded to 0 and nothing recorded the work done. Now the job records `rank_items` / `rank_empty` /
+`rank_targets` and `aggregate` reports `zero_work_rate` plus `*_worked` latencies. The GPU rerun is
+still needed for the numbers. **The real finding is evidence coverage: 39.1% of genuine fraud
+produces no evidence at all.**
+
+**Fixed: 43 failing tests.** `colab/launch.sh` used `${GPU^^}` and `mapfile`, both bash 4+; the Mac
+runs bash 3.2, so launch.sh died on its own log line. Suite went 43 failed -> **786 passed, 19
+skipped**.
+
+**Data rebuilt from public sources** (`docs/DATA_FETCH_STATUS.md`). SMS now reproduces the datacard
+exactly: 137,153 raw -> 110,827 kept -> 88,401 campaigns; campaign split 76,839/11,072/22,145;
+lang_shift test 1,677. Seven of eight targets fetched and loader-verified; GroundLM recovered from a
+1.66 GB archive by HTTP range request (53 KB fetched, CRC32-verified byte-identical). PhreshPhish
+not fetched (5.25 GB) and its Hub columns cannot satisfy `load_phreshphish` anyway.
+
+## Still open
+
+1. Model-side GroundLM FPR (needs Kaggle/HF access).
+2. Rules coverage widening — in flight this session, see `docs/RULE_COVERAGE.md` when it lands.
+3. Rank-arm GPU rerun for the real latency/token numbers.
+4. PhreshPhish URL pipeline: needs the Kaggle extract job, not the Hub parquet.
+5. Temporal split rests on 77 dated smishing rows — do not quote temporal F1 as robust.
+6. `apk_install` false positive at HIGH on a bare Devanagari "download" verb.
+
+---
+
 # Status — 2026-10-30
 
 ## Done
