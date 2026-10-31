@@ -203,6 +203,27 @@ def test_template_explanation_passes_verifier(text, state, lang):
     assert len(out["summary"]) <= 280
 
 
+@pytest.mark.parametrize("lang", ["en", "hinglish"])
+def test_low_risk_summary_does_not_reassure_the_user(lang):
+    """LOW means "the rules found nothing", not "the message is safe".
+
+    On the campaign test split 83.8% of labelled scams produce no evidence at all, and this
+    string is what a user is shown for every one of them (docs/E2E_DETECTION.md). Asserting on
+    the wording is deliberate: a reassurance here is the worst failure mode a scam detector can
+    have, so it must not be reintroduced as a "friendlier" edit.
+    """
+    pkg = package_for(LOW_TEXT, state="benign")
+    assert pkg.risk is Risk.LOW
+    summary = template_explanation(pkg, lang=lang)["summary"].lower()
+    # It must say the check was limited...
+    assert "no known scam pattern" in summary or "jaana-pehchana scam pattern" in summary
+    # ...and it must not claim the message is fine.
+    for reassurance in ("no scam signals", "koi scam sanket nahi", "is safe", "safe hai"):
+        assert reassurance not in summary, (reassurance, summary)
+    # The caution stays.
+    assert "otp" in summary
+
+
 # --- prompts -------------------------------------------------------------------
 
 def test_chat_prompt_uses_llama3_tokens_and_no_raw_text():
