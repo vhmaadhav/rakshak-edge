@@ -82,6 +82,8 @@ class TrainConfig:
     seed: int = 0
     source_strategy: str = "erm"
     dro_eta: float = 0.01
+    source_adv_weight: float = 0.05
+    source_adv_ramp_epochs: int = 3
 
 
 def pick_device(name: str = "auto") -> torch.device:
@@ -197,7 +199,6 @@ def train_student(spec: ModelSpec, train: Featurized, y_train, cal: Featurized, 
     torch.manual_seed(cfg.seed)
     rng = np.random.default_rng(cfg.seed)
     model = build_model(spec).to(device)
-    opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     y = np.asarray(y_train, dtype=np.float64)
     labelled = ~np.isnan(y)
     n_pos = int((y[labelled] == 1).sum())
@@ -218,7 +219,18 @@ def train_student(spec: ModelSpec, train: Featurized, y_train, cal: Featurized, 
     y_cal_arr = np.asarray(y_cal, dtype=np.int64)
     from rakshak.models.source_balance import SourceObjective
 
-    objective = SourceObjective(sources, len(y), cfg.source_strategy, cfg.dro_eta, device)
+    adversarial = cfg.source_strategy == "adversarial"
+    objective = SourceObjective(sources, len(y), "erm" if adversarial else cfg.source_strategy,
+                                cfg.dro_eta, device)
+    adversary = None
+    parameters = list(model.parameters())
+    if adversarial:
+        from rakshak.models.source_adversary import make_adversary
+        if cfg.source_adv_weight < 0 or cfg.source_adv_ramp_epochs < 1:
+            raise ValueError("invalid source-adversary weight or ramp")
+        adversary = make_adversary(model, sources, y, device)
+        parameters += list(adversary.parameters())
+    opt = torch.optim.AdamW(parameters, lr=cfg.lr, weight_decay=cfg.weight_decay)
 
     best_pr, best_state, best_epoch, stale = -np.inf, None, -1, 0
     history: list[dict] = []
@@ -226,7 +238,9 @@ def train_student(spec: ModelSpec, train: Featurized, y_train, cal: Featurized, 
     for epoch in range(cfg.epochs):
         model.train()
         order = objective.order(rng)
-        loss_sum, batches = 0.0, 0
+        loss_sum, aux_sum, batches = 0.0, 0.0, 0
+        coefficient = (cfg.source_adv_weight * min(1, (epoch + 1) / cfg.source_adv_ramp_epochs)
+                       if adversary is not None else 0)
         for s in range(0, len(order), cfg.batch_size):
             idx = order[s:s + cfg.batch_size]
             batch = train.take(idx)
@@ -237,18 +251,28 @@ def train_student(spec: ModelSpec, train: Featurized, y_train, cal: Featurized, 
             logits = forward_feats(model, spec, batch, device)
             loss = distillation_loss(logits, yb, tb, pos_weight=pos_weight, alpha=cfg.kd_alpha,
                                      temp=cfg.kd_temp,
-                                     reduction="mean" if cfg.source_strategy == "erm" else "none")
-            if cfg.source_strategy != "erm":
+                                     reduction="mean" if objective.strategy == "erm" else "none")
+            if objective.strategy != "erm":
                 loss = objective.reduce(loss, idx)
+            class_loss = loss
+            if adversary is not None:
+                auxiliary = adversary.loss(idx, yb, coefficient)
+                if not bool(torch.isfinite(auxiliary)):
+                    raise ValueError("non-finite source-adversary loss")
+                loss = loss + auxiliary
+                aux_sum += float(auxiliary.detach())
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
-            loss_sum += float(loss.detach())
+            loss_sum += float(class_loss.detach())
             batches += 1
         cal_scores = predict_scores(model, spec, cal, device)
         pr = float(pr_auc(y_cal_arr, cal_scores))
         history.append({"epoch": epoch, "train_loss": loss_sum / max(batches, 1),
                         "cal_pr_auc": pr, "source_weights": objective.weights()})
+        if adversary is not None:
+            history[-1].update(source_ce=aux_sum / max(batches, 1),
+                               source_coefficient=coefficient)
         log(f"    epoch {epoch}: loss {loss_sum / max(batches, 1):.4f} cal PR-AUC {pr:.4f}")
         if np.isfinite(pr) and pr > best_pr:
             best_pr, best_state, best_epoch, stale = pr, _state_on_cpu(model), epoch, 0
@@ -262,6 +286,9 @@ def train_student(spec: ModelSpec, train: Featurized, y_train, cal: Featurized, 
             if best_state is not None else None,
             "epochs_run": len(history), "seconds": round(time.perf_counter() - start_time, 2),
             "rows": rows_info, "history": history}
+    if adversary is not None:
+        info["adversary"] = adversary.info()
+        adversary.close()
     return model.cpu(), info
 
 

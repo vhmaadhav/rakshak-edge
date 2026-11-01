@@ -1,3 +1,35 @@
+# Completed C-adversary gate — 2026-11-01
+
+- Saved-output audit v1/tree `f50b5a0c3bbd5b55d085b046d1ee1df0d7a21516ca6bae98facf45e3a5ae21a1`, **ok**,60.3s; one wait/fetch. Recorded decision **go**: ScamShield mean F1 0.733961→0.749275, paired delta0.015314 [0.013591,0.017423], p0.000999; other-source guards pass.
+- Campaign ERM→adversary .974774→.975553; lang_shift .369773→.396633; Mishra .937259→.945886; UCI .882857→.891299; temporal .871039→.866594. All seeds/absolute CIs/paired tests/external failures in `SOURCE_ADVERSARY_RESULTS.md`. No prior ERM substitution, seed selection or held-out improvement claim.
+- Keep the intervention for further validation; no checkpoint deployment. Independent Indian validation OPEN. The newly requested fused false-alarm audit takes precedence over further source-method experiments.
+
+# C next experiment predeclaration — 2026-11-01
+
+- Static provenance check while jobs are pending: corrected the datacard's IMC25 synthetic=True typo to match the existing loader's `synthetic=False`. This documents the source flag, not independent authenticity. No data, split, model code or running bundle changed.
+
+- Launched **sms_source_adversary-c-adv-20261101 v1**, dirty base56892e7, tree `a09fb20ed34903e9605e7f7e48c26aed055a4da18ae4a41a0d7c8588214b9573`. Exact planned args/attachments/T4/internet above; original single wait_event subscriber opened. Together with B this is two GPU kernels. Startup Torch checks and all model results pending; no runtime/quality pass claimed.
+
+- Prior C milestone is committed56892e7 and open as PR #3; both balancing/DRO arms killed.
+  This new isolated `ci/source-adversary-20261101` branch leaves that PR and PR #2 unchanged.
+- Hypothesis: conditional training-source adversarial regularization reduces learned source
+  shortcuts without aligning different label marginals. Fixed candidate: learned CNN features
+  only, per-training-label MLP64 source heads, CE1 with reversed encoder coefficient ramping
+  to.05 over3epochs, inverse label/source-cell weights. No test/external training rows.
+- Go: positive ScamShield paired campaign-bootstrap mean-F1 lower CI; no other source-fold loss
+  larger than ERM CI half-width. Otherwise kill. Seeds1/2/3, same six frozen splits and
+  train-only KD, max15/patience3 cal PR-AUC, AdamW.002/wd.0001, batch128, alpha.7/T2.
+  Cal-only thresholds; all external operating points reported without tuning. Detailed primary
+  sources and limits: `docs/SOURCE_ADVERSARY.md`; adaptation, not exact DANN/CDAN, benefit UNVERIFIED.
+- Focused metadata/gate/dependency checks: **10 passed,1 skipped in0.18 s**, pre-test Tctl37.5 C,
+  changed-file ruff clean. Torch absent locally; synthetic gradient/RNG/zero-weight checks are
+  mandatory on Kaggle before corpus access. No full-suite rerun before next finished milestone.
+- Planned private T4 job `sms_source_adversary --run-name c-adv-20261101 --internet
+  --datasets maadhavvh/rakshak-data maadhavvh/rakshak-teacher-logits
+  --job-args="--seeds 1 2 3 --epochs 15 --n-boot 1000 --teacher-seed 0"`.
+  One completion subscription/fetch only after launch; B remains on its original event waiter.
+  No new experiment result or deployment claim yet.
+
 # Completed C experiment — 2026-11-01
 
 - **Final C milestone verification:** ONE complete unit-suite invocation exited0:
@@ -385,3 +417,13 @@ Uncommitted: NIDS module + teacher/Colab changes (next milestone commit).
 ## Rules
 Kaggle for all compute; no Modal without Maadhav's explicit per-run OK; cloud-credit labelling parked; commit very rarely as vhmaadhav.
 - New --run-name tests (tests/test_kaggle_run_name.py) not yet run: CPU was 92–94 °C from a non-project process.
+
+# Run update — 2026-11-01: C-adversary complete; new priority order
+
+- `sms_source_adversary-c-adv-20261101` v1, dirty tree `a09fb20ed34903e9605e7f7e48c26aed055a4da18ae4a41a0d7c8588214b9573`, **ok**, 3,635.9s, six splits/36 fits, zero failed units. One original event subscription and one fetch. Args seeds1/2/3, epochs15, nboot1000, teacher-seed0 unchanged. Final acceptance is delegated to the predeclared saved-output gate job.
+- `sms_source_audit-c-adv-audit-20261101` v1, tree `f50b5a0c3bbd`, launched with `--source-tree a09fb20ed34903e9605e7f7e48c26aed055a4da18ae4a41a0d7c8588214b9573 --arms adversarial`; one wait_event subscription. No training/inference in this audit.
+- User's new priority after existing B/C decisions: **fused** Indian transactional false alarms, then clean train-only KD vs no-KD, then further B/C/E/F. Student-only GroundLM FPR 35.92% and SmishX 30.31% are distinct from the rule-layer 0.0883%; no fused result yet. GroundLM design exposure remains in-sample; independent Indian validation stays OPEN. PRs2/3 remain unmerged and unchanged.
+
+# Milestone verification — 2026-11-01: C-adversary
+
+- One full suite invocation for this finished milestone: **834 passed,22 skipped,144 warnings in178.88s**, exit0. Required nice19/taskset0-3/OMP2/MKL2 plus50% CPU quota and85C stop guard. Tctl43.5C before/50.1C after; no thermal interruption. Local Torch missing skips remain explicit; Kaggle synthetic Torch checks passed before training. Full `ruff check .`: **All checks passed!** No code changes after verification.
