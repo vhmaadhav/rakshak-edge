@@ -13,6 +13,7 @@ Model-side FPR and independent Indian validation remain OPEN.
 | 63f9323 LOW-summary caution | Campaign/test rule-coverage failures were used to motivate the wording. | Do not use that split as independent validation of the wording. |
 | 2026-11-01 review fixes | Frozen GroundLM/ScamShield retrospective campaign subsets and existing SMS splits; no rule or threshold tuning. | Measurement correction; no held-out improvement claim. |
 | SmishX | Used as the sole independent validation of the reviewed rule changes after freezing them. No subsequent tuning is permitted from this run. Training overlap was removed by the existing data build. | **Independent, non-Indian-specific**; report frozen-threshold FPR and recall, with no Indian deployment claim. |
+| 2026-11-01 transactional/fusion candidate planning | User-provided aggregate student FPR feedback from GroundLM (35.92%) and SmishX (30.31%) motivated the new task and protective-context candidate; no message rows inspected for these templates/features. Future aggregate diagnostics are also design feedback if used for changes. | Repeated benchmark feedback is **in-sample for intervention selection**; SmishX's earlier independent status applies to the already-frozen reviewed rules/control, not an untouched validation claim for new candidates. |
 
 **Independent Indian held-out validation: OPEN.** Collect consented, privacy-scrubbed real
 Indian SMS received after the rules freeze: bank/UPI/OTP/delivery negatives plus received

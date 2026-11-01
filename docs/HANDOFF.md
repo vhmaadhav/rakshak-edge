@@ -7,6 +7,24 @@ GroundLM urgency and ScamShield widening numbers are **in-sample: these rows inf
 design**. Read the design-set register in `docs/GROUNDLM_FPR.md` before making a safety claim.
 Independent Indian held-out validation remains OPEN; SmishX is independent, non-Indian-specific.
 
+Transactional false-alarm measurement (2026-11-01): the rule/evidence0.0883% is
+**not student or fused FPR**. Newly fitted cal-only fusion baseline/candidate(b), seed1:
+
+| Known fraud endpoint | New baseline | Candidate(b) |
+|---|---|---|
+| GroundLM SCAM FPR |398/1133=35.13% [21.26,47.44]% |418/1133=36.89% [22.27,49.75]% |
+| GroundLM >=UNCERTAIN FPR |419/1133=36.98% |423/1133=37.33% |
+| SmishX SCAM recall |27/226=11.95% |56/226=24.78% (student119/226=52.65%) |
+
+**Kill candidate(b)**: absolute safety/no-increase/recall gates fail. Original runner gate
+also remains unmeasurable on UCI fraud recall (zero mapped fraud positives; legacy spam
+positives642). No relabelling or endpoint substitution. These are **new cal-only models,
+not an identified shipped configuration**; shipped-state artifact identification remains OPEN.
+GroundLM/SmishX feedback is in-sample for new intervention selection, not untouched validation.
+All three seeds/six folds/both endpoints/coverage/paired CIs: `docs/FUSION_TRANSACTIONAL_RESULTS.md`.
+Aggregate diagnostic/source counts: `docs/TRANSACTIONAL_DIAGNOSTIC.md`; real-Indian provenance
+and causal data-gap explanation remain UNVERIFIED. Independent Indian validation stays OPEN.
+
 ## 1. Goal and constraints
 
 - **Project:** offline SMS and URL scam detector on Arm devices, for **Bharat AI-SoC Challenge 2026-27, Problem Statement 3** (on-device cyber safety). Name in the code: Rakshak-Edge.
