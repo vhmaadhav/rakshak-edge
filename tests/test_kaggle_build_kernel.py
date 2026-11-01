@@ -7,6 +7,7 @@ in sys.modules while the class body runs, so an unregistered job module crashed 
 from __future__ import annotations
 
 import importlib.util
+import json
 import shutil
 import subprocess
 import sys
@@ -75,3 +76,21 @@ def test_generated_loader_imports_job_with_dataclass(fake_repo, monkeypatch):
     finally:
         sys.modules.pop("rakshak_job_dc_job", None)
         shutil.rmtree(ns["SCRATCH"], ignore_errors=True)
+
+
+def test_completed_kernel_outputs_can_be_attached_privately(fake_repo):
+    bk, tmp_path = fake_repo
+    bk.main(["--job", "dc_job", "--kernels", "maadhavvh/rakshak-frozen"])
+    metadata = json.loads((tmp_path / "out/dc_job/kernel/kernel-metadata.json").read_text())
+    assert metadata["kernel_sources"] == ["maadhavvh/rakshak-frozen"]
+    assert metadata["is_private"] is True
+
+
+@pytest.mark.parametrize("argv", [
+    ["--kernels", "bad/source/extra"],
+    ["--platform", "colab", "--kernels", "maadhavvh/rakshak-frozen"],
+])
+def test_kernel_attachments_validate_source_and_refuse_colab(fake_repo, argv):
+    bk, _ = fake_repo
+    with pytest.raises(SystemExit):
+        bk.main(["--job", "dc_job", *argv])

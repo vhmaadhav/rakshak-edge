@@ -14,6 +14,9 @@ regex==2026.9.29
 tldextract==5.4.0
 joblib==1.6.0
 threadpoolctl==3.7.0
+# Frozen rule audits reuse the campaign clustering code (pins from uv.lock).
+datasketch==2.0.0
+pyarrow==26.0.0
 transformers==5.19.0
 datasets==5.1.0
 accelerate==1.15.0

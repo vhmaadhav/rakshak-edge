@@ -474,6 +474,8 @@ def main(argv: list[str] | None = None) -> None:
                         help='Kaggle datasets to attach, e.g. maadhavvh/rakshak-data')
     parser.add_argument('--models', nargs='*', default=[], metavar='OWNER/MODEL/...',
                         help='Kaggle model sources to attach')
+    parser.add_argument('--kernels', nargs='*', default=[], metavar='OWNER/SLUG',
+                        help='completed Kaggle kernel outputs to attach privately')
     parser.add_argument('--job-args', default='', metavar='"FLAGS"',
                         help='flags for the job, passed to run(ctx) as ctx.argv, e.g. "--hpo 8"')
     parser.add_argument('--wall-limit-h', type=float, default=0.0, metavar='HOURS',
@@ -502,10 +504,13 @@ def main(argv: list[str] | None = None) -> None:
     for model in args.models:
         if not all(part for part in model.split('/')) or '/' not in model:
             parser.error(f'model must look like OWNER/MODEL/...: {model}')
+    for kernel in args.kernels:
+        if not DATASET_RE.fullmatch(kernel):
+            parser.error(f'kernel must look like OWNER/SLUG: {kernel}')
     colab = args.platform == 'colab'
     if colab:
         for flag, given in (('--gpu', args.gpu), ('--datasets', args.datasets),
-                            ('--models', args.models)):
+                            ('--models', args.models), ('--kernels', args.kernels)):
             if given:
                 parser.error(f'{flag} is a Kaggle option; with --platform colab the accelerator '
                              'comes from colab new --gpu')
@@ -592,7 +597,7 @@ def main(argv: list[str] | None = None) -> None:
         'enable_internet': internet,
         'dataset_sources': list(args.datasets),
         'competition_sources': [],
-        'kernel_sources': [],
+        'kernel_sources': list(args.kernels),
         'model_sources': list(args.models),
         'keywords': [],
     }

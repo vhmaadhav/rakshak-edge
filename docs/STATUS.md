@@ -1,3 +1,112 @@
+# Session log — 2026-11-01: review findings A
+
+- Branch scope: reviewed commits are on `sachin/handoff-tasks-1-2`; `main` is `20ea2b0`.
+  Fixes are prepared in an isolated worktree. One finished milestone, one PR into main;
+  do not push main. Repo identity verified: vhmaadhav <vhmaadhav@hotmail.com>.
+- **A1 predeclaration:** character lengths masquerade as rank target tokens and empty
+  evidence pairs make the rank injection estimate vacuous. Separate generated tokens (zero)
+  from exact tokenizer continuation IDs; restrict rank injection to pairs with candidates
+  on both sides; match freeform comparisons by ID, preserve five attack families, Wilson,
+  Fisher, and add exact McNemar plus campaign-clustered rate/paired intervals.
+  Go: exact accounting, empty rows do no model work, eligible-only denominator, clean tests
+  and lint, successful full Kaggle rerun. Kill: withhold the rank safety/performance claim if
+  any invariant fails; no threshold/model/rule tuning from this test.
+- Planned run: `llama_ela_eval --run-name a1-20261101 --gpu t4 --internet
+  --datasets maadhavvh/rakshak-data --job-args="--n 300 --inject 150 --lang-n 150"`.
+  Base code `038bdd3`, dirty bundle identified by launcher tree SHA; kernel version/results
+  pending. Local model-free checks: **94 passed**, changed-file ruff clean.
+- **Contamination caveat:** GroundLM urgency downgrade used the GroundLM outcomes, and
+  dc223d3 used all ScamShield including test. Post-hoc subdivision does not undo exposure.
+  Report retrospective frozen-split audits as in-sample; independently validate where possible.
+  Historical 0.0883% is rules-only, in-sample; no model-side FPR conclusion follows.
+- A1 launched: private kernel version **1**, tree `48ed512ef46e`, base `038bdd33022d` dirty.
+  ONE `wait_event.sh llama_ela_eval-a1-20261101 --timeout 43200` subscription is open.
+- **A2/A3 predeclaration:** compare byte-identical pre-dc223d3 rules (SHA256
+  `c7c3e3185c982b9879f9f45800d6d1ccca06408a646bb584ae62ce7ccd2ce9a3`) with current rules,
+  and isolate the urgency downgrade using the exact pre-f29521a risk ladder. Production
+  rules and thresholds are frozen. Above-LOW includes abstention; HIGH alone is SCAM.
+  Show any-evidence counts separately; compute cluster CIs and paired A-B tests.
+  GroundLM and ScamShield campaign-hash 20% audit / 80% remainder are explicitly
+  **in-sample: these rows informed rule design**. Existing split membership is unchanged.
+  SmishX is the sole **independent, non-Indian-specific** validation. Go: reconcile
+  GroundLM counts, retain warn-FPR <=1% on scoreable policy negatives as an in-sample
+  gate, and report independent FPR/recall even if they fail. No held-out improvement claim.
+  Kill: withhold any gate/improvement claim not supported by those frozen comparisons.
+  Local synthetic-fixture audit tests: **8 passed**, changed-file ruff clean.
+  Planned run: `rule_review_audit --run-name a23-20261101 --gpu t4 --internet
+  --datasets maadhavvh/rakshak-data` (no training and no model fitting).
+- A2/A3 launched: private kernel version **1**, tree `b1e16e0f1ee9`, base
+  `038bdd33022d` dirty. ONE `wait_event.sh rule_review_audit-a23-20261101 --timeout 43200`
+  subscription is open; together with A1 this uses two GPU slots. Results pending.
+- Full-repository ruff: **All checks passed!** First full pytest attempt interrupted (exit 130)
+  at Tctl **85.6 C**, per thermal cutoff. Retrying after cooling under `nice -n 19` with a
+  temporary user-scope 40% CPU quota. No local training/evaluation was run.
+- **A2/A3 results:** version 1 finished `ok` in 368.1 s; single event received and fetch
+  verified tree `b1e16e0f1ee9369d0c9811e69ac433490f1da6918649c350bbe14dbca59ccf10`.
+  Counts: 1,393 released GroundLM rows / 1,294 negatives / 169 text-less (161 negatives) /
+  1,133 scoreable and eval-eligible negatives. **12 evidence hits, 11 urgency-only, 1 current
+  warning/HIGH flag**. The “13/12” narrative is withdrawn. In-sample warning FPR 12/1,133
+  to 1/1,133 (1.0591% to 0.0883%); current cluster CI [0%, 0.2971%]. Audit subset: 3/131
+  to 0/131, but all rows informed design and Wilson upper bound is 2.85%.
+- **Independent, non-Indian-specific SmishX** (1,107 eligible; policy labels 881 negative /
+  226 fraud): warning FPR 72/881 to 53/881 from urgency downgrade, warning recall 57/226
+  to 38/226; widening then reaches 39/226 with no new negative warning. Current warning
+  FPR **6.0159%** [3.6571%, 8.8725%], recall **17.2566%** [10.6118%, 26.0009%].
+  HIGH FPR **1.1351%**, recall **2.2124%**. SmishX fails the 1% reference gate at both cutoffs.
+  Widening paired recall delta +0.4425 pp [0, 1.4360] pp, p=0.5485: no independent gain claim.
+- ScamShield campaign audit (14,702 eligible rows; in-sample): widening fraud evidence
+  447/1,012 to 485/1,012; warning recall 419/1,012 to 458/1,012; negative warning flags
+  81/9,248 to 82/9,248. Full per-split and paired results: `docs/REVIEW_AUDIT.md`.
+  Decision: **keep measurement corrections; withhold independent safety/improvement claims**.
+  Production rules/thresholds were not tuned. Independent Indian validation remains OPEN.
+- Full unit suite with one worker / `nice -n 19` / temporary 40% CPU quota:
+  **817 passed, 18 skipped, 144 warnings in 117.49 s**. Skips are missing optional torch/ONNX
+  paths; no local model benchmark was run. The earlier multi-worker attempt was interrupted
+  to remove oversubscription. Full-repository ruff remains clean.
+- HF archive check: `hf models info highestintheroom/rakshak-models` returned “not found”
+  with the current authentication; privacy could not be verified, so no upload or repo
+  creation was attempted. Full metrics/manifests/predictions remain in the **private**
+  Kaggle kernel outputs; no data, weights or secrets are staged in git.
+- **A1 results:** private kernel version 1 finished `ok` in 1,622.0 s, no failed units;
+  event and verified fetch match tree
+  `48ed512ef46e0abf629fe7e8da89e1dbca68dbd275516f113900e12eb852932d`.
+  Clean rank: **2,992 actual continuation tokens**, **248 candidate strings**, **zero generated
+  tokens**, **86% zero-work rows**. Worked T4 p50/p95: **0.3110 / 1.0782 s** (not Pi timing).
+  Injection rank **0/39** eligible pairs, **111 excluded**; Wilson [0%, 8.97%], versus
+  matched freeform **11/39**, exact McNemar p=0.0009766. Full freeform **35/150**, slot **0/150**.
+  All five families retained. English point pass **25.81%** overall, **21.62%** on the matched
+  150-package language subset; Hinglish **62.16%**. Rendered unsupported claims zero; raw
+  slot/rank unsupported claims zero. This is an architectural restriction, not learned robustness.
+- **A1 interval supplement predeclaration:** compute pooled point-pass and package-rate
+  campaign-clustered CIs from the exact saved generations, without regenerating text, changing
+  samples, or tuning. Go: bind to the source tree, retain all point denominators and cluster
+  together per message/campaign; kill any CI claim if attachment/provenance fails. The repo
+  launcher now accepts `--kernels OWNER/SLUG`, the official `kernel_sources` metadata field
+  ([Kaggle CLI docs](https://github.com/Kaggle/kaggle-cli/blob/main/docs/kernels_metadata.md)).
+  Six synthetic-fixture/source-attachment tests passed; changed-file ruff clean.
+  Planned `ela_recompute --run-name a1-ci-20261101 --gpu t4 --internet
+  --datasets maadhavvh/rakshak-data --kernels maadhavvh/rakshak-llama-ela-eval-a1-20261101
+  --job-args="--expected-tree 48ed512ef46e0abf629fe7e8da89e1dbca68dbd275516f113900e12eb852932d"`.
+- Interval supplement: private version **1**, outcome **ok**, **72.0 s**; one event wait and
+  verified fetch, tree `9730c50a862b67341634e16c5d07bcbe26574ed84c7d19fe5763d69ddc1e4909`.
+  Frozen generations SHA256 `8a898ef0d8edcf92598729ef8bf6e94e7bc5674f7d914d854aed02cf799e04d1`.
+  Pooled raw point passes: English 16/62 = **25.81%** [13.04%, 40.82%]; matched English
+  8/37 = **21.62%** [8.00%, 40.00%]; Hinglish 23/37 = **62.16%** [40.61%, 79.59%].
+  High package pass mostly reflects empty packages; this does not establish semantic entailment.
+  **A1 go criterion met:** real token accounting and empty-work invariants verified in artifacts,
+  eligible rank denominator, all five families retained, full inference and interval jobs succeeded.
+  Decision: **keep correction**; withhold learned robustness/on-device speed claims.
+- Final full-suite rerun after the interval/attachment additions stopped at Tctl **87.0 C**
+  (557 passed, 11 skipped before interrupt). Retrying after cooling at a lower temporary
+  **15% CPU quota**, single worker / `nice -n 19`. Focused interval/attachment tests: **6 passed**;
+  previous complete suite **817 passed, 18 skipped**. Do not present interrupted runs as passes.
+- **Final milestone verification:** lower-quota complete run exited 0:
+  **822 passed, 18 skipped, 144 warnings in 360.89 s (0:06:00)**. Full `ruff check .`:
+  **All checks passed!** Final Tctl 56.1 C. No further source changes after these checks.
+  One milestone commit on `sachin/handoff-tasks-1-2`; update the existing **PR #2** into main,
+  with no direct main push, no force push and no automatic merge. Independent Indian
+  held-out validation, model-side GroundLM, QLoRA and device measurements remain OPEN.
+
 # Status — 2026-10-31 (Sachin session)
 
 ## Session log: 2026-10-31

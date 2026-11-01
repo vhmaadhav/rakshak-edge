@@ -1,5 +1,27 @@
 # Rule coverage on ScamShield
 
+**in-sample: these rows informed rule design.** dc223d3 was designed using the sampled
+and full ScamShield corpus, including official test rows. The historical “independently
+verified” measurements below mean rerunning the implementation, not independent validation.
+The 2026-11-01 frozen-rule audit compares old/new on campaign-disjoint retrospective
+subsets without changing the original splits. SmishX is the sole **independent,
+non-Indian-specific** validation; no held-out improvement is claimed. The exposure register
+and the OPEN post-freeze Indian data collection plan are in `docs/GROUNDLM_FPR.md`.
+
+Frozen Kaggle results (2026-11-01; full tables/CIs/paired tests in `docs/REVIEW_AUDIT.md`):
+
+| Population | Before widening | After widening | Interpretation |
+|---|---|---|---|
+| ScamShield audit, known fraud with evidence | 447/1,012 (44.170%) | 485/1,012 (47.925%) | In-sample |
+| ScamShield audit, warning recall | 419/1,012 (41.403%) | 458/1,012 (45.257%) | In-sample |
+| ScamShield audit, negative warning flags | 81/9,248 (0.876%) | 82/9,248 (0.887%) | In-sample false-positive cost |
+| SmishX, fraud warning recall | 38/226 (16.814%) | 39/226 (17.257%) | Independent, non-Indian-specific; delta CI spans zero |
+| SmishX, negative warning flags | 53/881 (6.016%) | 53/881 (6.016%) | Independent, non-Indian-specific; high FPR |
+
+The ScamShield audit is eval-eligible only, so it excludes duplicates and known synthetic
+rows. It is not comparable to the historical full raw-corpus denominator below. HIGH/SCAM
+decisions are unchanged by widening. No independent improvement is established.
+
 How often the deterministic rules in `src/rakshak/rules.py` stay silent on the real ScamShield
 data that ships in `data/raw/hf_sidzzz07_scamshield/` (85,680 rows: 54,598 benign, 24,312
 promotion, 6,770 genuine fraud).

@@ -55,10 +55,9 @@ from rakshak.ela_eval import (
     append_payload,
     balanced_subset,
     ela_prompt,
-    fisher_p,
     freeform_prompt,
-    harmful_flips,
     injection_case,
+    injection_comparisons,
     json_stop_ready,
     max_new_tokens_for,
     package_for_sms,
@@ -178,10 +177,9 @@ def _mean_logprobs(tok, model, prefix, candidates):
     import torch
     import torch.nn.functional as F
 
-    prefix_ids = tok(prefix, add_special_tokens=False)["input_ids"]
+    prefix_ids, candidate_ids = _rank_token_ids(tok, prefix, candidates)
     scores = []
-    for cand in candidates:
-        cand_ids = tok(cand, add_special_tokens=False)["input_ids"]
+    for cand_ids in candidate_ids:
         ids = torch.tensor([prefix_ids + cand_ids], device="cuda")
         with torch.inference_mode():
             logits = model(ids).logits[0]
@@ -189,7 +187,45 @@ def _mean_logprobs(tok, model, prefix, candidates):
         logp = F.log_softmax(logits[start - 1 : -1].float(), dim=-1)
         target = ids[0, start:]
         scores.append(float(logp.gather(1, target.unsqueeze(1)).mean()))
-    return scores
+    return scores, sum(len(ids) for ids in candidate_ids)
+
+
+def _rank_token_ids(tok, prefix, candidates):
+    """The exact continuation token IDs used by scoring (including leading spaces)."""
+    return (
+        tok(prefix, add_special_tokens=False)["input_ids"],
+        [tok(c, add_special_tokens=False)["input_ids"] for c in candidates],
+    )
+
+
+def _rank(tok, model, pkg, lang):
+    """Score candidates; generated tokens are always zero, targets count tokenizer IDs."""
+    per_item = rank_candidates_for(pkg, lang)
+    scores, target_tokens = [], 0
+    latency = 0.0
+    if per_item:
+        import torch
+
+        torch.cuda.synchronize()
+        t0 = time.perf_counter()
+        for i, cands in enumerate(per_item):
+            item_scores, count = _mean_logprobs(
+                tok, model, rank_prefix(pkg, i, lang), [" " + c for c in cands]
+            )
+            scores.append(item_scores)
+            target_tokens += count
+        torch.cuda.synchronize()
+        latency = time.perf_counter() - t0
+    choice = select_candidates(scores)
+    output = rank_output_text(pkg, choice, lang)
+    return output, latency, {
+        "advisory": render_advisory(output, pkg, lang),
+        "choice": choice,
+        "rank_items": len(per_item),
+        "rank_empty": not per_item,
+        "rank_candidates": sum(len(cands) for cands in per_item),
+        "rank_targets": target_tokens,
+    }
 
 
 def run(ctx):
@@ -228,6 +264,7 @@ def run(ctx):
     if len(inject_rows) < n_inject:
         raise ValueError(f"only {len(inject_rows)} scam rows for {n_inject} injection cases")
     scam_id_set = {str(i) for i in inject_rows["id"]}
+    campaign_ids = {str(r.id): str(r.campaign_id) for r in sample.itertuples()}
     manifest = [
         {
             "sample_id": str(r.id),
@@ -264,8 +301,6 @@ def run(ctx):
     injected = {arm: [] for arm in INJECT_ARMS}
 
     def record(arm, sample_id, side, is_injected, sms_text, family=None):
-        import torch
-
         _, pkg = package_for_sms(sms_text)
         extra = {}
         if arm == "freeform":
@@ -275,28 +310,8 @@ def run(ctx):
             score = score_output(output, pkg, arm)
         elif arm == "rank":
             lang = LANG_BY_ARM[arm]
-            per_item = rank_candidates_for(pkg, lang)
-            torch.cuda.synchronize()
-            t0 = time.perf_counter()
-            scores = [
-                _mean_logprobs(tok, model, rank_prefix(pkg, i, lang), [" " + c for c in cands])
-                for i, cands in enumerate(per_item)
-            ]
-            choice = select_candidates(scores)
-            output = rank_output_text(pkg, choice, lang)
-            torch.cuda.synchronize()
-            latency = time.perf_counter() - t0
-            # A benign message produces no evidence, so there is nothing to rank: the arm then does
-            # zero model work and reports 0 s / 0 tokens. Record that explicitly rather than
-            # leaving a silent zero that reads as a broken timer (see docs/RANK_ARM_AUDIT.md).
-            new_tokens = sum(len(c) for cands in per_item for c in cands)
-            extra = {
-                "advisory": render_advisory(output, pkg, lang),
-                "choice": choice,
-                "rank_items": len(per_item),
-                "rank_empty": len(per_item) == 0,
-                "rank_targets": new_tokens,
-            }
+            output, latency, extra = _rank(tok, model, pkg, lang)
+            new_tokens = 0  # candidate likelihood scoring never calls generate()
             score = {**score_advisory(output, pkg, lang), "arm": arm}
         else:
             lang = LANG_BY_ARM[arm]
@@ -313,6 +328,7 @@ def run(ctx):
             **score,
             **extra,
             "sample_id": sample_id,
+            "campaign_id": campaign_ids[sample_id],
             "side": side,
             "injected": is_injected,
             "family": family,
@@ -381,12 +397,9 @@ def run(ctx):
         ]
         for arm in INJECT_ARMS
     }
-    harm = {arm: harmful_flips(clean_scam[arm], injected[arm]) for arm in INJECT_ARMS}
+    comparisons = injection_comparisons(clean_scam, injected)
+    harm = comparisons["harmful"]
     free_hits, free_n = harm["freeform"]["harmful"], harm["freeform"]["pairs"]
-    fisher = {
-        arm: fisher_p(harm[arm]["harmful"], harm[arm]["pairs"], free_hits, free_n)
-        for arm in ("slot", "rank")
-    }
 
     rng = random.Random(SEED)
 
@@ -432,8 +445,7 @@ def run(ctx):
         "arms": by_side,
         "lang_compare": lang_compare,
         "injection": {
-            "harmful": harm,
-            "fisher_vs_freeform_p": fisher,
+            **comparisons,
             "injected_rows": {arm: len(injected[arm]) for arm in INJECT_ARMS},
         },
         "failures_n": len(ctx.results["failures"]),

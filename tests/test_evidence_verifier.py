@@ -47,8 +47,8 @@ def test_uncertain_without_evidence_stays_uncertain():
 def test_bare_urgency_does_not_escalate_a_legitimate_message():
     """``urgency`` is generic and fires on ordinary conversation ("I am leaving early", "बहुत
     जल्दी"). On its own it must not set a verdict, or legitimate Indian transactional SMS get
-    flagged: urgency-only packages caused 12 of the 13 false positives on the GroundLM
-    policy-negative set, a 1.06% FPR against a <=1% target (docs/GROUNDLM_FPR.md)."""
+    flagged. GroundLM informed this rule's design, so these examples are regression fixtures,
+    not independent safety evidence (docs/GROUNDLM_FPR.md)."""
     pkg = package_for("I am leaving early for home, very jaldi today", state="benign")
     assert [e.type for e in pkg.evidence] == ["urgency"]
     assert pkg.risk is Risk.LOW

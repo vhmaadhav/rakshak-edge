@@ -10,6 +10,7 @@
 #   --internet               enable internet (pinned pip install and the completion notification)
 #   --datasets OWNER/SLUG... attach Kaggle datasets
 #   --models OWNER/MODEL...  attach Kaggle model sources
+#   --kernels OWNER/SLUG... attach completed Kaggle kernel outputs
 #   --job-args="FLAGS"       flags for the job (ctx.argv), e.g. --job-args="--hpo 8"
 #   --require-clean          refuse while the bundled paths have uncommitted changes
 # The Kaggle CLI can exit 0 after an error, so its output is checked for error text and this script exits

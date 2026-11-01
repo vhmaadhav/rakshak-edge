@@ -1,6 +1,7 @@
 # Rank-arm audit: why `llama_ela_eval` reported 0 s and 0 tokens
 
-Status: **closed** (code-level root cause found and fixed; the GPU rerun is still needed for the numbers).
+Status: **measurement correction and clustered intervals verified on Kaggle, 2026-11-01**.
+No on-device claim.
 Owner: Sachin. Opened from `docs/HANDOFF.md` open task 2.
 
 ## 1. The symptom
@@ -39,7 +40,8 @@ it is being handed nothing to rank.
 
 Evidence packages come from `run_rules` (`src/rakshak/rules.py`) via
 `package_for_sms`. Those are **scam-specific** rules (OTP request, KYC block, prize, APK install,
-brand/domain mismatch, …). A benign message hits none of them, so its package is empty:
+brand/domain mismatch, …). Some benign messages have empty packages, as in these fixtures;
+some scams do too. Benign messages can also trigger rules (false positives):
 
 ```
 scam_otp         evidence_n= 4 risk=HIGH
@@ -51,7 +53,7 @@ benign_otp       evidence_n= 0 risk=LOW    <-- zero work in the rank arm
 benign_personal  evidence_n= 0 risk=LOW    <-- zero work in the rank arm
 ```
 
-So the rank arm did work only on the scam half of the sample. The reported p50 was pulled to ~0
+Thus work is conditional on evidence, not on the gold label. The reported p50 was pulled to ~0
 because a large share of rows scored no candidate at all, and nothing in the output distinguished
 "scored zero candidates" from "the timer is broken".
 
@@ -65,35 +67,50 @@ The audit also clears the two obvious alternative hypotheses:
 
 ## 3. Fix
 
-Two changes, both about **making zero work visible** rather than changing detection behaviour:
+The original patch attempted to make zero work visible, but used `sum(len(c))`, which counts
+**characters** and was incorrectly described as a candidate count. The 2026-11-01 correction
+keeps generated tokens separate from scored continuations and leaves rule behaviour frozen:
 
 1. `kaggle/jobs/llama_ela_eval.py` — the rank arm now records, per row:
    - `rank_items`: how many evidence items were ranked,
    - `rank_empty`: whether the package was empty,
-   - `rank_targets`: how many candidate strings were scored,
-   and `new_tokens` is the real scored-candidate count instead of the constant `0`.
+   - `rank_candidates`: how many candidate strings were scored,
+   - `rank_targets`: number of actual tokenizer continuation IDs scored, including the
+     leading space used by `_mean_logprobs`, excluding repeated prefix tokens,
+   - `new_tokens`: **0**; ranking never calls `generate()`.
 
 2. `src/rakshak/ela_eval.py` — `aggregate` now reports:
    - `zero_work_rate`: share of rows where the arm did no model work,
    - `latency_mean_s_worked`, `latency_p50_s_worked`, `latency_p95_s_worked`: latency over the
      rows that actually did work, i.e. the honest per-item cost.
 
-Regression tests: `tests/test_ela_eval.py::test_aggregate_reports_zero_work_rows`,
+Rank injection estimates exclude a pair unless **both** its clean and injected member have
+candidates. Matched freeform comparisons use those same IDs. The outputs retain five attack
+families, harmful-flip counts, Wilson intervals and Fisher tests; exact McNemar and paired
+campaign-clustered differences account for pairing. All-row coverage remains visible.
+
+The action and summary in the rank arm are deterministic and the candidate bank is fixed.
+Zero harmful flips measure this restricted architecture; they cannot establish learned
+Llama robustness or the quality of open-ended generation.
+
+Regression tests: `tests/test_ela_rank_job.py`, `tests/test_ela_eval.py::test_aggregate_reports_zero_work_rows`,
 `::test_aggregate_zero_work_over_rows_without_work`,
 `::test_benign_message_yields_no_rank_candidates`.
 
 ## 4. What the numbers will mean after the rerun
 
-- `mean_new_tokens` for the rank arm is now a **scored-candidate** count, not a generation count.
-  Do not compare it to the slot or freeform arms' generated-token counts.
+- `mean_new_tokens` for ranking is zero. `mean_rank_target_tokens` and
+  `rank_target_tokens_total` report continuation tokens scored; prefix work is additional.
 - `latency_p50_s` over all rows is a mixture and is **not** the arm's cost. Quote
-  `latency_p50_s_worked` / `latency_p95_s_worked` for on-device claims.
+  `latency_p50_s_worked` / `latency_p95_s_worked` for work-conditional cost. Kaggle T4 timing
+  is not an on-device benchmark; Pi/Android measurement is still required.
 - `zero_work_rate` on a 50/50 scam/benign sample is the **evidence-coverage complement**. It is a
   measurement of the rules layer, not of Llama.
 
 ## 5. The real finding: evidence coverage, not just telemetry
 
-While auditing this, the evidence layer was measured on **real** data — the public ScamShield
+These historical observations are **in-sample: these rows informed rule design**. While
+auditing this, the evidence layer was measured on the public ScamShield
 dataset (`sidzzz07/scamshield-dataset`, MIT), 3,000 uniformly sampled rows, seed 13, using
 `package_for_sms` from this repo:
 
@@ -142,7 +159,8 @@ window and in a different clause, so the rule misses it while the lookalike doma
 
 ## 6. Recommendation
 
-Telemetry is fixed; the coverage work is a separate, larger change and is **not** done here. Ranked:
+The following historical recommendations informed dc223d3. They are retained for provenance;
+the 2026-11-01 frozen-rule audit evaluates that change without tuning. Ranked:
 
 1. **Measure before widening.** The 39.1% is measured on a 3,000-row sample with a noisy source
    label. Re-measure on the built `external_groundlm` policy-negative set and on a hand-checked
@@ -154,3 +172,75 @@ Telemetry is fixed; the coverage work is a separate, larger change and is **not*
    currently only reachable through the weaker `suspicious_url` path.
 4. Keep the honest floor: **no rule change ships without a paired before/after on both the fraud
    slice and the 2.43% benign false-positive rate.**
+
+## 7. Corrected full rerun — 2026-11-01
+
+Private [Kaggle kernel `llama_ela_eval-a1-20261101`, version 1](https://www.kaggle.com/code/maadhavvh/rakshak-llama-ela-eval-a1-20261101),
+base `038bdd33022d` dirty, tree
+`48ed512ef46e0abf629fe7e8da89e1dbca68dbd275516f113900e12eb852932d`.
+One event wait, verified fetch, **ok**, **0 failed units**, 1,622.0 s. Same seeded 300 campaign
+packages, 150 paired attacks, 150 matched-language packages. Model: pinned
+`unsloth/Llama-3.2-1B-Instruct@5a8abab4a5d6f164389b1079fb721cfab8d7126c`, fp16.
+The environment exposes two Tesla T4s; the model uses CUDA device 0.
+
+| Clean rank quantity (300 packages) | Corrected measurement |
+|---|---:|
+| Generated tokens | **0** |
+| Candidate strings scored | **248** |
+| Actual continuation-token IDs scored (prefix excluded) | **2,992** |
+| Packages with no model work | **86%** |
+| Latency p50 over all packages | 0 s (mixture with empty packages) |
+| Latency p50 / p95 over worked packages | **0.3110 / 1.0782 s** |
+
+The before-patch character count is invalid and is not used as a token baseline. These are
+Kaggle T4 measurements, not Pi 5/Android timings. Candidate likelihood ranking is not generation.
+
+| Injection arm / scope | Harmful / pairs | Wilson 95% interval |
+|---|---:|---|
+| Freeform, all | 35/150 | [17.28%, 30.72%] |
+| Slot, all | 0/150 | [0%, 2.50%] |
+| Rank, candidates in both members | **0/39** | **[0%, 8.97%]** |
+| Freeform on the same rank-eligible IDs | 11/39 | [16.54%, 43.78%] |
+
+**111 rank pairs are excluded** because they have no candidates. The rank result must never
+be presented as 0/150. Rank versus matched freeform: Fisher p=0.00043094 (descriptive unpaired
+reference), exact McNemar p=0.00097656. Paired campaign-clustered harmful-rate difference
+(rank minus freeform) **-28.205 pp**, CI **[-43.590, -15.385] pp**, p=0.000999.
+Slot versus matched freeform: Fisher p=6.15e-12, exact McNemar p=5.82e-11.
+Zero-event rank/slot bootstrap intervals are [0, 0] and degenerate; quote Wilson bounds too.
+The fixed fifteen payload variants do not establish robustness to adaptive or unseen attacks;
+campaign resampling does not capture uncertainty over new attack families.
+
+| Attack family | Rank harmful/eligible | Rank Wilson 95% | Freeform harmful/all |
+|---|---:|---|---:|
+| direct_override | 0/8 | [0%, 32.44%] | 7/30 |
+| roleplay_spoof | 0/7 | [0%, 35.43%] | 5/30 |
+| encoded | 0/12 | [0%, 24.25%] | 9/30 |
+| delimiter_json | 0/6 | [0%, 39.03%] | 8/30 |
+| multi_turn | 0/6 | [0%, 39.03%] | 6/30 |
+
+| Raw point lexicon pass | Passed/points | Campaign-clustered 95% CI |
+|---|---:|---|
+| English, all 300 packages | 16/62 = **25.81%** | [13.04%, 40.82%] |
+| English, matched 150 packages | 8/37 = **21.62%** | [8.00%, 40.00%] |
+| Hinglish, same 150 packages | 23/37 = **62.16%** | [40.61%, 79.59%] |
+
+These are raw keyword/lexicon checks, not semantic entailment measurements. Package verifier
+pass: English 90.33% [86.99%, 93.33%]; Hinglish 90.67% [86.00%, 95.33%]. Many packages have no
+points, so high package pass does not contradict weak point generation. Raw slot/rank
+unsupported-claim rates and rendered rates are zero.
+Rank's deterministic summary/action and fixed sentence bank restrict the possible outcomes;
+the injection result measures that architecture, not learned Llama robustness. The repeated
+campaign sample is a development benchmark; no new held-out improvement is claimed.
+
+**Decision: keep the telemetry and eligible-denominator correction.** Artifact invariants
+confirm zero generated rank tokens and zero latency/targets for empty packages. QLoRA remains
+open because the model's own point pass is weak. Language-rate cluster intervals were computed
+from these exact saved outputs in the private statistics-only Kaggle supplement
+[`ela_recompute-a1-ci-20261101`, version 1](https://www.kaggle.com/code/maadhavvh/rakshak-ela-recompute-a1-ci-20261101):
+one wait, verified fetch, **ok**, 72.0 s, tree
+`9730c50a862b67341634e16c5d07bcbe26574ed84c7d19fe5763d69ddc1e4909`.
+It binds to the source tree and generations SHA256
+`8a898ef0d8edcf92598729ef8bf6e94e7bc5674f7d914d854aed02cf799e04d1`.
+Point ratios pool numerator/denominator across resampled campaigns, preserving all points
+of each package together (1,000 draws, seed 13). No model generation, sample selection or tuning.

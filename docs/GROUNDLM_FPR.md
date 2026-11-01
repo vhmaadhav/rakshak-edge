@@ -1,7 +1,28 @@
 # GroundLM FPR test (handoff task 1)
 
-Status: **run** on the rules-only detector. Models not scored (see section 6).
-Owner: Sachin. This closes the first open task in `docs/HANDOFF.md` and its issue #1 twin.
+Status: **in-sample: these rows informed rule design**. Frozen-rule Kaggle audit completed
+2026-11-01; full before/after tables and paired intervals: `docs/REVIEW_AUDIT.md`.
+Model-side FPR and independent Indian validation remain OPEN.
+
+## Design-set register (frozen 2026-11-01)
+
+| Change | Design exposure | Permitted interpretation |
+|---|---|---|
+| f29521a urgency-only risk downgrade | GroundLM policy negatives and their failure examples; all scoreable rows were evaluated. Exact row access was not logged, so conservatively treat the entire GroundLM release as exposed. | In-sample descriptive FPR; a later split cannot create an untouched test. |
+| dc223d3 parcel/job/prize widening | ScamShield 3,000-row seed-13 sample, then all 85,680 rows including official test; campaign/test, lang_shift and temporal outcomes were inspected in the reviewed work. | In-sample coverage/risk audit only. |
+| 63f9323 LOW-summary caution | Campaign/test rule-coverage failures were used to motivate the wording. | Do not use that split as independent validation of the wording. |
+| 2026-11-01 review fixes | Frozen GroundLM/ScamShield retrospective campaign subsets and existing SMS splits; no rule or threshold tuning. | Measurement correction; no held-out improvement claim. |
+| SmishX | Used as the sole independent validation of the reviewed rule changes after freezing them. No subsequent tuning is permitted from this run. Training overlap was removed by the existing data build. | **Independent, non-Indian-specific**; report frozen-threshold FPR and recall, with no Indian deployment claim. |
+
+**Independent Indian held-out validation: OPEN.** Collect consented, privacy-scrubbed real
+Indian SMS received after the rules freeze: bank/UPI/OTP/delivery negatives plus received
+scams. Retain dates and campaign groups; obtain human policy labels; keep the set private,
+never train or tune on it, and evaluate once at the frozen rules/thresholds. No synthetic
+messages or model-generated relabels may enter this test.
+
+The primary [GroundLM paper](https://aclanthology.org/2026.groundlm-1.79/) defines its endpoint
+on 1,294 policy negatives, and treats positive-label metrics as secondary because positive
+adjudication used LLMs. Our scoreable and eval-eligible denominators must be shown separately.
 
 ## 1. What the task asked for
 
@@ -65,8 +86,25 @@ Measured with the deterministic pipeline the repo ships —
 
 | Detector | Fire criterion | False positives | FPR on 1,133 | vs <=1% target |
 |---|---|---:|---:|---|
-| Rules only, **before** this change | any evidence | 12 | 1.0591% | **FAIL** |
-| Rules only, **after** this change | any evidence | 1 | **0.0883%** | **PASS** |
+| Rules only, **before** this change | risk above LOW | 12 (reproduced on Kaggle) | 1.0591% | in-sample only |
+| Rules only, **after** this change | risk above LOW | 1 (reproduced on Kaggle) | **0.0883%** | in-sample only |
+
+The frozen Kaggle audit reconciles the counts: **12 total evidence-hit negatives, 11
+urgency-only**, with **1** above LOW after the downgrade. All-scoreable and eval-eligible
+negative populations both contain **1,133** rows in this frozen data version. **Any evidence**
+remains 12 before and after; **risk above LOW** changes 12 to 1; **HIGH/SCAM** remains 1.
+The old “13 total / 12 urgency-only” narrative was wrong and is withdrawn.
+
+| Frozen GroundLM population | Warning flags before / after | FPR before / after | Current clustered 95% CI | Current Wilson score 95% CI |
+|---|---:|---|---|---|
+| All 1,133 policy negatives | 12 / 1 | 1.0591% / 0.0883% | [0%, 0.2971%] | [0.02%, 0.50%] |
+| Campaign audit subset, 131 | 3 / 0 | 2.2901% / 0% | [0%, 0%] | [0%, 2.85%] |
+| Campaign remainder, 1,002 | 9 / 1 | 0.8982% / 0.0998% | [0%, 0.3770%] | See private metrics |
+
+All three rows are **in-sample: these rows informed rule design**. The zero-event bootstrap
+interval is degenerate; the audit subset does not certify a 1% population FPR. On the full
+set, the paired warning-rate change is -0.9709 pp, clustered CI [-1.6529, -0.4508] pp,
+two-sided bootstrap p=0.0050. That describes a design-set tradeoff, not independent safety.
 
 The single remaining false positive is one Devanagari message that triggers `apk_install` (weight
 0.9) on "डाउनलोड करें" ("download") in conversational text. Because that weight clears the 0.85
@@ -91,7 +129,9 @@ verdict, which is what the `<=1%` criterion measures.
 
 ## 5. Root cause and the fix
 
-12 of the 13 original false positives were **`urgency`-only** packages:
+**11 of the 12** evidence-hit negatives are urgency-only. This is now reproduced by the
+frozen Kaggle audit; production comments and regression tests reference this result instead
+of duplicating scientific counts. Illustrative design-set cases:
 
 ```
 UNCERTAIN [urgency,urgency,urgency] "अरे! मैं जल्दी नहीं कर रहा हूँ लेकिन जल्दी ही जल्दी नहीं है..."
@@ -130,20 +170,21 @@ Rationale for the exact form:
 
 Verification: full suite `786 passed, 19 skipped` before and after; no test changed.
 
-## 6. What is NOT done
+## 6. Remaining limitations
 
 - **Per-model FPR.** The acceptance criterion says "each shipped model at its cal threshold". This
   host has no `torch`, no GPU, and no access to `highestintheroom/rakshak-models` (no HF token, not
   an org member), and the Kaggle datasets are not shared with `sachin0496`. The *model* half of the
   test must run on Kaggle. What is reported here is the **rules-only** detector, which is a shipped
   component and the one whose failure mode this test exposed.
-- **Campaign-clustered CI.** With 1 false positive in 1,133 the exact 95% Wilson interval is
-  approximately `[0.0156%, 0.4986%]`. A campaign-clustered bootstrap is not meaningful at this event
-  count (one cluster); the honest statement is "1 flag in 1,133, 95% upper bound 0.50%".
+- **Campaign-clustered CI.** The historical result omitted one. The completed frozen audit supplies a
+  campaign-clustered percentile CI and a Wilson score interval. Wilson is not an exact
+  interval and does not account for campaign dependence. A zero-event bootstrap interval
+  can be `[0, 0]`; that is not evidence of zero population risk.
 - Handoff section 5 has **not** been edited; that is a shared results table and should be updated
   when the model numbers land alongside it.
 
-## 7. Reproduce
+## 7. Historical reproduction (superseded)
 
 ```bash
 # 1. Data (53 KB, via range requests; see section 2 for the method)
@@ -159,7 +200,7 @@ import pandas as pd
 from rakshak.ela_eval import package_for_sms
 df = pd.read_parquet("data/processed/external/external_groundlm.parquet")
 scr = df[(df.policy_negative == True) & (df.text_available == True)]
-k = sum(bool(package_for_sms(r.text)[1].evidence) for r in scr.itertuples())
+k = sum(package_for_sms(r.text)[1].risk.value != "LOW" for r in scr.itertuples())
 print(f"{k}/{len(scr)} = {k/len(scr):.4%}")
 PY
 ```
@@ -192,11 +233,9 @@ be stated plainly rather than sold:
 - The benign 2.43% is dominated by the same mechanism, so this is one lever, not two independent
   ones. Any further widening must be re-measured on both slices.
 
-**Recommendation: keep the change.** It is required to pass the go/kill line that the project defined
-for itself, the failures it prevents are in the population the challenge names as the primary safety
-objective (legitimate Indian bank/UPI/OTP/delivery SMS, and specifically a genuine credit-card due
-reminder), and the recall it costs sits in a mechanism that a rules-coverage fix recovers properly
-rather than by re-inflating a generic keyword.
+**Historical recommendation:** keep the downgrade on the basis of this in-sample tradeoff.
+This does not establish independent safety or fulfil the model-side handoff task. The frozen
+audit reports the same tradeoff on SmishX independently; no rule is tuned from that result.
 
 ## 9. Open follow-ups
 
@@ -206,3 +245,42 @@ rather than by re-inflating a generic keyword.
 2. **`apk_install` false positive** — the single surviving GroundLM FPR fires on a bare "download"
    verb in Devanagari conversational text at weight 0.9 (HIGH). It should require an app/APK object.
 3. **Model-side FPR** — still needs Kaggle; see section 6.
+4. **Independent Indian held-out validation — OPEN**, with the post-freeze collection plan
+   in the design-set register. SmishX is independent, non-Indian-specific and fails the 1%
+   reference gate (warning FPR 6.0159%, HIGH FPR 1.1351%). No rule is tuned from this result.
+
+## 10. Frozen-rule review audit protocol — 2026-11-01
+
+All benchmark evaluation runs on Kaggle. The older local commands in section 7 document
+historical methodology only and must not be used for a new evaluation session.
+
+```bash
+kaggle/launch.sh rule_review_audit --run-name a23-20261101 --gpu t4 --internet \
+  --datasets maadhavvh/rakshak-data
+kaggle/wait_event.sh rule_review_audit-a23-20261101 --timeout 43200
+kaggle/fetch.sh rule_review_audit-a23-20261101
+```
+
+This run uses frozen pre-f29521a risk logic and byte-identical pre-dc223d3 rules alongside
+the current rules. It reports the unchanged campaign, every source_holdout fold, lang_shift
+and temporal tests. GroundLM policy negatives and eval-eligible ScamShield are subdivided
+by SHA256(`rule-audit:13:<campaign_id>`) into 20% audit / 80% remainder campaigns. These are
+**in-sample: these rows informed rule design**; the subset names never imply untouched data.
+The original release membership is neither rewritten nor used for threshold selection.
+
+SmishX eval-eligible messages are the sole **independent, non-Indian-specific** validation.
+Both frozen thresholds are shown: risk above LOW includes warnings/abstention; HIGH is the
+SCAM decision. Every negative remains in the FPR denominator, including abstentions.
+Fraud-versus-not-fraud uses known `label_scam` values; legacy spam-or-scam labels are separate.
+
+Campaign intervals resample whole campaigns with replacement, 1,000 draws, seed 13.
+For external sets lacking campaign IDs, the unchanged corpus MinHash/domain procedure
+creates external-only campaign groups; this is an approximate template grouping, not
+human-verified campaigns. Paired rate differences reuse a single draw for old and new.
+Wilson score intervals supplement the clustered percentile intervals for rare events;
+they assume independent rows. Zero-event clustered intervals can be degenerate.
+
+Outputs are private: `metrics.json` (counts, rates, intervals, input hashes),
+`audit_manifest.json` (IDs/groups only), and `rule_predictions.parquet` (IDs and frozen
+decisions, no raw text). The PR must report failures and tradeoffs without a held-out
+improvement claim. Model-side and PhreshPhish metrics are outside this rules-only run.

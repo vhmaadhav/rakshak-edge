@@ -244,6 +244,12 @@ General pool kept counts (rebuild 2026-10-30): PhishTank 52,665 (raw 53,457); Le
 
 ## 7. Known limitations
 
+0. **Design exposure (2026-11-01 review).** GroundLM informed the urgency-only downgrade;
+   all ScamShield, including test, informed dc223d3 widening. Retrospective campaign-disjoint
+   audit subsets remain **in-sample: these rows informed rule design**. See the design-set
+   register in `docs/GROUNDLM_FPR.md`. SmishX is the sole independent, non-Indian-specific
+   validation of these reviewed changes. Independent Indian held-out validation is OPEN.
+
 1. **No real Indian test set with dates.** IMC25 dates cover 428 rows (2023) and the temporal test has 77 smishing rows. Hinglish and Hindi test rows come only from ScamShield, which is mostly synthetic-heavy or of unknown provenance.
 2. **Source confound** (section 5). Single-class IMC25 and the label-from-source accuracy of 0.718 mean every SMS evaluation needs a source-held-out or source-balanced companion.
 3. **No dated benign URL in the general pool.** `url_temporal` is skipped. Benign dated URLs exist only in PhreshPhish, which is evaluated as its own family (`url_phreshphish`).

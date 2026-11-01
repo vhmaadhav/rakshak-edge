@@ -34,6 +34,7 @@ kaggle/fetch.sh smoke-b                               # or: kaggle/fetch.sh smok
 | `--internet` | Internet on. Needed for the pinned pip install and the completion notification. Off by default. |
 | `--datasets OWNER/SLUG ...` | Attach Kaggle datasets as `dataset_sources`. Data appears under `/kaggle/input/<slug>/`. |
 | `--models OWNER/MODEL/...` | Attach Kaggle model sources. |
+| `--kernels OWNER/SLUG ...` | Attach completed private kernel outputs, e.g. saved generations for a statistics-only rerun. Recorded as `kernel_sources`. Refused on Colab. |
 | `--job-args="FLAGS"` | Flags for the job, passed to `run(ctx)` as `ctx.argv`, e.g. `--job-args="--hpo 8 --adv-aug 0.3"`. Use the `=` form when the first flag starts with `-`. Kernels get no argv, so this is how jobs take their options. |
 | `--require-clean` | Refuse to build while `src/rakshak/`, `kaggle/jobs/_common.py` or the job file has uncommitted or untracked changes. |
 | `--run-name NAME` | Another run of the same job as its own kernel (see below). `NAME` is 1 to 20 characters of `a-z`, `0-9` and `-`. Kaggle only, not `--platform colab`. |
@@ -144,6 +145,17 @@ this output yet.
 
 ## Files
 
+- `jobs/ela_recompute.py`: campaign-clustered package rates and pooled point-pass intervals
+  from an attached completed ELA kernel. `--expected-tree SHA256` binds to the frozen source.
+  No new model generation, sample selection or tuning.
+- `jobs/rule_review_audit.py`: frozen pre/post-urgency and pre/post-dc223d3 rules audit.
+  Launch with `--gpu t4 --internet --datasets maadhavvh/rakshak-data` and a unique run name;
+  wait once, then fetch. Writes `metrics.json`, ID-only audit manifests and predictions.
+  Existing splits are unchanged. GroundLM/ScamShield subsets are in-sample because they
+  informed design; SmishX is independent, non-Indian-specific. Rules-only; no model fitting.
+- `jobs/llama_ela_eval.py`: `rank` generates zero tokens. `rank_targets` counts actual
+  scored continuation token IDs and `rank_candidates` counts strings. Candidate-eligible
+  paired injection results include Wilson/Fisher, exact McNemar and campaign-clustered tests.
 - `build_kernel.py`: bundles and writes the kernel (no compute, no push).
 - `launch.sh`, `fetch.sh`, `wait_event.sh` + `wait_event.py`: push, download, and the one-shot notification wait.
 - `push_data.sh`: the dataset upload.
