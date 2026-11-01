@@ -10,6 +10,10 @@ matches, ``build_pool`` checks that the file's train and cal membership equals t
 partitions and that no test id of the run is present, and the pool holds the labelled train rows
 (with teacher logits) plus the ``unlabeled`` rows (teacher logits only, no label). A
 ``manifest.json`` in the dataset folder, when present, pins each file's sha256.
+
+Training callers must use ``build_training_pool``: only frozen train IDs are permitted. The
+legacy broad pool contains excluded-row copies/campaign neighbours (confirmed 2026-11-01).
+``build_pool(include_unlabeled=True)`` remains a membership-audit primitive, not training policy.
 """
 
 from __future__ import annotations
@@ -190,3 +194,12 @@ def build_pool(run: D.Run, sms_ids: np.ndarray, labels: np.ndarray, transfer: pd
         n_labelled=n_labelled,
         n_unlabeled=n_unlabeled,
     )
+
+
+def build_training_pool(run: D.Run, sms_ids: np.ndarray, labels: np.ndarray,
+                        transfer: pd.DataFrame, *, include_unlabeled: bool = False) -> Pool:
+    """Teacher logits on frozen train IDs only; raw extra rows are not a valid unlabeled set."""
+    if include_unlabeled:
+        raise ValueError("broad unlabeled KD training is disabled: excluded test copies, "
+                         "campaign neighbours and external overlaps were found; use train IDs only")
+    return build_pool(run, sms_ids, labels, transfer, include_unlabeled=False)

@@ -99,9 +99,34 @@ Caveat: the shipped checkpoint in HF is the scamshield-holdout run (last kept by
 | Model | Campaign F1 | lang_shift F1 | temporal F1 |
 |---|---|---|---|
 | no-KD dual-base, seed 1 | 0.975 | **0.356** (fails Hinglish) | 0.903 |
-| KD dual-base, seed 1 (shipped) | 0.977 | **0.795** (seeds 2, 3: 0.816, 0.804) | 0.909 |
+| Historical KD dual-base, seed 1 (artifact exists; contaminated protocol) | 0.977 | 0.795 (seeds 2, 3: 0.816, 0.804) | 0.909 |
 
-KD fixes the Hinglish collapse (lang_shift F1 0.36 to 0.80) with no campaign loss. The exported variant is chosen by mean cal PR-AUC across runs. The exported model is the campaign run's first seed (seed 1), per the job code. Caveat: lang_shift is a lower bound, because the language tagger misses Hinglish (about 51% agreement on ScamShield Hinglish rows).
+**Withdraw the claim that KD fixes Hinglish generalization.** The inherited unlabeled transfer
+pool reintroduced excluded rows: campaign had 4,147 exact test copies; the ScamShield fold had
+2,122 exact test copies and 9,707 held-out-source rows. Historical KD numbers cannot establish
+disjoint generalization or independent external validation. Do not promote that artifact from
+these metrics. The historical export selected the campaign run's seed1 by cal PR-AUC.
+
+Corrected train-only KD, three seeds1/2/3 (mean F1; full campaign CIs, every source fold and
+per-seed external FPR/recall in [SOURCE_BALANCE_RESULTS.md](SOURCE_BALANCE_RESULTS.md)):
+
+| Arm | Campaign F1 | lang_shift F1 | temporal F1 | ScamShield source_holdout F1 |
+|---|---:|---:|---:|---:|
+| ERM control | 0.9753 | **0.4000** | 0.8513 | 0.7503 |
+| Source-balanced (kill) | 0.9735 | 0.3367 | 0.8875 | 0.7437 |
+| Balanced + group-DRO (kill) | 0.9727 | 0.4214 | 0.8946 | 0.7399 |
+
+Both interventions fail the predeclared ScamShield improvement gate (paired delta CIs wholly
+negative). Keep the train-only guard, not an intervention or a new deployment artifact.
+These comparisons are **in-sample for rule-feature design**. Temporal retains three original
+train/test campaign overlaps and only 77 positives; its split is unchanged. Language tagging
+still misses Hinglish (about 51% agreement on ScamShield Hinglish rows).
+
+At the cal-1%-FPR threshold, corrected ERM seed1 has GroundLM FPR 407/1,133 =35.92%
+[21.80%,48.54%], recall69/91 =75.82% [61.02%,87.40%] (**in-sample for rule-feature design**).
+SmishX fraud FPR267/881 =30.31% [25.81%,34.67%], recall119/226 =52.65%
+[43.71%,62.72%] (**independent, non-Indian-specific**). All seeds/arms/thresholds are in the
+report; these are negative external results, not a low-FPR deployment claim.
 
 **Classical SMS baselines (`sms_baselines`)**: char LR campaign F1 0.973, SVC campaign F1 0.978. Job ended `partial`: 10 of 190 units failed. Rules-only LR is near 0.67, so it is a floor. Canonicalising the text cuts attack success (for example 4.1% to 0.4% in the XLM-R pilot).
 
@@ -146,11 +171,15 @@ reference FPR gate at both thresholds; rules-only recall is weak. Widening adds 
 SmishX fraud warning (paired +0.4425 pp, CI [0, 1.4360] pp, p=0.5485); no independent gain
 claim. Model-side GroundLM FPR and independent Indian held-out validation remain OPEN.
 
-**Not completed:** model-side GroundLM FPR; verified `llama_export` output; Pi 5 benchmarks; Android app.
+**Not completed:** GroundLM FPR for all retained/teacher models (corrected train-only student
+measured above, fails the reference gate); verified `llama_export` output; Pi 5 benchmarks;
+Android app; independent Indian validation.
 
 ## 6. What failed and why
 
-- **Hinglish collapse** in the no-KD student: fixed by distilling from the mmBERT teacher's transfer logits (KD).
+- **Hinglish generalization remains unresolved.** Train-only KD ERM mean F1 is0.4000;
+  the historical ~0.80 improvement used a contaminated unlabeled pool. Source-balanced/DRO
+  do not meet the primary ScamShield gate. Never add raw transfer extras to training.
 - **Colab free tier**: a detached run was reclaimed after about 45 min. Use Colab only for short jobs.
 - **URL transformer distillation**: in-sample targets, so no cross-fitting. Not usable as a held-out claim until redone.
 - **sms_baselines**: 10 of 190 units failed (partial). Cause not yet triaged. Read `kaggle/out/sms_baselines/output/run.log`.

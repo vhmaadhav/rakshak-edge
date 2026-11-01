@@ -80,6 +80,8 @@ class TrainConfig:
     kd_alpha: float = 0.7
     kd_temp: float = 2.0
     seed: int = 0
+    source_strategy: str = "erm"
+    dro_eta: float = 0.01
 
 
 def pick_device(name: str = "auto") -> torch.device:
@@ -149,7 +151,7 @@ def _state_on_cpu(model: nn.Module) -> dict:
 
 
 def distillation_loss(logits: Tensor, labels: Tensor, teacher: Tensor, *, pos_weight: Tensor,
-                      alpha: float, temp: float) -> Tensor:
+                      alpha: float, temp: float, reduction: str = "mean") -> Tensor:
     """Mean loss over the rows of a batch that carry any signal.
 
     ``logits`` (B,) are student logits, ``labels`` (B,) are 0/1 with NaN on unlabeled rows, and
@@ -179,12 +181,16 @@ def distillation_loss(logits: Tensor, labels: Tensor, teacher: Tensor, *, pos_we
     coef_bce = lab * (1.0 - alpha * tea)
     coef_kd = alpha * tea
     per_row = coef_bce * bce + coef_kd * (temp * temp) * kl
+    if reduction == "none":
+        return per_row
+    if reduction != "mean":
+        raise ValueError("reduction must be mean or none")
     signal_rows = (lab + tea - lab * tea).sum().clamp_min(1.0)
     return per_row.sum() / signal_rows
 
 
 def train_student(spec: ModelSpec, train: Featurized, y_train, cal: Featurized, y_cal,
-                  cfg: TrainConfig, *, device, teacher: np.ndarray | None = None,
+                  cfg: TrainConfig, *, device, teacher: np.ndarray | None = None, sources=None,
                   log: Callable[[str], None] = lambda msg: None) -> tuple[nn.Module, dict]:
     """Fit one model on ``train``, early-stop on cal PR-AUC. Returns the model (best cal
     checkpoint, on CPU) and the training history. ``y_train`` is 0/1, NaN on unlabeled rows."""
@@ -210,13 +216,16 @@ def train_student(spec: ModelSpec, train: Featurized, y_train, cal: Featurized, 
                  "unlabeled": int((~labelled).sum()), "with_teacher": int(has_teacher.sum()),
                  "labelled_with_teacher": int((labelled & has_teacher).sum())}
     y_cal_arr = np.asarray(y_cal, dtype=np.int64)
+    from rakshak.models.source_balance import SourceObjective
+
+    objective = SourceObjective(sources, len(y), cfg.source_strategy, cfg.dro_eta, device)
 
     best_pr, best_state, best_epoch, stale = -np.inf, None, -1, 0
     history: list[dict] = []
     start_time = time.perf_counter()
     for epoch in range(cfg.epochs):
         model.train()
-        order = rng.permutation(len(y))
+        order = objective.order(rng)
         loss_sum, batches = 0.0, 0
         for s in range(0, len(order), cfg.batch_size):
             idx = order[s:s + cfg.batch_size]
@@ -227,7 +236,10 @@ def train_student(spec: ModelSpec, train: Featurized, y_train, cal: Featurized, 
             tb = torch.as_tensor(teacher[idx], dtype=torch.float32, device=device)
             logits = forward_feats(model, spec, batch, device)
             loss = distillation_loss(logits, yb, tb, pos_weight=pos_weight, alpha=cfg.kd_alpha,
-                                     temp=cfg.kd_temp)
+                                     temp=cfg.kd_temp,
+                                     reduction="mean" if cfg.source_strategy == "erm" else "none")
+            if cfg.source_strategy != "erm":
+                loss = objective.reduce(loss, idx)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
@@ -236,7 +248,7 @@ def train_student(spec: ModelSpec, train: Featurized, y_train, cal: Featurized, 
         cal_scores = predict_scores(model, spec, cal, device)
         pr = float(pr_auc(y_cal_arr, cal_scores))
         history.append({"epoch": epoch, "train_loss": loss_sum / max(batches, 1),
-                        "cal_pr_auc": pr})
+                        "cal_pr_auc": pr, "source_weights": objective.weights()})
         log(f"    epoch {epoch}: loss {loss_sum / max(batches, 1):.4f} cal PR-AUC {pr:.4f}")
         if np.isfinite(pr) and pr > best_pr:
             best_pr, best_state, best_epoch, stale = pr, _state_on_cpu(model), epoch, 0

@@ -119,6 +119,20 @@ def test_test_id_in_transfer_file_is_refused():
         K.build_pool(run, ids, labels, transfer, include_unlabeled=True)
 
 
+def test_training_pool_never_reintroduces_the_broad_unlabeled_rows():
+    ids = _sms_ids()
+    labels = np.arange(20) % 2
+    run = _run("campaign", train=[0, 1], cal=[2], test=[3])
+    # Row 4 could be an excluded copy of test row 3: ID-only guards cannot establish safety.
+    transfer = _frame([("0", "train", 0.0, 1.0), ("1", "train", 1.0, 0.0),
+                       ("2", "cal", 0.0, 1.0), ("4", "unlabeled", 0.0, 1.0)])
+    pool = K.build_training_pool(run, ids, labels, transfer)
+    assert pool.positions.tolist() == [0, 1] and pool.n_unlabeled == 0
+    assert np.isfinite(pool.labels).all()
+    with pytest.raises(ValueError, match="unlabeled KD training is disabled"):
+        K.build_training_pool(run, ids, labels, transfer, include_unlabeled=True)
+
+
 def test_file_from_another_split_fails_membership_check():
     """A campaign file used for a lang_shift run has different train rows: refused."""
     ids = _sms_ids()
