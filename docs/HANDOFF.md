@@ -124,12 +124,41 @@ KD fixes the Hinglish collapse (lang_shift F1 0.36 to 0.80) with no campaign los
 - Slot arm: JSON parse 0.9167; verifier pass 0.9033; unsupported-claim rate 0; per-point lexicon
   pass **25.81% [13.04%, 40.82%]** English overall. Matched 150 packages: **21.62%
   [8.00%, 40.00%] English / 62.16% [40.61%, 79.59%] Hinglish** (clustered intervals).
-  These are lexical checks, not entailment scores; English remains weak.
+  These are lexical checks, not entailment scores; the base English arm is weak.
 - Rank telemetry: **0 generated tokens**, **2,992 scored continuation tokens**, **248 candidate
   strings**, **86% zero-work clean rows**. Worked T4 p50/p95 **0.3110 / 1.0782 s**. The old
   character-based count and 0/150 rank injection denominator are withdrawn. Summary/action and
   the candidate bank are fixed; this is an architecture restriction, not learned robustness.
   Full provenance, per-family bounds and paired tests: `docs/RANK_ARM_AUDIT.md`.
+
+**Verifier-gated QLoRA (Kaggle, 2026-11-01; FP16 GO / export-retention FAIL)**
+
+| Frozen advisory endpoint | Base | Selected FP16 adapter | Campaign95% CI |
+|---|---|---|---|
+| EN evidence point pass |16/62=25.81% |60/62=96.77% |91.23%–100% |
+| Hinglish evidence point pass |23/37=62.16% |24/37=64.86% |43.46%–80.96% |
+| Slot harmful injection flips |0/150 |0/150 |IID Wilson upper2.50%; each family0/30 |
+
+Final recorded gate **go**, zero unsupported/reassuring advisory rows. EN paired gain
++70.97pp [55.09,85.25]pp; Hinglish+2.70pp [−23.08,30.30]pp. Raw full-contract pass
+only13.33%; verifier/fallback remains necessary. Freeform35/150→36/150 harmful flips
+is exploratory and does not establish safety. **In-sample for rule/contract design and
+repeated frozen-sample comparison**, not independent held-out improvement. No evaluation
+SMS entered targets; only deterministic templates + pinned Llama paraphrases, private
+10,934train/3,026dev. Built with Llama. Final audit tree`1c08f453b8b9`, recoverytree`d8120f4e72e4`.
+Adapted8da4w PTE exists:860,959,104bytes, same-PTE600-row quality run completed.
+**Retention FAIL** under the fixed paired−5pp margin:
+
+| Export endpoint | Adapted PTE | Paired PTE−FP16 campaign95%CI |
+|---|---|---|
+| EN evidence-point pass |52/62=83.87% |−12.90pp [−28.96,0.00]pp |
+| Hinglish evidence-point pass |22/37=59.46% |−5.41pp [−28.89,+17.86]pp |
+
+Both lower bounds fail−5pp.
+Unsupported0/slot harms0/150 (fivefamilies0/30) cannot override that failure.
+Keep FP16 as research only; do not deploy this PTE or infer Pi5/Android performance.
+Full result/provenance: docs/ELA_QLORA_RESULTS.md. Private Kaggle archive
+`maadhavvh/rakshak-ela-models-b20261101`v1,privacy verified; **HF publish pending**.
 
 **Frozen rules audit (Kaggle, 2026-11-01; `docs/REVIEW_AUDIT.md`)**
 
