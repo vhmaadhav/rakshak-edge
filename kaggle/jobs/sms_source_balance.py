@@ -1,6 +1,7 @@
 """Three-seed paired ERM / source-balanced / balanced+group-DRO control on frozen splits.
 
-Kaggle only. No test-driven choices. Same dual-base KD student and update count in all arms.
+Kaggle only. No test-driven choices. Same dual-base student, epoch cap and optimiser
+settings in all arms.
 """
 
 import argparse
@@ -33,8 +34,12 @@ from rakshak.models.student import ModelSpec, TrainConfig, predict_scores, train
 ARMS = ("erm", "balanced", "dro")
 
 
-def run(ctx, *, arms=ARMS, method_reference=None):
+def run(ctx, *, arms=ARMS, method_reference=None, teacher_arms=None, criterion=None):
     import torch
+
+    if teacher_arms is not None and (set(teacher_arms) != set(arms)
+                                   or not all(type(v) is bool for v in teacher_arms.values())):
+        raise ValueError("explicit teacher flag required for every arm")
 
     p = argparse.ArgumentParser()
     p.add_argument("--seeds", nargs="+", type=int, default=[1, 2, 3])
@@ -42,6 +47,9 @@ def run(ctx, *, arms=ARMS, method_reference=None):
     p.add_argument("--n-boot", type=int, default=1000)
     p.add_argument("--teacher-seed", type=int, default=0)
     args = p.parse_args(ctx.argv)
+    if teacher_arms is not None and (args.seeds != [1, 2, 3] or args.epochs != 15
+                                    or args.n_boot != 1000 or args.teacher_seed != 0):
+        raise ValueError("clean KD protocol requires exact seeds/epoch/bootstrap/teacher settings")
     if len(args.seeds) != 3 or len(set(args.seeds)) != 3:
         raise ValueError("predeclared protocol requires three distinct seeds")
     if not torch.cuda.is_available():
@@ -60,6 +68,11 @@ def run(ctx, *, arms=ARMS, method_reference=None):
     kwargs = {"pos_weight": torch.tensor(2.0), "alpha": 0.7, "temp": 2.0}
     assert torch.allclose(distillation_loss(logits, y, teacher, **kwargs),
                           distillation_loss(logits, y, teacher, reduction="none", **kwargs).mean())
+    if teacher_arms is not None:
+        no_teacher = torch.full((2, 2), float("nan"))
+        expected = torch.nn.functional.binary_cross_entropy_with_logits(
+            logits, y, pos_weight=torch.tensor(2.0))
+        assert torch.allclose(distillation_loss(logits, y, no_teacher, **kwargs), expected)
     ctx.log("source objective synthetic torch invariants passed")
     seed_everything(13)
     root = D.resolve_data_root()
@@ -96,21 +109,43 @@ def run(ctx, *, arms=ARMS, method_reference=None):
     external_keys = {" ".join(D.canon_text(t).lower().split())
                      for frame, _ in external.values() for t in frame.text}
     units, results, comparisons, skipped = Units(ctx), {}, {}, {}
-    config = {"args": vars(args), "arms": list(arms), "model": asdict(spec), "env": env_report(),
-              "criterion": ("positive ScamShield paired mean-F1 CI; other folds lose "
-                            "<= baseline CI half-width"),
+    config = {"args": vars(args), "arms": list(arms), "teacher_arms": teacher_arms,
+              "model": asdict(spec), "env": env_report(),
+              "criterion": criterion or ("positive ScamShield paired mean-F1 CI; other folds lose "
+                                         "<= baseline CI half-width"),
               "source_groups": "frozen train IDs only; no additional unlabeled transfer rows",
               "label_endpoint": "legacy spam-inclusive label_binary",
               "selection": "early-stop cal PR-AUC; thresholds cal only; no test selection",
-              "reference": method_reference or "https://arxiv.org/abs/1911.08731"}
+              "reference": method_reference or ("https://arxiv.org/abs/1503.02531" if teacher_arms is not None
+                            else "https://arxiv.org/abs/1911.08731")}
 
     def fit(run_, train, y, teacher, sources, arm, seed):
-        cfg = TrainConfig(seed=seed, epochs=args.epochs, source_strategy=arm)
+        cfg = TrainConfig(seed=seed, epochs=args.epochs,
+                          source_strategy="erm" if teacher_arms is not None else arm)
+        enabled = teacher_arms is None or teacher_arms[arm]
+        if enabled and teacher_arms is not None and not np.isfinite(teacher).all():
+            raise ValueError("clean KD requires complete original-train teacher coverage")
         model, history = train_student(spec, train, y, feats.take(run_.cal), labels[run_.cal],
-                                      cfg, device="cuda", teacher=teacher, sources=sources,
-                                      log=ctx.log)
+                                      cfg, device="cuda", teacher=teacher if enabled else None,
+                                      sources=sources, log=ctx.log)
+        if (teacher_arms is not None
+                and history['rows']['with_teacher'] != (len(y) if enabled else 0)):
+            raise ValueError("actual training teacher coverage differs from the arm")
         model.to("cuda")
         sc = predict_scores(model, spec, feats.take(run_.cal), "cuda")
+        checkpoint_info = None
+        if teacher_arms is not None:
+            from rakshak.eval.metrics import threshold_for_fpr
+            from rakshak.models.student import save_checkpoint
+
+            checkpoint = ctx.work / f"student_{run_.name.replace(':', '_')}_{arm}_s{seed}.pt"
+            threshold = threshold_for_fpr(labels[run_.cal], sc, .01)['threshold']
+            save_checkpoint(checkpoint, model.cpu(), spec, threshold, extra={
+                "run": run_.name, "arm": arm, "seed": seed, "teacher_enabled": enabled,
+                "git_sha": ctx.results['git_sha'], "tree_sha256": ctx.results['tree_sha256']})
+            checkpoint_info = {"file": checkpoint.name, "sha256": hashlib.sha256(
+                checkpoint.read_bytes()).hexdigest()}
+            model.to("cuda")
         st = predict_scores(model, spec, feats.take(run_.test), "cuda")
         clusters = sms.campaign_id.iloc[run_.test].astype(str).tolist()
         metrics = evaluate_scores(labels[run_.cal], sc, labels[run_.test], st,
@@ -145,7 +180,8 @@ def run(ctx, *, arms=ARMS, method_reference=None):
         del model
         torch.cuda.empty_cache()
         return {"metrics": metrics, "training": history, "config": asdict(cfg),
-                "external": ext_metrics}, st >= thr
+                "external": ext_metrics, "teacher_enabled": enabled,
+                "checkpoint": checkpoint_info}, st >= thr
 
     pool_audits = {}
     for run_ in runs:

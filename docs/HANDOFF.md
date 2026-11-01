@@ -159,6 +159,9 @@ external student-only diagnostics belong to the separate clean-KD milestone
 | no-KD dual-base, seed 1 | 0.975 | **0.356** (fails Hinglish) | 0.903 |
 | Historical KD dual-base, seed 1 (artifact exists; contaminated protocol) | 0.977 | 0.795 (seeds 2, 3: 0.816, 0.804) | 0.909 |
 
+external student-only diagnostics: `docs/CLEAN_KD_RESULTS.md` (separate clean-KD
+milestone; see issue1). No fused/deployed-FPR claim from this comparison.
+
 **Withdraw the claim that KD fixes Hinglish generalization.** The inherited unlabeled transfer
 pool reintroduced excluded rows: campaign had 4,147 exact test copies; the ScamShield fold had
 2,122 exact test copies and 9,707 held-out-source rows. Historical KD numbers cannot establish
@@ -294,9 +297,6 @@ Android app; independent Indian validation.
 ## 6. What failed and why
 
 - **Hinglish generalization remains unresolved.** Matched clean no-KD mean F1 is0.4058 versus teacher≈0.80; clean KD is0.3520 and KILL;
-  the historical ~0.80 improvement used a contaminated unlabeled pool. Source-balanced/DRO
-  do not meet the primary ScamShield gate. Never add raw transfer extras to training.
-- **Hinglish generalization remains unresolved.** Train-only KD ERM mean F1 is0.4000;
   the historical ~0.80 improvement used a contaminated unlabeled pool. Source-balanced/DRO
   do not meet the primary ScamShield gate. Never add raw transfer extras to training.
 **Not completed:** model-side GroundLM FPR; verified `llama_export` output; Pi 5 benchmarks; Android app.
