@@ -37,4 +37,3 @@ def aligned_scores(path, frame):
     if ((values < 0) | (values > 1)).any():
         raise ValueError('saved scores must be probabilities')
     return values
-
