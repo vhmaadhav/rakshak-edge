@@ -438,3 +438,80 @@ Kaggle for all compute; no Modal without Maadhav's explicit per-run OK; cloud-cr
 # P1 completed measurement milestone verification — 2026-11-01
 
 - One full-suite invocation: **841 passed,21 skipped,144 warnings in175.11s**, exit0. nice19/taskset0-3/OMP2/MKL2 plus50% CPU quota/85C stop guard; Tctl39.1C before/47.2C after, no thermal interruption. Full ruff **All checks passed!**. The staged whitespace check later caught one extra blank line at EOF in source_inputs.py; removed in a formatting-only follow-up, without rewriting the pushed milestone. No semantic code changes after verification. Default fusion behavior remains unchanged; candidate(b) is experimental reproduction code, rejected for shipment. No actual local training/inference/benchmark evaluation.
+
+# Alternative reference preparation only — 2026-11-01
+
+- Optional format preference remains pending after the ONNX artifact/diagnostic KILL. Separate `ci/fusion-v1-torch-20261101` based6d4669f prepares an exact PyTorch-checkpoint **measurement-only** reference, not adoption/publication or an ONNX gate pass. Predeclared serialization/fullcal round-trip<=1e-5, same original train-only seed1 recipe/6folds/cal-only fusion/scientific gates; Arm portability explicitly UNVERIFIED. No new job launched; B and clean KD occupy capacity. Preparation is reversible if the owner selects continued ONNX work.
+
+- Reversible exact-checkpoint alternative prepared, **not adopted/launched** while optional format preference remains pending. `fusion_torch_ref` reuses the same cal-only freeze/report runner with explicit serializer/scorer callbacks. Every selected tensor must equal the reloaded checkpoint exactly, same fullcal logit round-trip<=1e-5, six manifests before outcomes; metadata requires measurement_reference_only=true/Arm portability UNVERIFIED. Publisher understands the explicit checkpoint format and still requires all six artifact sets/private privacy verification. No retroactive ONNX parity pass.
+- Synthetic feed/batching/type/source/allowlist/fold-order checks first **7 passed in0.81s**, Tctl39.1C; expanded format/disclosure/private-staging checks final output recorded next, pre-test39.5C. Ruff clean. Built-only `fusion_torch_ref-ref-20261101`; no push/subscriber/fetch/publication and no actual local model inference/training. Current GPU slots remain B+clean KD. All scientific criteria unchanged.
+
+- Expanded reversible checkpoint-format tests **8 passed in0.81s**, Tctl39.5C; ruff clean. No format answer arrived after an extended response window. Stated assumption: use this prepared exact-checkpoint format as the default **next measurement-reference attempt**, keeping original ONNX KILL/scientific gates and Arm portability UNVERIFIED. No user approval is inferred, no tolerance waived; owner can steer the optional choice. No launch while B+clean KD occupy both slots. Built-only bundle0cf9f00c86d1 remains the prepared code; only docs updated after build.
+
+# Checkpoint measurement-reference launch — 2026-11-01
+
+- B original subscriber completed (quality-retention false), freeing a slot. Under the previously stated optional-format default (no contrary reply), launched **fusion_torch_ref-ref-20261101 v1**, dirty base6d4669f/tree`0cf9f00c86d1`; private T4/internet/data+teacherlogits+pinned URL. Args `--kernel maadhavvh/rakshak-fusion-torch-ref-ref-20261101 --kernel-version 1 --n-boot 1000`. Confirmed actual version1; ONE original blocking event subscription opened. Clean KD is the only other active kernel.
+- Same predeclared original train-only seed1 recipe/strict checkpoint tensor and fullcal<=1e-5 round-trip/6fold cal-only fusion/state freeze, scientific gates unchanged. This measures a fresh checkpoint-format reference, never retroactively passes the killed ONNX export. **Arm/Android portability UNVERIFIED**, shipment_approved=false, HF publish pending. No artifact/safety success before actual completion.
+
+# Parallel B milestone handoff — 2026-11-01
+
+- B finished on separate ci/ela-qlora-20261101,commit210e236,normal push/new PR#7 (unmerged). FP16 verifier-gated advisory GO; same adapted860,959,104-byte PTE completed600rows but retention FAIL (EN pairedCI[−28.96,0]pp,HL[−28.89,+17.86]pp both below−5pp lower margin). No more B quantisation/runtime attempt. Private Kaggle model archive v1,isPrivate=true verified,HF publish pending. B full861pass18skip144warn178.88s plus publication-only focused2pass.02s; source/identity/base checks recorded on B branch. No shared main edits or PR2–6 branch pushes/merges.
+- Current two kernels remain this checkpoint measurement-reference attempt and clean KD on original subscriptions. Failed ONNX gate remains killed; this attempt has unchanged numerical/scientific criteria and explicit Arm portability UNVERIFIED. No checkpoint/v1 success claimed yet. Continue to private reference publication and prepared fused/policy audits only after a valid artifact completes.
+
+## 2026-11-01 — frozen fusion v1 reference completed; safety KILL
+
+- Hypothesis/protocol recorded in FUSION_CHECKPOINT_REFERENCE.md before launch:
+  exact CPU checkpoint serialization can preserve the selected experts. Same
+  train-only seed1/teacher0/15epoch recipe, same four cal-only stages and unchanged
+  scientific gates; earlier ONNX numerical KILL is not waived.
+- `fusion_torch_ref-ref-20261101`v1, args `--kernel maadhavvh/rakshak-fusion-torch-ref-ref-20261101 --kernel-version 1 --n-boot 1000`,
+  T4/private data+teacher logits+fixed URL kernel. Tree
+  `0cf9f00c86d115f31a92ad61a4376d501bd36cbed5a396b29fad1857374fe205`,
+  base git6d4669f68c19 (dirty snapshot), ok1148.9s. Original one event subscription
+  and one matching fetch completed. All six manifests froze before any outcomes.
+- Artifact GO: all tensors equal on reload, full cal round-trip max logit difference0
+  on campaign11072/lang8454/Mishra10876/ScamShield2754/UCI10350/temporal5515.
+  This is same-framework serialization,
+  not ONNX equivalence. CPU PyTorch measurement reference only; Arm/Android UNVERIFIED.
+- Manifest SHA256 `c310d3ccbc1c1e50ce9436f217c66ee9934f778985bfef487a034cc3070b79fa`;
+  metrics SHA256 `aada644fd94eeaea681ef3ec3f53928c78d029f496e0319966377c192857377f`.
+- Safety KILL (all three checks fail): GroundLM SCAM354/1133=31.24%
+  CI[16.91,43.57]%, alert362/1133=31.95%[17.58,44.22]%; SmishX SCAM fraud
+  recall43/226=19.03%[12.88,26.90]% vs same-student113/226=50.00%.
+  Newly fitted (not previously shipped); never claim this reference is safe to deploy.
+- Six folds/both labels/coverage/paired campaign CIs and p-values in FUSION_V1_RESULTS.md.
+  GroundLM/rule design and GroundLM/SmishX intervention selection are in-sample;
+  independent Indian validation OPEN. UCI fraud recallNA; legacy-spam endpoint retained.
+- Private Kaggle publication uploaded allowlisted manifests/checkpoints/URL/source/aggregate
+  JSON (no row scores/messages). Create returned without reported error; immediate
+  GetDataset privacy verification403. Publication/privacy **NOT YET VERIFIED**; do not
+  reupload or assume public/private from the failure. HF publish pending.
+- Keep immutable measurement reference, kill shipment candidate. Next unchanged hardneg
+  audit and evidence-gated policy must bind this exact v1 hash.
+
+## 2026-11-01 — v1 private publication verified
+
+- No reupload/version overwrite after the immediate processing-time GetDataset403.
+  One later owner GetDataset read verified `maadhavvh/rakshak-fusion-v1-20261101`,
+  ownermaadhavvh, **isPrivate=true**, version1, total23581454bytes. Local receipt
+  work/fusion-v1-kaggle-privacy-verification.json. No raw messages or row score files
+  were staged; all5 companion manifests and their exact experts are included.
+  Main manifestc310d3ccbc1c1e50ce9436f217c66ee9934f778985bfef487a034cc3070b79fa.
+  **HF publish pending**. Immutable reference is not shipment approval: safety KILL.
+
+## 2026-11-01 — v1 milestone validation and owner format confirmation
+
+- Owner explicitly confirms PyTorch checkpoint=frozen v1 measurement reference, ONNX
+  deferred to Phase2. Earlier numerical export KILL and all scientific gates unchanged.
+- Full unit suite ONCE for this milestone:849passed21skipped144warnings177.51s,
+  nice19/taskset0-3/OMP2/MKL2 and50%CPUquota, Tctl39.6Cstart/60.2Cend, monitor
+  never reached85C. Torch-dependent local tests skip; actual model invariants run Kaggle.
+  Ruff all clean. No real model inference or training ran on this laptop.
+- After the full invocation, copied the already-run negative ONNX diagnostic source,
+  its strict initializer helper and synthetic test from the isolated failed-attempt
+  worktree into this milestone for reproducibility; targeted validation follows.
+  No inference source in the frozen v1 archive, model weights or fit/eval gates changed.
+
+- Copied diagnostic focused test1passed.04s, Tctl43.6C with the same user CPU/thread limits; ruffclean. Full suite was not repeated.
+
+- Owner headline correction: matched clean no-KD lang_shift F1≈0.41 versus historical teacher≈0.80; clean KD0.3520 KILL. HANDOFF replaces the contaminated≈0.81 headline; full KD experiment is a separate milestone.

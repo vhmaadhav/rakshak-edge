@@ -19,11 +19,31 @@ Transactional false-alarm measurement (2026-11-01): the rule/evidence0.0883% is
 **Kill candidate(b)**: absolute safety/no-increase/recall gates fail. Original runner gate
 also remains unmeasurable on UCI fraud recall (zero mapped fraud positives; legacy spam
 positives642). No relabelling or endpoint substitution. These are **new cal-only models,
-not an identified shipped configuration**; shipped-state artifact identification remains OPEN.
+not an identified shipped configuration**. The owner confirmed no fusion state was previously frozen; the later immutable v1 reference below supersedes these score-only baseline numbers for full-system claims.
 GroundLM/SmishX feedback is in-sample for new intervention selection, not untouched validation.
 All three seeds/six folds/both endpoints/coverage/paired CIs: `docs/FUSION_TRANSACTIONAL_RESULTS.md`.
 Aggregate diagnostic/source counts: `docs/TRANSACTIONAL_DIAGNOSTIC.md`; real-Indian provenance
 and causal data-gap explanation remain UNVERIFIED. Independent Indian validation stays OPEN.
+
+Frozen **fusion v1**, newly fitted (not previously shipped), now binds actual seed-1
+checkpoint weights, URL/rules source hashes, stacker, calibrator, thresholds and all
+six fold manifests. Artifact gate GO; **safety KILL; shipment not approved**.
+
+| v1 known-fraud endpoint | Result (campaign-clustered 95% CI) |
+|---|---|
+| GroundLM SCAM FPR |354/1133=31.24% [16.91,43.57]% |
+| GroundLM >=UNCERTAIN FPR |362/1133=31.95% [17.58,44.22]% |
+| SmishX SCAM recall |43/226=19.03% [12.88,26.90]% (student113/226=50.00%) |
+| SmishX >=UNCERTAIN recall |84/226=37.17% [28.02,48.11]% |
+
+GroundLM/SmishX intervention feedback is **in-sample for policy selection**;
+independent Indian validation remains OPEN. All future full-system FPR claims cite
+v1 manifest `c310d3ccbc1c1e50ce9436f217c66ee9934f778985bfef487a034cc3070b79fa`
+or a named successor. Format is CPU PyTorch checkpoint, **measurement reference
+only; Arm/Android portability UNVERIFIED**. The earlier ONNX artifact attempt failed
+its original numerical gate and stays KILL. Full six-fold/both-label endpoints,
+coverage, paired tests and provenance: `docs/FUSION_V1_RESULTS.md`. Private Kaggle
+publication/privacy receipt is in STATUS.md; **HF publish pending**.
 
 ## 1. Goal and constraints
 
@@ -116,8 +136,16 @@ Caveat: the shipped checkpoint in HF is the scamshield-holdout run (last kept by
 
 | Model | Campaign F1 | lang_shift F1 | temporal F1 |
 |---|---|---|---|
-| no-KD dual-base, seed 1 | 0.975 | **0.356** (fails Hinglish) | 0.903 |
-| Historical KD dual-base, seed 1 (artifact exists; contaminated protocol) | 0.977 | 0.795 (seeds 2, 3: 0.816, 0.804) | 0.909 |
+| Clean no-KD dual-base, mean seeds1/2/3 | 0.9744 | **0.4058** [0.3697,0.4412] | 0.8656 |
+| Clean KD dual-base, mean seeds1/2/3 (KILL) | 0.9748 | **0.3520** [0.3181,0.3840] | 0.8696 |
+
+**Current language-shift headline: clean no-KD student≈0.41 versus historical
+teacher≈0.80 (teacher-b0.802 above).** The old contaminated≈0.81 claim is withdrawn,
+not an estimate of clean performance. Clean KD made this gap worse: paired delta
+−0.0539 CI[−0.0696,−0.0383], p0.000999; the fixed go gate fails. Single-teacher,
+train-only targets, not OOF/ensemble. Full matched six-fold/three-seed results and
+external student-only diagnostics belong to the separate clean-KD milestone
+(`sms_clean_kd-kd1-20261101`v1; see issue1). No fused/deployed-FPR claim from this comparison.
 
 **Withdraw the claim that KD fixes Hinglish generalization.** The inherited unlabeled transfer
 pool reintroduced excluded rows: campaign had 4,147 exact test copies; the ScamShield fold had
@@ -195,7 +223,7 @@ Android app; independent Indian validation.
 
 ## 6. What failed and why
 
-- **Hinglish generalization remains unresolved.** Train-only KD ERM mean F1 is0.4000;
+- **Hinglish generalization remains unresolved.** Matched clean no-KD mean F1 is0.4058 versus teacher≈0.80; clean KD is0.3520 and KILL;
   the historical ~0.80 improvement used a contaminated unlabeled pool. Source-balanced/DRO
   do not meet the primary ScamShield gate. Never add raw transfer extras to training.
 - **Colab free tier**: a detached run was reclaimed after about 45 min. Use Colab only for short jobs.

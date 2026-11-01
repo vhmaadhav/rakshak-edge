@@ -408,8 +408,9 @@ def bundle_names(job: str) -> list[str]:
     job_rel = f'kaggle/jobs/{job}.py'
     if not (REPO / job_rel).is_file():
         sys.exit(f'build: {job_rel} does not exist; write the job file first. Nothing was written.')
+    sibling_jobs = {'fusion_torch_ref': ['kaggle/jobs/fusion_v1.py']}
     listed = git('ls-files', '-z', '--cached', '--others', '--exclude-standard', '--',
-                 PACKAGE_DIR, SHARED_FILE, job_rel)
+                 PACKAGE_DIR, SHARED_FILE, job_rel, *sibling_jobs.get(job, []))
     names = set()
     for rel in listed.split('\0'):
         if not rel or SKIP_PARTS & set(Path(rel).parts) or rel.endswith('.pyc'):
