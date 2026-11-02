@@ -303,3 +303,18 @@ legacy spam and fraud endpoints separate. No labels/splits/external rows changed
 New GroundLM/SmishX aggregate feedback motivated transactional candidate selection:
 subsequent candidate results are in-sample for that intervention choice, as recorded
 in GROUNDLM_FPR.md, not untouched independent validation.
+
+## Policy-design exposure and native URL calibration — 2026-11-02
+
+GroundLM/SmishX aggregate feedback motivated evidence-required alerts. Its KILL
+and repeated clean language-shift results inform later interventions: in-sample
+policy/model selection, even with train-only vocabulary and cal-only thresholds.
+The versioned register in GROUNDLM_FPR.md records each exposure. Independent
+consented Indian inbox validation remains OPEN and must never be used for tuning.
+
+The policy URL threshold uses18087original official-train-only URLcal rows,
+seed0/fraction.05, orderedIDsSHA
+a93713954509cacb8ea7046982ed37fad42eee4b4a8886441eb721c6b6399be2.
+No URLtest/benchmark/SMS/external calibration. This cal also selected the URL
+checkpoint; no CRC or independent quality guarantee. Split/IDs/hash/threshold
+froze before SMS scoring. No synthetic message/model relabel entered evaluation.

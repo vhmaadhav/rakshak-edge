@@ -4,7 +4,7 @@ Status: **in-sample: these rows informed rule design**. Frozen-rule Kaggle audit
 2026-11-01; full before/after tables and paired intervals: `docs/REVIEW_AUDIT.md`.
 Model-side FPR and independent Indian validation remain OPEN.
 
-## Design-set register (frozen 2026-11-01)
+## Design-set register (2026-11-01; exposure updates 2026-11-02)
 
 | Change | Design exposure | Permitted interpretation |
 |---|---|---|
@@ -12,8 +12,12 @@ Model-side FPR and independent Indian validation remain OPEN.
 | dc223d3 parcel/job/prize widening | ScamShield 3,000-row seed-13 sample, then all 85,680 rows including official test; campaign/test, lang_shift and temporal outcomes were inspected in the reviewed work. | In-sample coverage/risk audit only. |
 | 63f9323 LOW-summary caution | Campaign/test rule-coverage failures were used to motivate the wording. | Do not use that split as independent validation of the wording. |
 | 2026-11-01 review fixes | Frozen GroundLM/ScamShield retrospective campaign subsets and existing SMS splits; no rule or threshold tuning. | Measurement correction; no held-out improvement claim. |
-| SmishX | Used as the sole independent validation of the reviewed rule changes after freezing them. No subsequent tuning is permitted from this run. Training overlap was removed by the existing data build. | **Independent, non-Indian-specific**; report frozen-threshold FPR and recall, with no Indian deployment claim. |
+| SmishX | Used as independent validation of already-frozen reviewed rules after train-overlap removal. Those rules remain unchanged; later policy/intervention design uses aggregate feedback and is explicitly in-sample for that selection. | **Independent, non-Indian-specific**; report frozen-threshold FPR and recall, with no Indian deployment claim. |
 | 2026-11-01 transactional/fusion candidate planning | User-provided aggregate student FPR feedback from GroundLM (35.92%) and SmishX (30.31%) motivated the new task and protective-context candidate; no message rows inspected for these templates/features. Future aggregate diagnostics are also design feedback if used for changes. | Repeated benchmark feedback is **in-sample for intervention selection**; SmishX's earlier independent status applies to the already-frozen reviewed rules/control, not an untouched validation claim for new candidates. |
+
+| 2026-11-01/02 evidence-policy selection | GroundLM/SmishX aggregate student/fused FPR and recall motivated corroboration. No new benchmark text authored a rule/template; old full-release rule-design exposure still applies. Policy KILL/fold metrics are now design feedback. | **In-sample policy selection**, despite cal-only thresholds. Original escalation UNMEASURABLE; successor KILL. No v2 or independent Indian claim. |
+| 2026-11-02 native URL threshold | Original official-train-only grouped URLcal, seed0/fraction.05,18087rows; ordered ID SHA256 a93713954509cacb8ea7046982ed37fad42eee4b4a8886441eb721c6b6399be2. Same cal previously selected the URL checkpoint. No URLtest/benchmark/SMS/external calibration. | Calibration data, **not held-out validation** or a risk guarantee. Split/IDs/hash/threshold froze before SMS scoring; no new PhreshPhish test result. |
+| 2026-11-02 family-calibration and multilingual planning | Earlier failures and clean student≈.41 versus teacher≈.80 language-shift feedback motivated predeclared arms. Existing task regexes only; multilingual vocab/PCA will use train IDs only. | Repeated test/intervention feedback is **in-sample for design/selection**. No untouched held-out gain claim; independent Indian validation OPEN. No outcome yet for either arm. |
 
 **Independent Indian held-out validation: OPEN.** Collect consented, privacy-scrubbed real
 Indian SMS received after the rules freeze: bank/UPI/OTP/delivery negatives plus received

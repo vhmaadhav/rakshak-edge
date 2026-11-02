@@ -34,4 +34,5 @@ peft==0.21.2
 bitsandbytes==0.50.2
 
 # Focused synthetic remote validation.
+# Unit continuation uses the same exact pytest release as the local environment.
 pytest==9.2.0
