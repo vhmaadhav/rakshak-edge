@@ -318,3 +318,7 @@ a93713954509cacb8ea7046982ed37fad42eee4b4a8886441eb721c6b6399be2.
 No URLtest/benchmark/SMS/external calibration. This cal also selected the URL
 checkpoint; no CRC or independent quality guarantee. Split/IDs/hash/threshold
 froze before SMS scoring. No synthetic message/model relabel entered evaluation.
+
+## 2026-11-02 — last P1 family-calibration exposure/result
+
+Template-cal-c1 uses originalnoKDtrain-ID checkpoints, originalcal-only family probability/threshold stages, all3seeds/6folds; no data/splits/external sets changed. All90familyfits fall back under predeclaredsparsity; no fitted intervention, KILL9externalchecks. GroundLM/SmishX/priorfrozenfold feedback informed intervention choice, so outcomes are in-sample selection, not untouchedvalidation. IndependentconsentedIndianinboxvalidation remains OPEN. Fullreports/provenance: TEMPLATE_CALIBRATION_RESULTS.md. Newcohort never silently replaces frozenv1.

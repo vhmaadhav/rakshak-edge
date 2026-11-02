@@ -4,6 +4,6 @@
   ],
   "collect_all": true,
   "expected_tests": "collected",
-  "minimum_collected": 835,
-  "maximum_skipped": 18
+  "minimum_collected": 870,
+  "maximum_skipped": 21
 }

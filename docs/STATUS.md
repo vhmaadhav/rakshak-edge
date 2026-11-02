@@ -1320,3 +1320,97 @@ Kaggle for all compute; no Modal without Maadhav's explicit per-run OK; cloud-cr
   policy/model/threshold/gate change. Ruffallclean, no actual local corpus model work.
 - Candidate remainsKILL. No v2, e2e decision or ELA action wiring; independent
   Indian validationOPEN. Ready for one finished milestone commit/reviewPR.
+
+## 2026-11-02 — last P1 family-calibration arm predeclared, no compute
+
+- After(a)/(b)KILL and evidence-required successor's KILL event, before reading its
+  detailed table, TEMPLATE_CALIBRATION.md freezes this last arm's hypothesis,
+ 5existing lexicalfamilies/priority/mincounts/fallbacks, cal-only stages and unchanged
+  P1absolute/noincrease/recall gates. No benchmark text used to write new templates.
+- Cohort template-cal-c1 uses all3noKD control checkpoints from clean-KD jobv1,
+  originaltrain only; no retraining/teacher/synthetic extras. Matched global vs family
+  calibration on identical experts, exactmodel/provenance and fullcal cached-score
+  parity<=1e-5 before outcome use. Immutablev1 remains a separate named reference.
+- Family probability/threshold stages each need200negative/20positive else exact
+  global fallback; otheralwaysglobal. All18states frozen before outcomes. Student
+  ≈.41 vs teacher≈.80 headline unchanged, no SOTA/heldout/deployment claim.
+- No implementation/job yet. Original policy UNMEASURABLE/failures stay recorded;
+  evidence-required recovery output is being fetched once from its existing event.
+
+## 2026-11-02 — family-calibration implementation, remote focused validation
+
+- Implemented fixed five-family priority and cal-only sigmoid/threshold maps with
+ 200negative/20positive perstage requirements, exactglobalfallbacks and explicit
+  eligible/fallbackcounts. Originalcalstage ID membership must match exactly.
+  Otheralwaysglobal. Existingtriagereporter uses an exact-state adapter (cannot
+  be applied to different scores/rows); originalP1gate reused with role mapping,
+  unchanged1%/10%/studentSCAM/noincrease/foldrecall/UCINA+legacy criteria.
+- Prepared family_calibration job: all3clean noKD source checkpoints/all6folds,
+  fullcal cachedGPUprobparity<=1e-5, exact internalfold/seed/arm/source/teacher0
+  provenance, no teacher/synthetic/unlabelled training. Every18state/model/URL/source
+  manifest freezes before outcomes; v1parent reference stays unchanged. No fitting
+  job launched before focused tests pass. No model/threshold tuning from test rows.
+- After policy localunit thermalstop86.2/85.4C, run these focused checks onKaggle
+  only.9nonparametrized synthetictests includeeligible/sparsefallbacks, priority,
+  exactcalIDs, explicittriage/denominators, originalgate mapping/UCINA, changedmodel
+  hash rejection, cachedscore parquet CALpredicate and actualbundle dependency.
+  Ruffallclean, no actualdataset/model execution onlaptop.
+- Unit-job hypothesis: all9selected tests pass with0skip/error/failure, source
+  selectionSHA6cdd1ee725805d7993f6ad8c9825e6f922dc30efefdb4673347611ad9b0954a7.
+  Samepinnedpytest9.2.0 aslocal, freshsource-only scratchgitindex,no commit/identity
+  override/remote. No datasets or model inputs attached.<=2GPUkernels with policy
+  remaining-node validation. This is codevalidation, not a scientificarmGO.
+
+## 2026-11-02 — focused validation caught a test-fixture error
+
+- unit_validation-fam-focus-20261102v1,tree8ddb052d4a4f449863db01e8636bff785adacfd34dadacf185ab201210bc3d35,
+  completed134.5s, oneevent/fetch; pytest1failed8passed2warnings4.50s, no skipped.
+- Failure is in the cal-ID regression fixture: NumPy r_ treats a first string as
+  a special directive, so the synthetic 'test-only' input raised before entering
+  the intended membership guard. Corrected argument construction to concatenate
+  a one-element string array with remaining IDs. Same test intent, implementation,
+  family definitions, minimum counts and scientific gates unchanged.
+- Re-run the same9synthetic focused tests on Kaggle under a new unique run name.
+  No actual family-cal experiment or outcome has run. Local heavy tests remain stopped.
+
+- Corrected-fixture retry unit_validation-famfix-20261102 launchedv1, treeprefix
+  0270892972a2. The concatenation correction introduced one103char test line;
+  RuffreportedE501 before the launch orchestration had gated on that result.
+  Wrapped locally immediately; Ruffnowclean. This is whitespace-only after the
+  retry snapshot, no test/calibration/gate behavior change. Actual snapshot retains
+  its tree receipt, no invented clean-Ruff claim for that launched file version.
+
+## 2026-11-02 — family focused validation passes; experiment ready
+
+- unit_validation-famfix-20261102v1 ok137.9s, ONEevent/fetch verified; tree0270892972a291c6b3e782a25726a566116faa4da5587f04533c3c2d1080f483.
+- Pytest9passed/0skip/error/failure; selectionSHA6cdd1ee725805d7993f6ad8c9825e6f922dc30efefdb4673347611ad9b0954a7. MetricsSHA27fc56c4865dd2c98273b0f6875b246c920c7ada010c27141eb9e9f886a2ddb6.
+- Earlier1failed/8passed fixture run retained. Corrected concatenation reaches the intended cal-ID guard; no implementation/policy/scientific gate change. Only whitespace wrapping after the retry snapshot, Ruffallclean.
+- Now launch the predeclared original noKD3seed/all6fold cal-only arm, with unchanged immutablev1 reference and original P1go/kill. No local heavy work.
+
+## 2026-11-02 — family-calibration c1 launched
+
+- family_calibration-c1-20261102 v1, tree387fa7f06c56d19df89a42d65421e6b8c8e7d9ff0a12db9efcfa2461fdd25033, original one event subscriber active. Args: --v1-manifest-sha256 c310d3ccbc1c1e50ce9436f217c66ee9934f778985bfef487a034cc3070b79fa --v1-metrics-sha256 aada644fd94eeaea681ef3ec3f53928c78d029f496e0319966377c192857377f --n-boot 1000 --kernel maadhavvh/rakshak-family-calibration-c1-20261102.
+- Private T4/internet, rakshak-data plus completed clean-KD/v1-reference/URL-student kernel inputs. No teacher targets attached or new training. Fixed three original noKD seeds/all six folds; cal-only global/family states frozen before outcomes; original P1 gates unchanged. No outcome yet.
+- Policy milestone now PR#11, commitf161a81; normal push, no merge. Segmented validation875passes/11skips across local+Kaggle (not uninterrupted full-suite success), Ruffclean. PolicyKILL10recallguards retained. Private audit archive verified, HF publish pending.
+
+## 2026-11-02 — milestone validation/publisher preparation while c1 runs
+
+- Create-only private publisher stages only18hash-checked originalstudent checkpoints, URLweights/scaler, frozeninferencesource, manifests/aggregateJSON. No message/scoreparquet publication. Two new synthetic tests exercise privateallowlist/exclusion and changed-weight rejection; validate in milestonefullsuite, no extra localtests. Addedafter frozen scientific snapshot, no numerical/calibration/gate source change.
+- Prepare ONE remote full-suite invocation for milestonecommit after c1completion: syntheticfixturesonly/no datasets/models. First collect ALLtests, refuse collectionerrors/inventory<870; run allcollectednodes once, requireexactJUnitcount/0failures/0errors, atmost21optional-dependency skips reportedwithreasons (Kaggle Torch/ONNX available). Bundle required launcher/Colab/source-onlypublication files; freshscratchindex no identity/commit/remote. Usernice19/affinity0-3/threadlimits inherited. This is unit validation only, not training/eval. No full invocation yet.
+
+## 2026-11-02 — last P1 arm(c) completed KILL, all families fall back
+
+- family_calibration-c1-20261102v1/tree387fa7f06c56d19df89a42d65421e6b8c8e7d9ff0a12db9efcfa2461fdd25033 ok1534.2s, ONEevent/fetch. Frozenmanifestd5b92921f963acab17d728650269829efe01648850055c94ebfeb04fe6e7cfa9, metrics819ad822565d849d9831b63995f814665a4c09142e98e66a7a5fd8e79c091905. All18models/calstates freeze before outcomes, exactsource/probabilityparityguards passed.
+- **KILL9externalchecks/no missing**: all90namedfamilyfits fall back because fixed cal stages are sparse; no family map is fitted. Family/control aggregate reports identical onall6folds/2externals/bothlabels/3seeds, pairedchanges0CI[0,0]/p1 where defined. Allfoldrecall guards pass by identity, UCIknownfraudNA retained/legacyrequired. This is NO improvement or successful recalibration.
+- GroundknownfraudSCAM440/338/348of1133=38.83/29.83/30.71%; alert463/367/356of1133=40.86/32.39/31.42%, allabove1%/10%caps. SmishSCAM20/29/106of226 belowmatchedstudent118/116/122, all3fail. Freshnamedcohorttemplate-cal-c1, NOT immutablev1 silentlyreplaced. In-sample interventionselection; independentIndianvalidationOPEN. No newP1arm/candidatewiring afterthis lastarm.
+- ONE milestonefullsuite onKaggle unit_validation-c-full-20261102v1/tree4041ccad6be5c0711eea8832f884cebfdaa665cc9855619e936a9a38ec70f6b7 ok204.0s, ONEevent/fetch: **882passed0skip/error/failure**, collection/JUnitcountsverified; fullsuite not repeatedlocally. MetricsSHAc936f0c904d2ea10fcd8df8192d73d0b07b3c327173761bd20518972ff162d88.
+- Afterfullsuite, staging CLI found publisherimport of fusion gate pulled NumPy into minimalKaggleCLIvenv. Publisher-only fixed foldconstant removes scientificdependency; 3focused lightweight publicationchecks follow underrequestedCPU/threadlimits. First focused invocation inherited maineditablepackagepath and collectionerrored before tests; corrected with explicitisolatedPYTHONPATH=src. Tctl41.8→41.0C; no model/fit/gate sourcechange. Archiveallowlist stagedsuccessfully, no uploadyet.
+
+- Publisher-only dependency fix after fullunit: focused3passed1.23s with explicitisolatedPYTHONPATH=src, nice19/taskset0-3/OMP2/MKL2/OpenBLAS1, Tctl41.0C before run; includes import with NumPy blocked, hash-tamper rejection and privateallowlist/no-row-score tests. Firstattempt's environmentalcollectionerror disclosed above. No numerical/sciencecodechange, no secondfullsuite.
+
+## 2026-11-02 — family milestone private archive verified
+
+- Created PRIVATE maadhavvh/rakshak-template-cal-c1-20261102v1 once,22,256,698bytes; later SINGLEownerGetDataset confirmsref/ownermaadhavvh/**isPrivate=true**/version1. Initialimmediategetter403duringprocessing is disclosed; no reupload or publicassumption. ArchiveSHA11b5b8493aafbee449fd0fdb12db73c5b52c453decf40918e50b4c61c4fca93a. Receiptwork/family-kaggle-privacy-verification.json.
+- Allowlist18originalstudentcheckpoints+URL/scaler/sourcearchive+frozenmanifest/aggregatemetrics/results only; no SMStext/row-scoreparquet/secrets. Shipmentfalse, namedcohortKILL9checks, no fittedfamilymap. **HF publish pending**.
+- Final validation: full882passed0skip157warnings121.95s onKaggle; publisher-only postfullfocused3passed1.23s; RuffAllcheckspassed/diffclean. No secondfullsuite/localrealmodelwork. Pulled/rebased parent#8 beforecommit:Alreadyuptodate. Repo-localidentityvhmaadhav <vhmaadhav@hotmail.com> verified, no override.
+- Review merge order#2→#3→#6→#8→thismilestone; #11policy is code-independentsibling/context. OtherPRs remainforMaadhav; no merges/mainpush/forcepush. Main dirtySTATUS/PI_SETUP untouched. Nextmultilingualm3hasONEoriginalsubscription, no measuredresult; first2packagingfailuresbeforeSMS/training retained. URLresearchonly, no thirdkernel.
