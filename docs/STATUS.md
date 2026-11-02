@@ -1414,3 +1414,130 @@ Kaggle for all compute; no Modal without Maadhav's explicit per-run OK; cloud-cr
 - Allowlist18originalstudentcheckpoints+URL/scaler/sourcearchive+frozenmanifest/aggregatemetrics/results only; no SMStext/row-scoreparquet/secrets. Shipmentfalse, namedcohortKILL9checks, no fittedfamilymap. **HF publish pending**.
 - Final validation: full882passed0skip157warnings121.95s onKaggle; publisher-only postfullfocused3passed1.23s; RuffAllcheckspassed/diffclean. No secondfullsuite/localrealmodelwork. Pulled/rebased parent#8 beforecommit:Alreadyuptodate. Repo-localidentityvhmaadhav <vhmaadhav@hotmail.com> verified, no override.
 - Review merge order#2→#3→#6→#8→thismilestone; #11policy is code-independentsibling/context. OtherPRs remainforMaadhav; no merges/mainpush/forcepush. Main dirtySTATUS/PI_SETUP untouched. Nextmultilingualm3hasONEoriginalsubscription, no measuredresult; first2packagingfailuresbeforeSMS/training retained. URLresearchonly, no thirdkernel.
+
+## 2026-11-01 — next C/KD multilingual hypothesis predeclared, no compute
+
+- Owner-requested next idea in MULTILINGUAL_STUDENT.md: dualbyteCNN + compact
+  train-vocabulary pretrained multilingual embedding, with/without train-only
+  mmBERTsingle-teacher KD and fresh noKDbytecontrol;3seeds/all6folds. Fixed64dim/
+  max16384rows/PCA train-token-only/128tokens, original15epochcal-stop recipe.
+- Public primary card/API/config checked: jhu-clsp/mmBERT-small MIT, pinned
+  abc32620dd4f6ab06f5fbe905dc25f310618e09f, hidden384/vocab256000/22layers.
+  Paper2509.06888 supports multilingual pretraining only; hybrid SMS benefit
+  UNVERIFIED, no paper result transferred. No weights downloaded locally.
+- Predeclared candidateGO: lang lowerCI>freshbytecontrolpoint AND pairedgainCI>0,
+  nofold loss>controlCIhalf, classifierweights<=8MiB. NoKDhybrid diagnostic only,
+  no posthoc selection. Allvocab/PCA fit on originaltrain only, no extras/OOFclaim.
+  Independent Indian validation OPEN; in-sample repeated-design caveat explicit.
+- No implementation/job yet. Higher-priority evidence-required-alert audit is on
+  its sole existing event subscription; hardnegativeKILL milestone/report pending.
+
+## 2026-11-02 — multilingual implementation and focused validation declaration
+
+- Re-checked pinned public MIT card/config directly; exact card SHA unchanged, configSHA3b0eea47c4734682370b66dbd73d655f1100387f683d7c69015f33aa1bac1be9. No local weights downloaded/executed. Original primary links and benefitUNVERIFIED in MULTILINGUAL_STUDENT.md.
+- Implemented train-ID-only frequent-token table and centred64dim PCA, fixed sign convention/PADzero/UNKmean, masked mean+max hybrid, same seed/BCE/KD/AdamW/PR stopping,3arms/3seeds/all6fold job. No model job yet. Freeze vocabulary before cal/test token transformation and weights/thresholds before each evaluation. Explicitteacher manifest and train-only guards, single-teacher caveat unchanged.
+- Focused unit hypothesis:9synthetic tests pass,0skip/error/failure onprivateKaggle. Tests cover exacttrain IDs/order/frequencyties/unknown/PAD/PCA; masked pooling/backprop/serialization; no-teacher fullBCE; syntheticCUDA byte-control exact training parity and hybridreload; each scientific gate/missing-artifact/noablationpromotion; bundler behavior. No actualdata/models attached. Same unit-only driver asPR11, scratchsourcegitindex/no commit/identity/remote.
+- GO for codevalidation only ifall9pass. Scientific gate remains predeclared langCI lower>freshbytepoint ANDpairedCIpositive/nootherfoldloss>controlCIhalf/weights<=8MiB. No ablationpromotion or hyperparameter sweep. Local heavy tests remain stopped after thermalguard.
+
+## 2026-11-02 — multilingual focused test caught nondeterministic CUDA comparison
+
+- unit_validation-multi-focus-20261102v1/tree9ccaad9e5bfa3b80dd1bc1e888f797ee08cee3dc04ce76a633c6a983994339d9 completed102.0s, ONEevent/fetch.8passed/1failed/0skip/error,11.75s. First mismatched convolution parameter had69/6144elements differing, max7.450580596923828e-9. Equal calPR/teacherabsence checks passed; hybridtraining/reload checks after that assertion were not reached.
+- The synthetic trainer comparison incorrectly demanded bitwise-identical independent CUDA runs with nondeterministic convolution gradients. Set cuDNN deterministic=True/benchmark=False IN THIS UNIT ONLY, retaining the exactzero-tolerance weight assertion. No tolerance relaxation or production train code/hyperparameter/gate change. Repeat identical9tests,0skip requirement.
+- Before any corpus model launch, clarified predeclaration contradiction: exact original train IDs retain original corpus synthetic training rows equally inallarms; no NEWsynthetic augmentation, cal/testsynthetics still excluded. Frozen IDs/scientific gates unchanged.
+
+## 2026-11-02 — multilingual focused validation passes
+
+- unit_validation-multi-det-20261102v1/tree211f6e1cee8db9e1370cd9433311737ac93bb1e42957e6e14ccec219e5fd55ba ok154.1s, ONEevent/fetch;9passed0skip/error/failure. Exactzero-tolerance byte-training comparison and hybridCUDAtraining/reload both passed. MetricsSHAf85fff02c44c58bf1638d7e78dfadf1e858bb5a5d6a90c1e0be551675f990288.
+- Only unit cuDNN deterministic flags changed; production numerical trainer unchanged. Added source-only inference archive, originalsynthetictrain count and cal/test IDhash metadata plus exactCPUserialization guard before any corpus run; no gates/hyperparameter changes. Ruffallclean. Launch fixed54fits with original scopedata/controls.
+
+## 2026-11-02 — multilingual m1 launched
+
+- sms_multilingual-m1-20261102v1/treec4f62e4f0171087f57e3350ed7a1bf228a60fe2bd93cfe977ea0ef0637e286b2, --n-boot1000; privateT4/internet, rakshak-data+rakshak-teacher-logits. ONEoriginaleventsubscription active. Exact3arms/3seeds/all6folds/54fits; fixedpublicMITembedding revision/train-onlyteacher/vocab/PCA. No outcome yet.
+- Familycalibrationc1 remains the other activekernel/originalsubscription. No thirdkernel/statuspolling/localtraining. Actualscientificgates unchanged; no extras/newsynthetics, originaltrainIDsretained. HF publish pending; no unfinished artifact published.
+
+## 2026-11-02 — multilingual m1 packaging failure before data/training
+
+- sms_multilingual-m1-20261102v1/treec4f62e4f0171087f57e3350ed7a1bf228a60fe2bd93cfe977ea0ef0637e286b2 error98.6s, ONEevent/fetch: loader expected safetensors but pinned revision exposes pytorch_model.bin only. Before D.load_sms, any PCA/training/checkpoint/test/external outcome. Scientific gate UNMEASURABLE, no measured failure/success claim.
+- Primary HF pinned model/tree API confirms563633326-byte pytorch_model.bin, LFS/SHA256be7c9ce2af947fb5bb17a3bc919552f898c5ef4164bf0a7190cf25a0f98f85b6. Same model/revision/licence, add this exacthash guard and weights_only=True CPU deserialization ON KAGGLE ONLY, then select the exact inputembedding tensor/shape. No original transformer layer execution or changedrepresentation/gates. No local weights downloaded.
+- Predeclare one new synthetic loader regression: fake pinned folder/bin/tokenizer, enforce weights_only=True, source/shape binding and reject changedweight BEFORE deserialization. GOcodevalidation only if1testpasses/0skip/error/failure; then restart unchanged54fit experiment with a new run name. Prior9unitpass/failedfirstunit retained, no needless rerun.
+
+- Binloader regression unit_validation-multi-bin-20261102v1/tree6250fc265b0e8945908aa0d2aef8c4b857879ab489175cbef7de90a945062f9e ok89.8s,1passed0skip/error/failure, ONEevent/fetch; metricsSHA696dcbb630a9f1d4633c8a3ad8bde1c0c863256a563dc7fd538c3cb1d47cbfb9. Same pinnedweightformat/source/hash and weights_only guard validatedsynthetically. Restart unchanged54fits as m2, no prior model/outcome.
+
+- Recovery sms_multilingual-m2-20261102v1/treead22d25cf21fb4ff4aaf515a615b3343acef6441364f439c32586d39d6974a28 confirmedlaunch; --n-boot1000, sameprivate data+teacherlogits, fixed54fits. ONEoriginaleventsubscription, no outcome. Unchangedpretrainedrevision/representation/optimizer/gates; pinned bin packaging only. Otherkernel familycalibrationc1 still onits originalsubscription.
+
+## 2026-11-02 — multilingual m2 source archive failure before SMS/training
+
+- sms_multilingual-m2-20261102v1/treead22d25cf21fb4ff4aaf515a615b3343acef6441364f439c32586d39d6974a28 error263.8s, ONEevent/fetch. Pinned MITbinSHA/shape/embedding selection/tokenizer loaded successfully, source receipt exists; no localbinweight downloaded byfetch (onlypretrainedsourceJSON/tokenizer/sourcezip/logs).
+- Failure: sourcebundle normalizes filemtimes to1970; newly added ZipFile.write rejected pre1980timestamp. Before teacherpool/PCA/training/test/external; no measured model result, scientificgate UNMEASURABLE. Replace archive writing with deterministic ZipInfo+writestr fixed1980header, same sourcebytes and exclusivecreate mode. Numericalmodel/representation/gates unchanged.
+- Predeclare new1synthetic archive regression:1970mtime source+job fixture, exact source-only contents/deterministicbinaryarchive, excludes fakeweight and refuses symlink. Pass1/0skip/error/failure before m3unchanged54fitrestart. No repeat ofalready-passed9model/1binloaderunits.
+
+- Archive regression unit_validation-multi-zip-20261102v1/treec0e9255b3a653b446f87de2dd3ce3d1f78055055ecd5c338974d9805d3518e1a ok101.6s,1passed0skip/error/failure, ONEevent/fetch; metricsSHAe05691f36a47a3fb1ef983ef0750acc189ae59105c307233eee6b6e5f2de0788. FixedZipInfo1980header/deterministicbytes/source-only/symlink refusal tested. Same54fit protocol restartsasm3, no representation/hyperparameter/gate change. Prior2packaging failures remainUNMEASURABLE before SMS/training.
+
+- Recoverym3 sms_multilingual-m3-20261102v1/tree93ee0115cc22af3a2bedeaacc82df2c10ebb52ed13f2e30387b72747da90d12e, --n-boot1000, sameprivate data+teacherlogits/T4/internet, ONEoriginalsubscription active; no outcome. No newparams/gates or test/external tuning. Packagingunit9+1+1passes retained. Onlym3active afterfamily+allunitscomplete.
+
+## 2026-11-02 — missing completion-observation process
+
+On continuation the original M3 tool handle42655 was missing. Process inspection
+found no surviving wait_event.py and completion.json was absent. One bounded
+cached-event read found no M3 completion; this is NOT proof of termination. No
+job restart, status polling, fetch or second blocking subscription. Asked for
+permission to replace the lost original event subscription from its launch time;
+pending. M3 remains counted active against the two-kernel limit. Scientific gates
+and original source snapshot remain unchanged; no model result is known.
+
+## 2026-11-02 — M3 completed research GO, milestone verification
+
+- Owner authorized exactly ONEreplacement event subscription after original handle/
+  process loss, replaying original launch epoch. It immediately recovered the exact
+  M3ok event; one successfulfetch21137 verified job/git/tree/status. No restart,
+  status polling or extra wait. Private M3v1/tree93ee0115cc22af3a2bedeaacc82df2c10ebb52ed13f2e30387b72747da90d12e,
+ 54fits4228.1s. Original packaging failures remain recorded, no protocol change.
+- Recorded gate **GO**, all26checks true/missingnone. Fresh matched byte langF1
+  .463299[.426802,.495059] vs KDhybrid .891632[.863010,.917071], paired delta
+  +.428332[.390894,.462233], p.000999 (1000campaign resamples, fixed3seeds).
+  Historical clean byte.4058/teacher.802 are separate reference cohorts, not the
+  matched control/teacher reproduced here; contaminated≈.81 remains WITHDRAWN.
+- Allsix candidate fold-loss guards pass; temporal .887678→.864387 has delta
+  −.023292CI[−.057354,.007190], within declared controlCIhalf. Other folds and
+  diagnostic noKDhybrid (lang.872592, NOTpromotable) reported without switchingarm.
+  Candidate tensorbytes4,600,490 each; checkpoint~6.36MB with training-IDmetadata;
+  33MB tokenizer and vocabulary/audit files EXCLUDED from8MiB gate, must report.
+- ResearchGO is NOT deployment: candidate GroundLM cal1%-FPR fraud FPR
+  444/395/434of1133 (39.19/34.86/38.31%); SmishX221/207/256of881
+  (25.09/23.50/29.06%). No fusedv1 replacement or independent Indian gain claim;
+  all endpoints/CIs/recalls/three seeds to full report. Single teacher0/trainIDs,
+  original synthetics only, in-sample intervention selection; upstream pretraining
+  overlap unknown, Arm/tokenizer/runtime/export quality remain UNVERIFIED.
+- Milestone full suite predeclared before running: all collected tests(min866),
+  0failure/error, max21inherited optional skips, one full invocation onKaggle T4,
+  no data/model inputs. Include new private54checkpoint/tokenizer/vocab allowlist
+  and synthetic2publisher tests. Ruffallclean. No full suite run locally.
+
+- Milestone full `unit_validation-m-full-20261102`v1/tree
+  149b11260234f1234852881c2ed263714f8b1e6ca1435f6bdbcfa3f45cbb307e:
+  **877passed0skipped**,157warnings150.63s, total270.4s; one event/fetch. No local
+  full suite/model compute. Ruffallclean. Actual archive staging verified all54
+  checkpoint hashes,6vocabularies/source/teacher coverage,73allowlisted files;
+  tokenizer34,393,406bytes. Rawmessages/scoreparquets excluded.
+- First publication invocation used systemPython lacking the Kaggle SDK and stopped
+  at import BEFORE any upload/API call. Correct CLI interpreter is
+  /home/maadhav/.local/share/kaggle-cli/bin/python3; use it for publication. No
+  dataset was created by that failed invocation, no model/scientific code change.
+
+- Private archive upload completed; immediate owner GetDataset returned403 during
+  processing, so owner/isPrivate/version verification is still pending. No repeat
+  upload; make one later owner-record read. No public publication requested.
+
+## 2026-11-02 — multilingual milestone finalized
+
+- One later owner-record read verified private archive maadhavvh/rakshak-multilingual-m3-20261102
+  version1, ownermaadhavvh/isPrivate=true,350414915bytes; model_manifestSHA
+  a1d94a2659dc98b9558c72998f8cf998b5aca883bdbfca7d5353ed0798daf193. Initial
+  processing403 retained; no re-upload. HF publish pending. All54models/6vocabularies/
+  tokenizer/source/aggregateJSON, no raw SMS or row-score publication.
+- ScientificGO remains research-only; high external FPR/legacy-label/in-sample
+  caveats and original failures are prominent in MULTILINGUAL_RESULTS.md/HANDOFF.
+  Independent Indian validation OPEN; no frozenfusionv1 replacement or Arm claim.
+- Full877PASS0skip/ruffclean, all80archived scientific files byte-identical current.
+  Parent pull/rebase unchanged and repo-local identity confirmed. One milestone
+  commit on own branch; review dependency #2→#3→#6→#9→thismilestone, no merges.
