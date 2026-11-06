@@ -291,3 +291,15 @@ hf download highestintheroom/rakshak-data --repo-type dataset --local-dir data/h
 ```
 
 Requires an org-scoped Hugging Face token with read access on `highestintheroom`. Do not make the repo public without a per-source licence review.
+
+
+## Endpoint applicability audit — 2026-11-01
+
+Frozen UCI source_holdout test has642 legacy spam-inclusive positives but zero
+`label_scam=1` positives under the existing policy mapping (verified by the private
+cal-only fusion audit, tree67b2545f3d29). Fraud recall on this fold is therefore NA,
+not zero; this does not establish that its messages contain no real scams. Keep
+legacy spam and fraud endpoints separate. No labels/splits/external rows changed.
+New GroundLM/SmishX aggregate feedback motivated transactional candidate selection:
+subsequent candidate results are in-sample for that intervention choice, as recorded
+in GROUNDLM_FPR.md, not untouched independent validation.

@@ -15,10 +15,11 @@ from rakshak.rules import EVIDENCE_TYPES, run_rules
 
 FEATURE_NAMES = ("message_prob", "url_prob", "has_url", *EVIDENCE_TYPES,
                  *(f.name for f in fields(Flags)))
+TRANSACTIONAL_NAMES = ("do_not_share", "otp_protective_no_url", "transaction_keywords")
 MODELS = ("logistic", "lightgbm", "mean", "max")
 
 
-def feature_matrix(texts, message_prob, url_prob, *, has_url) -> np.ndarray:
+def feature_matrix(texts, message_prob, url_prob, *, has_url, transactional=False) -> np.ndarray:
     """Explicit URL presence; absent URL score is NaN, encoded as 0 PLUS has_url=0.
 
     A present URL without a score, or an absent URL with a score, is an error.
@@ -45,6 +46,14 @@ def feature_matrix(texts, message_prob, url_prob, *, has_url) -> np.ndarray:
             x[i, rule_index[evidence.type]] = 1
         x[i, 3 + len(EVIDENCE_TYPES):] = [bool(getattr(canon.flags, f.name))
                                         for f in fields(Flags)]
+    if transactional:
+        from rakshak.fusion.transactional_profile import categories
+
+        flags = [categories(text) for text in texts]
+        extra = np.asarray([["do_not_share" in row, "otp_protective_no_url" in row,
+                             bool(row & {"bank", "upi", "delivery", "telecom_utility"})]
+                            for row in flags], dtype=float).reshape(len(texts), 3)
+        x = np.column_stack((x, extra))
     return x
 
 
@@ -56,10 +65,11 @@ class FusionModel:
     the caller's responsibility: saved scores must be out of sample for cal/test.
     """
 
-    def __init__(self, name: str = "logistic"):
+    def __init__(self, name: str = "logistic", *, transactional=False):
         if name not in MODELS:
             raise ValueError(f"unknown fusion model {name}")
         self.name = name
+        self.feature_names = FEATURE_NAMES + (TRANSACTIONAL_NAMES if transactional else ())
         self.state: dict | None = None
 
     def fit(self, x, y, *, ids, cal_ids, train_ids, test_ids) -> FusionModel:
@@ -87,10 +97,9 @@ class FusionModel:
             self.state = model.booster_.dump_model()
         return self
 
-    @staticmethod
-    def _matrix(x) -> np.ndarray:
+    def _matrix(self, x) -> np.ndarray:
         x = np.asarray(x, float)
-        if x.ndim != 2 or x.shape[1] != len(FEATURE_NAMES) or not np.isfinite(x).all():
+        if x.ndim != 2 or x.shape[1] != len(self.feature_names) or not np.isfinite(x).all():
             raise ValueError("invalid fusion feature matrix")
         if ((x < 0) | (x > 1)).any() or not np.isin(x[:, 2:], [0, 1]).all():
             raise ValueError("probabilities and binary indicators required")
@@ -124,13 +133,14 @@ class FusionModel:
     def to_dict(self) -> dict:
         if self.state is None:
             raise ValueError("fusion model is not fitted")
-        return {"name": self.name, "features": list(FEATURE_NAMES),
+        return {"name": self.name, "features": list(self.feature_names),
                 "state": self.state, "fit_ids": self.fit_ids}
 
     @classmethod
     def from_dict(cls, state: dict) -> FusionModel:
-        if state["features"] != list(FEATURE_NAMES):
+        features = tuple(state["features"])
+        if features not in (FEATURE_NAMES, FEATURE_NAMES + TRANSACTIONAL_NAMES):
             raise ValueError("incompatible feature schema")
-        obj = cls(state["name"])
+        obj = cls(state["name"], transactional=len(features) > len(FEATURE_NAMES))
         obj.state, obj.fit_ids = state["state"], state["fit_ids"]
         return obj
