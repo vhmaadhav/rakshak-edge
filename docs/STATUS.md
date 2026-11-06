@@ -385,3 +385,172 @@ Uncommitted: NIDS module + teacher/Colab changes (next milestone commit).
 ## Rules
 Kaggle for all compute; no Modal without Maadhav's explicit per-run OK; cloud-credit labelling parked; commit very rarely as vhmaadhav.
 - New --run-name tests (tests/test_kaggle_run_name.py) not yet run: CPU was 92–94 °C from a non-project process.
+
+## 2026-11-02 — E0 three-seed URL controls declared/implemented, no benchmark outcomes
+
+- URL_CONTROLS_CAL.md predeclares artifact-only phase before code/compute:3charcnn-wide seeds1/2/3, originalPhreshtrain/domain-groupedcal and frozenurl_domain, fullfitdata, original8epochs/batch512/AdamW.002/patience3/AMPfp16/200bytes. No teacher/KD/testprediction or benchmarkmetrics inthisphase. Teacherrecipe/eligibility mustbefixedbeforeteacherfit andbeforeany newtestoutcome.
+- Hypothesis: correctlyseeded, all-six savedcontrols/cal-onlylogits are needed for fairtrain-only KDeligibility. TechnicalGO only ifall6reloadexactly/finitecompleteoriginalcalIDs/no testscoring; no performance/shipmentGO. Found existingrun_unit seeds AFTER construction; wrapper seedsbeforeconstruction, leaves originalURLjobunchanged. Selectedweights/config/scaler/fit-cal-testIDhashes bindbeforelatermetrics. Originalsingle-classurl_temporal unmeasurable unchanged, nofakednegatives.
+- Focusedvalidation hypothesis:3synthetictests pass0skip/error/failure onprivateKaggle,no datasets/models. Two new tests enforceindependentpriorRNG/exactweights/cal-onlyscorecalls/cacheIDs andtest-IDoverlap rejectionbeforeconstruction; existingprivateattachmentbuilder regression. Genericremoteunitdriver sameasM, no laptopmodelwork. ScientificURLmetric gates forfutureteacher/KD mustbespecifiedseparately beforetheirfit; E0exposesnone.
+- Researchonly pinnedApache2ByT5smallcard/config; actualByT5source1198627927bytes/hash isrecordedinURL_TEACHER_RESEARCH.md. No localweightsdownloaded, downstreamURLbenefitUNVERIFIED. HF publish pending. No E0job launched before focusedtests pass. M3isotheractivekernel onoriginalsubscription.
+
+- Focusedjob firstnameurlcal-focus-20261102 wasrejectedbylocallauncher(length21), no remotejob/wait. Correctunit_validation-urlcal-unit-20261102v1/treeb187ea6c8477 emittedGO3tests/0skip/error/failure; originalONEsubscribercomplete, fetchingonce. Addedonlyinputparquet/splitfilehash metadata and changedurl_temporal note toexplicitlyhistorical/notnewlyscored; no model/training/gate changes. NewE0corpusjob stillrequiresverifiedfetchPASS beforelaunch.
+
+- Verifiedfocusedreceipt:unit_validation-urlcal-unit-20261102v1/treeb187ea6c8477498a615f666aa86ec9bfe76e9d65dec8cb0a369874806af9c60e ok92.9s,3passed0skip/error/failure,ONEevent/fetch;metricsSHA9bf4e308c36c7dfc4aad7617d5d07fb3e2b24a7f36a7096e6d76e682a5d88ec0. Ruffallclean. Nowlaunchcal-onlysixcontrols(no teacher/testoutcomes),originalpredeclunchanged.
+
+## 2026-11-02 — E0 cal-only URL controls launched
+
+- url_controls_cal-e0-20261102v1/treeebcc1bb75c6e9668a789928946c7247e66b560305d5e62e38598fe7d675f715b, nojobargs/overrides, privateT4/internet/rakshak-data only. ONEoriginaleventsubscription, no result. Sixfixedcontrols/cal-onlylogits/inputfile+partitionhashes, no testpredictions/protocolmetrics/teacher/KD. Originalartifact-onlyGOunchanged.
+- M3isotheractivekernel/originalwait;max2kernels. All earlierunits/familyjobsfinishedwithoriginaloneevent/fetch. PR12KILLmilestonecomplete/privatearchiveverified; PR11descriptionlinksPR12withoutbranchpush. No merges/mainpush/forcepush. HF publish pending.
+
+## 2026-11-02 — E0 complete, E1/E2 implemented before cal outcomes
+
+- url_controls_cal-e0-20261102v1/treeebcc1bb75c6e9668a789928946c7247e66b560305d5e62e38598fe7d675f715b ok1415.3s, ONEevent/fetch. Firstfetchfailed networkDNS afterpermissioncontextreset; restorednetwork grant, resumeddownloadonce, no statuspoll/relaunch. Six selected weights/cal-logit hashes verified; manifestSHA88b20cd71febccdc1ed81d8c2a9ec0f1b984b9eed9f44c389f357b5bfcc4ac7d. TechnicalartifactGOonly/no newtestoutcomes.
+- E1/E2predecl URL_TEACHER_PLAN.md existedbefore E0calresults read. FixedByT5encoder seed0/eachdataset, no testscoring; cal-onlyteachereligibility at weightedPhresh.0005/.001AP or naturalURLdomainAP, paired1000registered-domainresamples vsmean3E0seeds. GOeligibility only ifallrequiredCI lower>0and>=950validdraws. Freezeeligibility BEFOREoriginalfit-onlyteacher targets/KD3seeds. Actualscientificteacher/KDtestgates separately frozen, no benchmarkselectedretry. Onefixed11hdeadlineperdataset, incompleteaborts.
+- Implemented maskedmean+side128head/sourcehash/encoderkeys-shapes-dtypes-finiteness guards; AMP/gradientcheckpoint/weightedBCE/partial-update-normalization/skipcounts; alloriginalfit/cal/testIDs/sourcearchive binding and exactCPUweightserialization. No E1modelrun yet. No localpretrainedweights downloaded/executed.
+- FocusedpureAPtests2passed1.68s locally onsyntheticfixtures,Tctl53.2Cbefore firstrun (later41.4C), nice19/taskset0-3/OMP2/MKL2/OpenBLAS1. WeightedrankAP matchesofficialsklearnAP withties/zeroweights; fixedclassmass/bootstrap/eligibilityguards. No realURLscoring.
+- Predeclare focusedGPUvalidation4synthetictests GOiff4pass/0skip/error/failure: exactbyteprefix/EOS; tinyT5encoderload/mask/backprop; tinyCUDAteachertraining cal-only/finalpartialupdate/checkpointreload; actualbundledependenciesandeligibility-before-targetguard. No dataset/modelinputs. ExistingM3remains otheractivekernel/originalwait.
+
+### 2026-11-02 — URL teacher validation and fixed Phresh run
+
+- Focused private Kaggle `unit_validation-urlt-unit-20261102` v1, tree
+  `32438d3c6657373927ddb55ccea2c6047ca2792046d84cacd4a1937b69f39368`:
+  **4 passed / 0 skipped / 0 failed**, pytest23.25s, total159.1s. Two earlier
+  synthetic AP tests also passed locally under the prescribed CPU/thermal limits.
+- On continuation the original tool-session handles were missing and no local
+  completion receipt existed. One bounded cached-notification read recovered the
+  exact unit completion; one fetch verified job/git/tree/outcome. No duplicate
+  blocking unit wait or Kaggle status polling. The same bounded read found no M3
+  completion; its original process is missing. Replacement event-subscription
+  authorization requested; M3 continues to count against capacity, not relaunched.
+- After the four checks passed, launched private T4
+  `url_teacher_kd-p1-20261102` **v1**, tree
+  `84d35409ac4ac48138a2a38673bd14efd7682b40808d64a9b80762d3f7e5e64d`,
+  base246324575928 (dirty source snapshot), args
+  `--dataset phreshphish --controls-manifest-sha256 88b20cd71febccdc1ed81d8c2a9ec0f1b984b9eed9f44c389f357b5bfcc4ac7d`.
+  Inputs: private rakshak-data + completed E0 kernel; unique p1 run, one blocking
+  event wait, no result/fetch yet. At most two GPU kernels counting M3.
+- Hypothesis/recipe/unchanged gates are frozen in URL_TEACHER_PLAN.md. Cal-only
+  eligibility precedes original-fit-only KD targets; scientific test/benchmark
+  gates unmeasured. No expert substitution in fusionv1, no held-out/SOTA claim.
+  HF publish pending; independent Indian validation OPEN.
+
+### 2026-11-02 — Fixed URL teacher stops unmeasurable
+
+- `url_teacher_kd-p1-20261102` v1/tree84d35409ac4a completed **error112.8s**;
+  original single event + one verified fetch. Exact error:
+  `FloatingPointError: nonfinite FP32 teacher loss; stop fixed arm`.
+  No selected teacher checkpoint, eligibility JSON, train targets or KD model
+  produced. No completed epoch was logged; number of partial updates is unknown.
+- **Teacher/KD scientific comparison UNMEASURABLE.** Stop the fixed arm, no
+  precision/batch/hyperparameter switch, no secondary teacher run to rescue it.
+  Underlying numerical cause UNVERIFIED. Focused synthetic4PASS was necessary
+  implementation validation, not evidence of real pretrained numerical stability.
+- Continue the existing E0 three-seed control report with original frozen weights;
+  cal reconstruction<=1e-5 and all6thresholds freeze before test scoring, original
+  official975subset statistics/paired-domain draws retained. No new training.
+- New protocol optimization synthetic2PASS1.15s on local synthetic fixtures only,
+  nice19/taskset0-3/OMP2/MKL2/OpenBLAS1, pre-testTctl45.8C; ruff clean. Explicit
+  row-repeat/sklearn and shared-draw comparisons cover ties/zero multiplicities/
+  invalid subsets/three-seed means. No actual URL scores evaluated locally.
+
+### 2026-11-02 — frozen URL control evaluation launched
+
+- Focused `unit_validation-urle-unit-20261102`v1/tree
+  3a0060fa7bdd9763e141cee0ff04db2a903708cebb7783c82259e4a17d51da27:
+  **2PASS0skip**, total93.7s, one event/fetch. Synthetic checkpoint/cal-only
+  restoration/tamper guard and actual sibling-job bundle/threshold ordering pass.
+- `url_controls_eval-e0eval-20261102`v1 launched after those checks, same E0
+  manifest88b20cd71febccdc1ed81d8c2a9ec0f1b984b9eed9f44c389f357b5bfcc4ac7d,
+  private data+completed E0 kernel/T4/internet, one event subscription. Allsix
+  full-cal parity/threshold manifests precede test scoring; official subsets,
+  per-seed endpoints/domain CIs/fullbenchmark/fulltest and temporalNA diagnosis.
+  No teacher/KD model or new training. Results pending; M3 still counted active.
+
+- Private URL archive publisher prepared (not uploaded): exact E0 manifest/source,
+  evaluation tree and failed-teacher tree required; allowlist13files (six original
+  checkpoints, sourcezip, aggregate/manifests/failure JSON), never URL row parquets.
+  Synthetic privacy/hash/symlink2PASS.02s, required CPU/threads pre-testTctl44.4C.
+  Private create and owner/isPrivate/version verification required before claiming
+  publication; HF publish pending. Full milestone suite still NOT run.
+
+### 2026-11-02 — URL control report recovery from unchanged saved scores
+
+- Original `url_controls_eval-e0eval-20261102`v1/tree
+  4fdfe6994123ec28645a3383841f9e251bd27e5e2cacf91235aa3db2bb65a3ec:
+  error478.4s at FINAL temporal-file check, one event/fetch. Exact error:
+  `FileNotFoundError: no split files match ['url_temporal'] under .../splits`.
+  Allsix test-score files and pre-outcome threshold manifest survived. No aggregate
+  metrics.json was emitted. E0 input manifest already lists only url_domain and
+  url_phreshphish split files; the historical temporal narrative is not confirmation
+  that the currently attached frozen data still contains it. Do not create a split.
+- Cache-only recovery predeclared: exact parent tree/failure, manifestSHA
+  54e4fa8f9f1d6128ac31f6515b698d768fa8facf98931b00cb3acfd64bf91509,
+  allsix fixed score hashes, original ordered fit/cal/test IDs and original frozen
+  thresholds must verify. Same1000domain resamples/seed13/official subset report;
+  no model execution, no new targets/fitting/threshold selection. Temporal now
+  **UNMEASURABLE: file absent**, not a falsely reconfirmed single-class result.
+  Original teacher/KD gates stay UNMEASURABLE, unchanged. Any cache mismatch aborts.
+- New cache/source/order/hash/bundle guards synthetic2PASS.69s, CPU-limited with
+  pre-testTctl42.1C, ruff clean. Six score-file SHA values are pinned in the recovery
+  source; hashes only read locally, no URL prediction/metric computation locally.
+
+- First cache recovery `url_controls_recompute-e0stats-20261102`v1/tree
+  3fec836a5feffdd67eba4eef761604a81438acba54546077cb79b60c561052ef
+  error94.9s: adapter passed the top-level manifest where its `controls` mapping
+  was required (`KeyError: phreshphish`), before endpoint report generation.
+  Corrected the mapping; new realistic saved-manifest regression1PASS.68s,
+  nice19/taskset0-3/OMP2/MKL2/OpenBLAS1, Tctl48.9C, preserves allthree original
+  thresholded reports/counts. Scientific gates and scores unchanged.
+- Its ONEfetch downloaded the complete failure files but exited1 because the
+  generic CLI-output error detector matched filename `failed_eval_results.json`.
+  Receipt/job/git/tree/error outcome verified from downloaded JSON manually;
+  no repeat fetch. Recovery artifact renamed `original_eval_results.json` to
+  avoid that filename false positive; launcher/fetch scripts unchanged.
+
+### 2026-11-02 — six frozen URL controls reported; full milestone validation
+
+- Cache-only `url_controls_recompute-e0stats2-20261102`v1/tree
+  17576395e1c2fc76e32d4970c15ca5c180844da3527a40542680e07c6d34b7c2
+  ok435.9s, one event/fetch, allsix original score hashes and threshold bindings.
+  MetricsSHA0093e20c39a8d372f391d1ffaec05be89950f56bd00563f5bbc1141853d8f5ee.
+- Three-seed mean official Phresh AP .443457CI[.323937,.620641] at.05% and
+  .558907CI[.428609,.705899] at.1%; P@R90 .073388[.052072,.183454] and
+  .132927[.076425,.275599]. All975original subsets retained, all1000validdraws
+  at every rate. No stronger-teacher/KD claim: both remain UNMEASURABLE. Original
+  missing temporal remains UNMEASURABLE, never recreated; no new inference.
+- Full milestone validation now predeclared: one full privateKaggle invocation,
+  allcollected(min835), 0failure/error, max18inherited optional skips. No data/model
+  inputs. Include publisher's changed recovery binding and a new missing-temporal
+  regression; original inference job now explicitly reports missingfile status
+  rather than dropping completed metrics. No scoring/training change or rerun.
+
+- Formatted137line URL_THREE_SEED_RESULTS.md ONLY from precomputed aggregateJSON
+  (no local score/model evaluation), all975subsets/allrates/3seeds/fulltest/fullbench/
+  url_domain campaign CIs; all1000valid domain draws. Full-cal logit parity was
+  exactly0 on allsix controls. HANDOFF headline updated, prior historical single-
+  seed figures distinguished. No paired old/new gain claim. Stage15file private
+  archive validated successfully without upload; publication waits for fullsuite.
+
+- Full milestone `unit_validation-url-full-20261102`v1/tree
+  f028f748590f286f03112ac2f710f3e8c077eed42e6a0052f02a3edcc24186c3:
+  **858passed0skipped**,157warnings125.18s (total211.7s), one event/fetch.
+  Includes new publisher recovery-source binding and missing-temporal regression.
+  Ruffallclean. Parent pull/rebase checked unchanged; repo identity confirmed
+  vhmaadhav <vhmaadhav@hotmail.com>. No full suite or model work locally.
+
+- Private archive upload completed; immediate owner GetDataset returned403 during
+  processing, so owner/isPrivate/version verification is still pending. No repeat
+  upload; make one later owner-record read. No public publication requested.
+
+### 2026-11-02 — URL measurement milestone finalized
+
+- One later owner read verified maadhavvh/rakshak-url-e0-20261102 version1,
+  ownermaadhavvh/isPrivate=true,17083574bytes, archive_manifestSHA
+  ced9776473225eba4d48ef68d574d2f017f50b4bfeb1ed01cb66a1f5f3013234. Initial
+  processing403 retained; no re-upload. HF publish pending. Exact15file allowlist,
+  six checkpoints/source/aggregate/failure provenance, no raw URLs/row-score files.
+- Three-seed control measurements retained; stronger-teacher/KD/temporal remain
+  UNMEASURABLE. No external-selected rescue recipe, SOTA or fusedFPR claim.
+  Report/HANDOFF include all rates/seed CIs and limitations; independent Indian
+  validation OPEN. Full858PASS0skip/ruffclean, parent pull/rebase unchanged, identity
+  vhmaadhav confirmed. One milestone own-branch commit; merge order #2→URL, no merge.

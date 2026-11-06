@@ -127,6 +127,18 @@ At the cal-1%-FPR threshold, corrected ERM seed1 has GroundLM FPR 407/1,133 =35.
 SmishX fraud FPR267/881 =30.31% [25.81%,34.67%], recall119/226 =52.65%
 [43.71%,62.72%] (**independent, non-Indian-specific**). All seeds/arms/thresholds are in the
 report; these are negative external results, not a low-FPR deployment claim.
+| Clean no-KD dual-base, mean seeds1/2/3 | 0.9744 | **0.4058** [0.3697,0.4412] | 0.8656 |
+| Clean KD dual-base, mean seeds1/2/3 (KILL) | 0.9748 | **0.3520** [0.3181,0.3840] | 0.8696 |
+
+Current clean language-shift headline: **student≈0.41 versus historical teacher≈0.80**.
+The old contaminated≈0.81 claim is WITHDRAWN: transfer extras reintroduced test
+copies/campaign neighbours/held-out-source rows. Clean train-only single-teacher
+KD made the gap worse, paired delta−0.0539 CI[−0.0696,−0.0383], p0.000999.
+No OOF/ensemble or held-out improvement claim. Full matched six-fold/three-seed
+report and caveats: [PR#9](https://github.com/vhmaadhav/rakshak-edge/pull/9),
+commitb17021f, docs/CLEAN_KD_RESULTS.md on that branch. Independent Indian
+validation OPEN. Language tagging still misses Hinglish; it does not justify
+restoring the withdrawn result.
 
 **Classical SMS baselines (`sms_baselines`)**: char LR campaign F1 0.973, SVC campaign F1 0.978. Job ended `partial`: 10 of 190 units failed. Rules-only LR is near 0.67, so it is a floor. Canonicalising the text cuts attack success (for example 4.1% to 0.4% in the XLM-R pilot).
 
@@ -135,6 +147,21 @@ report; these are negative external results, not a low-FPR deployment claim.
 - url_domain test (30,432): char-LR F1 0.996; **charcnn-wide** student F1 0.999, recall 1.000 at 1% FPR.
 - PhreshPhish, URL-only, AP (mean over subsets) at base rates 0.05% / 1%: charcnn-wide 0.484 / 0.865; transformer-L4 0.245 / 0.590. The paper's GTE row uses URL and HTML (0.605 / 0.876). This is a different protocol. Quote as a separate row only.
 - Caveat: the URL `transformer` distillation targets are in-sample logits (no cross-fitting). Its numbers are not held-out.
+
+**New three-seed URL controls (E0,2026-11-02), original official protocol:**
+Phresh URL-only mean AP0.4435 [domainCI0.3239,0.6206] at0.05%, and0.5589
+[0.4286,0.7059] at0.1%; P@R90 .0734[.0521,.1835]/.1329[.0764,.2756]. All975
+subsets and1000valid paired-domain draws retained. Every seed/rate/full benchmark/
+test and url_domain CI: docs/URL_THREE_SEED_RESULTS.md. url_domain maxF1 for
+seeds1/2/3 is.999216/.999281/.999564. Prior single-seed URL figures above are
+historical, not matched controls. Seed-before-construction corrected in E0.
+
+The pinned Apache2ByT5 teacher stopped at nonfinite loss before a selected model
+or KD targets. **Teacher/KD UNMEASURABLE**, no stronger-teacher or distillation
+win. Stop fixed arm without recipe/precision changes. Original temporal split
+file is absent in current frozen input: UNMEASURABLE, not newly confirmed NA.
+In-sample intervention selection from prior benchmark feedback; no independent/
+SOTA/deployment claim. No URL expert substitution in frozenfusionv1; HFpending.
 
 **Network IDS (`nids_baselines`, NetFlow-v2 schema)**
 
@@ -180,6 +207,11 @@ Android app; independent Indian validation.
 - **Hinglish generalization remains unresolved.** Train-only KD ERM mean F1 is0.4000;
   the historical ~0.80 improvement used a contaminated unlabeled pool. Source-balanced/DRO
   do not meet the primary ScamShield gate. Never add raw transfer extras to training.
+**Not completed:** model-side GroundLM FPR; verified `llama_export` output; Pi 5 benchmarks; Android app.
+
+## 6. What failed and why
+
+- **Hinglish generalization remains unresolved:** clean no-KD≈0.41 versus historical teacher≈0.80; clean KD≈0.35 is KILL. The contaminated≈0.81 claim remains WITHDRAWN (PR#9).
 - **Colab free tier**: a detached run was reclaimed after about 45 min. Use Colab only for short jobs.
 - **URL transformer distillation**: in-sample targets, so no cross-fitting. Not usable as a held-out claim until redone.
 - **sms_baselines**: 10 of 190 units failed (partial). Cause not yet triaged. Read `kaggle/out/sms_baselines/output/run.log`.
