@@ -36,4 +36,5 @@ bitsandbytes==0.50.2
 # Focused synthetic remote validation.
 # Unit continuation uses the same exact pytest release as the local environment.
 # Exact pytest version used by the synthetic-fixture Kaggle unit job.
+# Synthetic remote unit validation after laptop thermal stops.
 pytest==9.2.0

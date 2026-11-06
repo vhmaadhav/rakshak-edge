@@ -179,12 +179,35 @@ Caveat: the shipped checkpoint in HF is the scamshield-holdout run (last kept by
 
 **SMS students (dual-view, job `sms_student` and `sms_student-kd`)**
 
+**New compact multilingual research candidate (M3,2026-11-02), mean seeds1/2/3:**
+
+| Matched M3 arm | Campaign F1 | lang_shift F1 [campaign CI] | Temporal F1 |
+|---|---|---|---|
+| Fresh byte noKD control | 0.9747 | 0.4633 [0.4268,0.4951] | 0.8877 |
+| Multilingual KD hybrid, researchGO | 0.9764 | **0.8916 [0.8630,0.9171]** | 0.8644 |
+| Multilingual noKD diagnostic only | 0.9762 | 0.8726 [0.8468,0.8953] | 0.8459 |
+
+Paired language gain+0.4283 CI[0.3909,0.4622], p0.000999; allsix fold-loss guards
+and18classifier-size checks pass. **In-sample intervention selection**, legacy
+spam-inclusive F1, conditional on3fixed seeds, single teacher0/trainIDs only.
+NoKDhybrid is not promotable, and this comparison does not isolate KD's added
+benefit. Classifier tensors4,600,490bytes; tokenizer34,393,406bytes excluded from
+8MiB gate. Arm/export/runtime remain UNVERIFIED; no deployment approval.
+
+**Transactional safety is unresolved:** candidate GroundLM fraud FPR39.19/34.86/
+38.31% and SmishX25.09/23.50/29.06% at cal1%-FPR, seeds1/2/3. These are student-only,
+not fusedv1 claims. GroundLM/SmishX feedback makes this intervention selection
+in-sample; independent Indian validation OPEN. Allseed/fold/external endpoints,
+paired CIs, original failures/source hashes: docs/MULTILINGUAL_RESULTS.md.
+
+**Prior clean KD experiment below is a different cohort, not M3's matched control:**
+
 | Model | Campaign F1 | lang_shift F1 | temporal F1 |
 |---|---|---|---|
 | Clean no-KD dual-base, mean seeds1/2/3 | 0.9744 | **0.4058** [0.3697,0.4412] | 0.8656 |
 | Clean KD dual-base, mean seeds1/2/3 (KILL) | 0.9748 | **0.3520** [0.3181,0.3840] | 0.8696 |
 
-**Current language-shift headline: clean no-KD student≈0.41 versus historical
+**Prior clean language-shift reference: no-KD student≈0.41 versus historical
 teacher≈0.80 (teacher-b0.802 above).** The old contaminated≈0.81 claim is withdrawn,
 not an estimate of clean performance. Clean KD made this gap worse: paired delta
 −0.0539 CI[−0.0696,−0.0383], p0.000999; the fixed go gate fails. Single-teacher,
@@ -329,8 +352,8 @@ Android app; independent Indian validation.
 
 ## 6. What failed and why
 
-- **Hinglish generalization remains unresolved.** Matched clean noKD mean F1 is0.4058 versus teacher≈0.80; cleanKD0.3520 isKILL;
-  the historical contaminated≈0.81 improvement is WITHDRAWN. Source-balanced/DRO
+- **Hinglish evidence has a new research candidate, not a shipment.** M3hybrid0.8916 versus its fresh byte0.4633 passes its fixed research gate; the previous clean no-KD0.4058/teacher≈0.80 and clean KD0.3520KILL remain separate reference runs;
+  the historical ~0.80 improvement used a contaminated unlabeled pool. Source-balanced/DRO
   do not meet the primary ScamShield gate. Never add raw transfer extras to training.
 **Not completed:** model-side GroundLM FPR; verified `llama_export` output; Pi 5 benchmarks; Android app.
 

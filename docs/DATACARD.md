@@ -322,3 +322,17 @@ froze before SMS scoring. No synthetic message/model relabel entered evaluation.
 ## 2026-11-02 — last P1 family-calibration exposure/result
 
 Template-cal-c1 uses originalnoKDtrain-ID checkpoints, originalcal-only family probability/threshold stages, all3seeds/6folds; no data/splits/external sets changed. All90familyfits fall back under predeclaredsparsity; no fitted intervention, KILL9externalchecks. GroundLM/SmishX/priorfrozenfold feedback informed intervention choice, so outcomes are in-sample selection, not untouchedvalidation. IndependentconsentedIndianinboxvalidation remains OPEN. Fullreports/provenance: TEMPLATE_CALIBRATION_RESULTS.md. Newcohort never silently replaces frozenv1.
+
+## 2026-11-02 — compact multilingual experiment scope
+
+M3 fixed three-arm/three-seed/six-fold research candidate passes its predeclared
+language/other-fold/8MiBclassifier gates. Train IDs unchanged; teacher0targets on
+exact original train IDs only; no new synthetics. Frequent-token vocabulary and
+PCA use training tokens/selected pretrained embedding rows only, frozen before
+cal/test encoding. Upstream mmBERT pretraining membership unknown. Same prior
+rule-feature and repeated GroundLM/SmishX intervention exposure: in-sample
+selection, not independent Indian validation. Original temporal3campaign overlaps
+retained. Internal F1 is legacy spam-inclusive; external known-fraud and legacy
+labels both reported. High transactional FPR persists. M3 fresh byte control
+0.4633 differs from previous clean0.4058; no substituted historical comparator.
+Full54fits/allseeds/external rates/pairedCIs/sourcehashes: MULTILINGUAL_RESULTS.md.
