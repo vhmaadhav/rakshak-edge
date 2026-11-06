@@ -415,7 +415,8 @@ def bundle_names(job: str) -> list[str]:
     job_rel = f'kaggle/jobs/{job}.py'
     if not (REPO / job_rel).is_file():
         sys.exit(f'build: {job_rel} does not exist; write the job file first. Nothing was written.')
-    sibling_jobs = {'url_controls_recompute': ['kaggle/jobs/url_student.py',
+    sibling_jobs = {'fusion_torch_ref': ['kaggle/jobs/fusion_v1.py'],
+                    'url_controls_recompute': ['kaggle/jobs/url_student.py',
                          'kaggle/jobs/url_controls_cal.py', 'kaggle/jobs/url_controls_eval.py',
                          'kaggle/jobs/url_teacher_kd.py'],
                     'url_controls_cal': ['kaggle/jobs/url_student.py'],
