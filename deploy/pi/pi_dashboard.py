@@ -15,9 +15,11 @@ reach it over an SSH tunnel.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -26,6 +28,7 @@ from collections import deque
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 import pi_common as pc
@@ -421,6 +424,170 @@ class Sampler:
 # -- HTTP ---------------------------------------------------------------------
 
 
+# -- benchmarks (rbench) ----------------------------------------------------
+#
+# The Benchmarks tab reads results/index.jsonl and results/<run_id>/result.json, and starts ONE
+# `rbench run` at a time through the bench CLI (deploy/pi/bench/bin/rbench) with the bench venv.
+# Only 127.0.0.1 / ::1 clients may use /api/bench/*.
+
+BENCH_HOME_DEFAULT = Path.home() / "rakshak-bench"
+RUN_ID_RE = re.compile(r"^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}$")
+BENCH_LOCK = ".rbench.lock"
+BENCH_LIMIT_MAX = 200000
+BENCH_THREADS_MAX = 4
+BENCH_BODY_MAX = 4096
+
+
+class BenchError(Exception):
+    """An API error with the HTTP status to answer with."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+        self.message = message
+
+
+def is_local_client(addr: str) -> bool:
+    """True for loopback clients only (the dashboard is also bound to 127.0.0.1)."""
+    return addr in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
+
+class BenchControl:
+    """Reads bench results and launches one benchmark at a time."""
+
+    def __init__(self, home: Path, python: str | None = None, timeout_s: float = 60.0,
+                 wrapper: Path | None = None) -> None:
+        self.home = Path(home)
+        self.results = self.home / "results"
+        self.python = python or str(self.home / ".venv" / "bin" / "python")
+        self.wrapper = wrapper or (self.home / "deploy" / "pi" / "bench" / "bin" / "rbench")
+        self.timeout_s = timeout_s
+        self._lock = threading.Lock()
+        self._proc: subprocess.Popen[bytes] | None = None
+        self._started: dict[str, Any] | None = None
+
+    # -- reading ----------------------------------------------------------
+
+    def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
+        path = self.results / "index.jsonl"
+        rows: list[dict[str, Any]] = []
+        for raw in (pc.read_text(path) or "").splitlines():
+            try:
+                row = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(row, dict) and RUN_ID_RE.match(str(row.get("run_id", ""))):
+                rows.append(row)
+        return rows[-limit:][::-1]
+
+    def get_run(self, run_id: str) -> dict[str, Any]:
+        if not RUN_ID_RE.match(run_id):
+            raise BenchError(400, "bad run id")
+        doc = pc.read_json(self.results / run_id / "result.json")
+        if doc is None or doc.get("schema") != "rbench/1":
+            raise BenchError(404, "no such run")
+        return doc
+
+    # -- CLI calls --------------------------------------------------------
+
+    def _cli(self, args: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
+        env = dict(os.environ, RBENCH_HOME=str(self.home))
+        return subprocess.run([self.python, str(self.wrapper), *args], capture_output=True,
+                              text=True, timeout=timeout, env=env, check=False)
+
+    def options(self) -> dict[str, Any]:
+        """Models (with the datasets each can run on) and datasets, from `rbench list`."""
+        out: dict[str, Any] = {}
+        for what in ("models", "datasets"):
+            try:
+                done = self._cli(["list", what, "--no-hash", "--json"], timeout=self.timeout_s)
+                doc = json.loads(done.stdout or "{}")
+            except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+                raise BenchError(503, f"rbench is not available: {exc}") from exc
+            if done.returncode != 0 or what not in doc:
+                raise BenchError(503, f"rbench list {what} failed (exit {done.returncode})")
+            out[what] = doc[what]
+        return {"models": out["models"], "datasets": out["datasets"],
+                "limit_default": 300, "limit_max": BENCH_LIMIT_MAX,
+                "threads": list(range(1, BENCH_THREADS_MAX + 1))}
+
+    def _lock_held(self) -> bool:
+        lock_path = self.results / BENCH_LOCK
+        if not lock_path.exists():
+            return False
+        with open(lock_path, "w") as handle:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            fcntl.flock(handle, fcntl.LOCK_UN)
+        return False
+
+    def busy(self) -> bool:
+        with self._lock:
+            if self._proc is not None and self._proc.poll() is None:
+                return True
+        return self._lock_held()
+
+    def status(self) -> dict[str, Any]:
+        return {"busy": self.busy(), "started": self._started}
+
+    def start(self, body: dict[str, Any]) -> dict[str, Any]:
+        model = body.get("model")
+        dataset = body.get("dataset")
+        if not isinstance(model, str) or not isinstance(dataset, str):
+            raise BenchError(400, "model and dataset are required")
+        limit = body.get("limit", 300)
+        threads = body.get("threads", 1)
+        if not isinstance(limit, int) or isinstance(limit, bool) or not (
+                1 <= limit <= BENCH_LIMIT_MAX):
+            raise BenchError(400, f"limit must be an integer in 1..{BENCH_LIMIT_MAX}")
+        if not isinstance(threads, int) or isinstance(threads, bool) or not (
+                1 <= threads <= BENCH_THREADS_MAX):
+            raise BenchError(400, f"threads must be an integer in 1..{BENCH_THREADS_MAX}")
+        opts = self.options()
+        match = next((m for m in opts["models"] if m.get("id") == model), None)
+        if match is None or not match.get("enabled", True):
+            raise BenchError(400, f"unknown or disabled model {model!r}")
+        if dataset not in (match.get("compatible_datasets") or []):
+            raise BenchError(400, f"{dataset!r} is not compatible with {model!r}")
+        with self._lock:
+            if self._proc is not None and self._proc.poll() is None:
+                raise BenchError(409, "a benchmark is already running")
+            if self._lock_held():
+                raise BenchError(409, "a benchmark is already running (lock held)")
+            cmd = [self.python, str(self.wrapper), "run", "--model", model, "--dataset", dataset,
+                   "--limit", str(limit), "--threads", str(threads), "--json"]
+            env = dict(os.environ, RBENCH_HOME=str(self.home))
+            self._proc = subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL,
+                                          stderr=subprocess.DEVNULL, start_new_session=True)
+            self._started = {"model": model, "dataset": dataset, "limit": limit,
+                             "threads": threads, "pid": self._proc.pid,
+                             "started": time.time()}
+        return dict(self._started)
+
+
+def _bench_summary(doc: dict[str, Any]) -> dict[str, Any]:
+    """The few fields the detail card shows, pulled from a result.json."""
+    perf = doc.get("perf") or {}
+    lat = perf.get("latency_ms") or {}
+    thermal = doc.get("thermal") or {}
+    return {
+        "run_id": doc.get("run_id"), "status": doc.get("status"), "error": doc.get("error"),
+        "model": (doc.get("model") or {}).get("id"),
+        "dataset": (doc.get("dataset") or {}).get("id"),
+        "n": (doc.get("dataset") or {}).get("n_used"),
+        "p50_ms": lat.get("p50"), "p95_ms": lat.get("p95"), "p99_ms": lat.get("p99"),
+        "throughput_items_s": perf.get("throughput_items_s"),
+        "peak_rss_mb": perf.get("peak_rss_mb"),
+        "quality_key": (doc.get("quality") or {}).get("key_metric"),
+        "temp_max_c": thermal.get("temp_max_c"),
+        "throttled_before": thermal.get("throttled_before"),
+        "throttled_after": thermal.get("throttled_after"),
+        "pauses": thermal.get("pauses"),
+    }
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     server_version = "rakshak-pi-dashboard/1"
 
@@ -431,9 +598,57 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def sampler(self) -> Sampler:
         return self.server.sampler  # type: ignore[attr-defined,no-any-return]
 
+    @property
+    def bench(self) -> BenchControl:
+        return self.server.bench  # type: ignore[attr-defined,no-any-return]
+
+    def _json(self, status: int, doc: object) -> None:
+        body = json.dumps(doc, default=str).encode("utf-8")
+        self._send(status, "application/json", body)
+
+    def _bench_request(self, method: str, path: str) -> None:
+        if not is_local_client(self.client_address[0]):
+            self._json(403, {"error": "benchmark API is localhost only"})
+            return
+        try:
+            if method == "GET" and path == "/api/bench/runs":
+                self._json(200, {"runs": self.bench.list_runs(50)})
+            elif method == "GET" and path.startswith("/api/bench/run/"):
+                run_id = path[len("/api/bench/run/"):]
+                doc = self.bench.get_run(run_id)
+                self._json(200, {"summary": _bench_summary(doc), "result": doc})
+            elif method == "GET" and path == "/api/bench/options":
+                self._json(200, self.bench.options())
+            elif method == "GET" and path == "/api/bench/status":
+                self._json(200, self.bench.status())
+            elif method == "POST" and path == "/api/bench/run":
+                length = int(self.headers.get("Content-Length") or 0)
+                if length <= 0 or length > BENCH_BODY_MAX:
+                    raise BenchError(400, "body must be JSON of 1..4096 bytes")
+                try:
+                    body = json.loads(self.rfile.read(length).decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    raise BenchError(400, "body is not valid JSON") from exc
+                if not isinstance(body, dict):
+                    raise BenchError(400, "body must be a JSON object")
+                self._json(202, self.bench.start(body))
+            else:
+                self._json(404, {"error": "not found"})
+        except BenchError as exc:
+            self._json(exc.status, {"error": exc.message})
+
+    def do_POST(self) -> None:  # noqa: N802 - http.server naming
+        path = urlsplit(self.path).path
+        if path.startswith("/api/bench/"):
+            self._bench_request("POST", path)
+        else:
+            self._send(404, "text/plain; charset=utf-8", b"not found\n")
+
     def do_GET(self) -> None:  # noqa: N802 - http.server naming
         path = urlsplit(self.path).path
-        if path == "/":
+        if path.startswith("/api/bench/"):
+            self._bench_request("GET", path)
+        elif path == "/":
             self._send(200, "text/html; charset=utf-8", PAGE.encode("utf-8"))
         elif path == "/api/snapshot":
             body = json.dumps(self.sampler.snapshot(), default=str).encode("utf-8")
@@ -476,9 +691,11 @@ class DashboardServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, address: tuple[str, int], sampler: Sampler) -> None:
+    def __init__(self, address: tuple[str, int], sampler: Sampler,
+                 bench: BenchControl | None = None) -> None:
         super().__init__(address, DashboardHandler)
         self.sampler = sampler
+        self.bench = bench or BenchControl(BENCH_HOME_DEFAULT)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -489,6 +706,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--thermal-dir", type=Path, default=Path("/run/rakshak"))
     parser.add_argument("--sysfs", type=Path, default=Path("/sys"))
     parser.add_argument("--proc", type=Path, default=Path("/proc"))
+    parser.add_argument("--bench-home", type=Path, default=None,
+                        help="rbench root (default: RBENCH_HOME or ~/rakshak-bench)")
     return parser
 
 
@@ -503,7 +722,8 @@ def main(argv: list[str] | None = None) -> int:
     sampler = Sampler(collector)
     sampler.tick()  # first request never sees an empty snapshot
     threading.Thread(target=sampler.run, name="sampler", daemon=True).start()
-    server = DashboardServer((args.host, args.port), sampler)
+    bench_home = args.bench_home or Path(os.environ.get("RBENCH_HOME") or BENCH_HOME_DEFAULT)
+    server = DashboardServer((args.host, args.port), sampler, BenchControl(bench_home))
     print(f"pi_dashboard listening on http://{args.host}:{args.port}", flush=True)
     try:
         server.serve_forever()
@@ -584,6 +804,19 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 td.name{max-width:40vw;overflow:hidden;text-overflow:ellipsis}
 .foot{color:var(--muted);font-size:12px;display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:4px}
 .empty{color:var(--muted);font-style:italic}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.tab{padding:5px 14px;border-radius:999px;border:1px solid var(--line);color:var(--fg);
+text-decoration:none;font-weight:600;font-size:13px}
+.tab.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.bform label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);
+margin-bottom:8px}
+.bform select,.bform input,.bform button{font:inherit;padding:6px 8px;border-radius:8px;
+border:1px solid var(--line);background:var(--card);color:var(--fg);max-width:100%}
+.bform button{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;
+cursor:pointer}
+.bform button:disabled{opacity:.5;cursor:default}
+tr.click{cursor:pointer} tr.click:hover{background:var(--grid)}
+[hidden]{display:none !important}
 </style>
 </head>
 <body>
@@ -597,6 +830,12 @@ td.name{max-width:40vw;overflow:hidden;text-overflow:ellipsis}
 
 <div class="banner" id="thr" role="alert"></div>
 
+<nav class="tabs" aria-label="views">
+  <a class="tab on" id="tab-live" href="#live">Live</a>
+  <a class="tab" id="tab-bench" href="#bench">Benchmarks</a>
+</nav>
+
+<div id="view-live">
 <section class="tiles">
   <div class="card">
     <div class="label">Temperature</div>
@@ -682,6 +921,51 @@ td.name{max-width:40vw;overflow:hidden;text-overflow:ellipsis}
 </section>
 
 <div class="foot" id="foot"></div>
+</div>
+
+<div id="view-bench" hidden>
+<section class="grid2">
+  <div class="card">
+    <h2>Run a benchmark</h2>
+    <form class="bform" id="bench-form">
+      <label>Model <select id="bf-model"></select></label>
+      <label>Dataset <select id="bf-dataset"></select></label>
+      <label>Rows <input id="bf-limit" type="number" min="1" max="200000" value="300"></label>
+      <label>Threads <select id="bf-threads"></select></label>
+      <button type="submit" id="bf-submit">Start run</button>
+    </form>
+    <div class="sub" id="bf-note">Runs one benchmark at a time, under the thermal guard
+      (pause 75 &deg;C, resume 65 &deg;C, kill 80 &deg;C).</div>
+  </div>
+  <div class="card">
+    <h2>Running benchmark</h2>
+    <div class="meta" id="bl-meta"><span class="empty">no benchmark running</span></div>
+    <pre id="bl-log"></pre>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Recent runs <span class="sub">(click a row for details)</span></h2>
+  <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>Run</th><th>Status</th><th>Model</th><th>Dataset</th><th class="n">n</th>
+        <th class="n">p50 ms</th><th class="n">p95 ms</th><th>Key metric</th>
+        <th class="n">Max &deg;C</th><th>Throttled after</th>
+      </tr></thead>
+      <tbody id="bench-runs"></tbody>
+    </table>
+  </div>
+  <div class="sub" id="bench-empty"></div>
+</section>
+
+<section class="card" id="bd-card" hidden>
+  <h2>Run <span id="bd-id"></span></h2>
+  <div class="meta" id="bd-meta"></div>
+  <pre id="bd-json"></pre>
+</section>
+</div>
+
 </main>
 <script>
 (function () {
@@ -1005,6 +1289,189 @@ td.name{max-width:40vw;overflow:hidden;text-overflow:ellipsis}
     drawAll();
   }
 
+  // -- Benchmarks tab ------------------------------------------------------
+  var benchOpts = null;
+  var benchRunning = false;
+  var benchWasRunning = false;
+
+  function api(path, opts) {
+    return fetch(path, Object.assign({ cache: "no-store" }, opts || {}))
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (d) {
+          return { ok: r.ok, status: r.status, data: d };
+        });
+      });
+  }
+
+  function showView() {
+    var bench = location.hash === "#bench";
+    $("view-live").hidden = bench;
+    $("view-bench").hidden = !bench;
+    $("tab-live").classList.toggle("on", !bench);
+    $("tab-bench").classList.toggle("on", bench);
+    if (bench) { loadBenchOptions(); loadRuns(); }
+  }
+
+  function fillSelect(sel, values, keep) {
+    var prev = keep || sel.value;
+    sel.textContent = "";
+    values.forEach(function (v) {
+      var o = document.createElement("option");
+      o.value = v.value;
+      o.textContent = v.label;
+      sel.appendChild(o);
+    });
+    if (prev && values.some(function (v) { return v.value === prev; })) sel.value = prev;
+  }
+
+  function datasetsFor(modelId) {
+    var m = (benchOpts && benchOpts.models || []).find(function (x) { return x.id === modelId; });
+    return m ? (m.compatible_datasets || []) : [];
+  }
+
+  function refillDatasets() {
+    var model = $("bf-model").value;
+    var ids = datasetsFor(model);
+    fillSelect($("bf-dataset"), ids.map(function (d) { return { value: d, label: d }; }));
+    var submit = $("bf-submit");
+    submit.disabled = benchRunning || ids.length === 0;
+  }
+
+  function loadBenchOptions() {
+    if (benchOpts) return;
+    api("/api/bench/options").then(function (r) {
+      if (!r.ok) {
+        setText("bf-note", "Benchmarks unavailable: " + (r.data.error || r.status));
+        return;
+      }
+      benchOpts = r.data;
+      var models = (benchOpts.models || []).filter(function (m) { return m.enabled; });
+      fillSelect($("bf-model"), models.map(function (m) {
+        return { value: m.id, label: m.id + " (" + m.status + ")" };
+      }));
+      var threads = (benchOpts.threads || [1, 2, 3, 4]).map(function (t) {
+        return { value: String(t), label: String(t) };
+      });
+      fillSelect($("bf-threads"), threads, "1");
+      refillDatasets();
+    });
+  }
+
+  function keyText(k) {
+    if (!k || typeof k.value !== "number") return k && k.name ? k.name : "--";
+    return k.name + " " + k.value.toFixed(4);
+  }
+
+  function loadRuns() {
+    api("/api/bench/runs").then(function (r) {
+      var body = $("bench-runs");
+      body.textContent = "";
+      var rows = (r.data && r.data.runs) || [];
+      var empty = rows.length ? "" : (r.ok ? "No benchmark runs yet." : "Could not load runs.");
+      setText("bench-empty", empty);
+      rows.forEach(function (row) {
+        var tr = document.createElement("tr");
+        tr.className = "click";
+        var cells = [
+          row.run_id, row.status, row.model, row.dataset, fmt(row.n, 0), fmt(row.p50_ms, 2),
+          fmt(row.p95_ms, 2), keyText({ name: row.key_metric, value: row.key_value }),
+          fmt(row.max_temp_c, 1), row.throttled_after || "--"
+        ];
+        cells.forEach(function (text, i) {
+          var td = document.createElement("td");
+          td.textContent = String(text);
+          if (i === 4 || i === 5 || i === 6 || i === 8) td.className = "n";
+          if (i === 1 && text !== "ok") td.className = "bad";
+          tr.appendChild(td);
+        });
+        tr.addEventListener("click", function () { loadRun(row.run_id); });
+        body.appendChild(tr);
+      });
+    });
+  }
+
+  function loadRun(runId) {
+    api("/api/bench/run/" + encodeURIComponent(runId)).then(function (r) {
+      if (!r.ok) { setText("bd-id", runId + " (" + (r.data.error || r.status) + ")"); return; }
+      var s = r.data.summary;
+      $("bd-card").hidden = false;
+      setText("bd-id", s.run_id);
+      var meta = $("bd-meta");
+      meta.textContent = "";
+      [s.status, s.model, s.dataset, "n " + s.n, "p50 " + fmt(s.p50_ms, 3) + " ms",
+        "p95 " + fmt(s.p95_ms, 3) + " ms", "p99 " + fmt(s.p99_ms, 3) + " ms",
+        keyText(s.quality_key), "max " + fmt(s.temp_max_c, 1) + " °C",
+        "pauses " + (s.pauses || 0),
+        "throttled " + (s.throttled_before || "--") + " → " + (s.throttled_after || "--")
+      ].forEach(function (text) {
+        var span = document.createElement("span");
+        span.textContent = String(text);
+        meta.appendChild(span);
+      });
+      $("bd-json").textContent = JSON.stringify(r.data.result, null, 2);
+    });
+  }
+
+  $("bench-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var body = {
+      model: $("bf-model").value,
+      dataset: $("bf-dataset").value,
+      limit: parseInt($("bf-limit").value, 10),
+      threads: parseInt($("bf-threads").value, 10)
+    };
+    setText("bf-note", "Starting " + body.model + " on " + body.dataset + " ...");
+    api("/api/bench/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (r.ok) {
+        setText("bf-note", "Started " + body.model + " on " + body.dataset + " (" + body.limit +
+          " rows). Live status is on the right.");
+        benchRunning = true;
+        refillDatasets();
+      } else {
+        var prefix = r.status === 409 ? "Busy: " : "Not started: ";
+        setText("bf-note", prefix + (r.data.error || r.status));
+      }
+    });
+  });
+
+  $("bf-model").addEventListener("change", refillDatasets);
+
+  // Live status of a benchmark: the job panel's state (rbench runs under the thermal guard).
+  function renderBenchLive(s) {
+    var job = s.job;
+    var running = !!job && (job.state === "running" || job.state === "paused") &&
+      String(job.name || "").indexOf("rbench-") === 0;
+    if (benchWasRunning && !running) loadRuns();
+    benchWasRunning = running;
+    benchRunning = running;
+    if (!job || String(job.name || "").indexOf("rbench-") !== 0) {
+      if (!running && $("bf-submit")) {
+        $("bf-submit").disabled = !benchOpts || datasetsFor($("bf-model").value).length === 0;
+      }
+      return;
+    }
+    var meta = $("bl-meta");
+    meta.textContent = "";
+    var pill = document.createElement("span");
+    var tone = { paused: "warn", killed: "bad", done: "ok" }[job.state] || "";
+    pill.className = "pill " + tone;
+    pill.textContent = String(job.state || "?").toUpperCase();
+    meta.appendChild(pill);
+    [String(job.name), "elapsed " + fmt(job.elapsed_s || 0, 0) + " s",
+      "temp " + fmt(job.temp_c, 1) + " °C", "max " + fmt(job.max_temp_c, 1) + " °C",
+      "pauses " + (job.pauses || 0)].forEach(function (text) {
+      var span = document.createElement("span");
+      span.textContent = text;
+      meta.appendChild(span);
+    });
+    $("bl-log").textContent = (s.job_log || []).join("\n") || "(log empty)";
+    if (running && $("bf-submit")) $("bf-submit").disabled = true;
+  }
+
   function renderAll() {
     if (!latest) return;
     renderTiles(latest);
@@ -1012,6 +1479,7 @@ td.name{max-width:40vw;overflow:hidden;text-overflow:ellipsis}
     renderThermald(latest);
     renderProcs(latest);
     renderFoot(latest);
+    renderBenchLive(latest);
     scheduleDraw();
   }
 
@@ -1063,6 +1531,8 @@ td.name{max-width:40vw;overflow:hidden;text-overflow:ellipsis}
   }, 1000);
 
   window.addEventListener("resize", scheduleDraw);
+  window.addEventListener("hashchange", showView);
+  showView();
   loadSnapshot().then(connect);
 })();
 </script>

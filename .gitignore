@@ -16,3 +16,9 @@ __pycache__/
 *.egg-info/
 .ipynb_checkpoints/
 .DS_Store
+
+# Benchmark results pulled from the Pi (deploy/pi/bench/rbench-remote pull)
+/bench_results/
+
+# Local eval outputs (contain dataset SMS text; rebuild with deploy/pi/service/build_hinglish_rows.py)
+/results/

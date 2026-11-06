@@ -35,6 +35,8 @@ install -m 0644 "$SRC/rakshak-thermald.service" /etc/systemd/system/rakshak-ther
 install -m 0644 "$SRC/rakshak-dashboard.service" /etc/systemd/system/rakshak-dashboard.service
 systemctl daemon-reload
 systemctl enable --now rakshak-thermald.service rakshak-dashboard.service
+# enable --now does not restart units that are already running, so a reinstall would keep the old code.
+systemctl restart rakshak-thermald.service rakshak-dashboard.service
 
 if [ "$KEEP_BT" -eq 0 ]; then
   if systemctl list-unit-files bluetooth.service --no-legend | grep -q bluetooth; then

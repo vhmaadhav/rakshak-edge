@@ -1,0 +1,256 @@
+# rbench registry: the models and datasets the benchmark harness knows about.
+#
+# Paths are relative to the bench root (~/rakshak-bench on the Pi). `source` is the
+# repo-relative file that sync_bench.sh copies to `path` on the Pi (blank = not synced).
+# `sha256` pins the file; a blank sha256 means "not pinned" (synthetic or unpinned).
+# Sidecar files have their own laptop source: model `side_scaler_source` and
+# `parity_logits_source`, extras[].source, dataset `split_source`. A blank source means the
+# file is not synced from the laptop (sync_bench.sh skips it).
+# Thresholds are decision thresholds on the probability score: score >= threshold is scam.
+# Every disabled entry must say why in `notes`.
+
+schema = "rbench-registry/1"
+
+# ---------------------------------------------------------------- models
+
+[[models]]
+id = "sms_student"
+kind = "onnx_sms"
+task = "sms_binary"
+enabled = true
+source = "kaggle/out/sms_student/output/best_student.onnx"
+path = "models/sms_student/best_student.onnx"
+sha256 = "5341e14ca02a523bd746a71dd67903439e9e6c6f6fc3193fa1c6f786953f2466"
+threshold = 0.35127517580986023
+notes = "Dual byte char-CNN (raw + canonical bytes, 16 rule flags), base size, Kaggle seed 1 (sms_student job, 2026-10-30). Threshold = max-F1 on the campaign cal split (metrics.json splits.campaign['dual-base/dual/s1']). Inputs raw, canon (int64, 256), side (float32, 16 = canonical rule flags)."
+
+[[models]]
+id = "sms_student_kd"
+kind = "onnx_sms"
+task = "sms_binary"
+enabled = true
+source = "kaggle/out/sms_student-kd/output/best_student.onnx"
+path = "models/sms_student_kd/best_student.onnx"
+sha256 = "684e5feedc584512bc7226f4a4bfc59413a007e1e24b35e9d7728ed26bd58fcd"
+threshold = 0.1628570556640625
+notes = "Same dual base char-CNN distilled from the SMS teacher (alpha 0.7, T 2.0, teacher seed 0, unlabelled KD on). Kaggle seed 1. Threshold = campaign cal max-F1 (metrics.json splits.campaign['dual-base/dual/s1'])."
+
+[[models]]
+id = "url_student"
+kind = "onnx_url"
+task = "url_binary"
+enabled = true
+source = "kaggle/out/url_student/output/best_url_student.onnx"
+path = "models/url_student/best_url_student.onnx"
+sha256 = "1bbd2c57cb541a7cbc287887ef51976d54240a353655827a511c63ec56213fc7"
+side_scaler = "models/url_student/url_side_scaler.json"
+side_scaler_sha256 = "c6b3fc968b03339a33052fe814a9bb851d3035cb302b06458955c2a5e5b6501e"
+side_scaler_source = "kaggle/out/url_student/output/url_side_scaler.json"
+notes = "Byte char-CNN (wide, raw view, max_len 200) + 29 URL side features standardised with url_side_scaler.json. The export comes from the PhreshPhish-trained unit (kaggle url_student job, export block), NOT the url_domain unit. So: no threshold is registered (the repo's url_domain thresholds belong to a different model), and quality is threshold-free AP and ROC-AUC on phreshphish_test. url_domain_test is an out-of-training-set check."
+
+[[models]]
+id = "nids_bot_iot_fp32"
+kind = "onnx_nids"
+task = "nids_latency"
+enabled = true
+source = "kaggle/out/nids_baselines/output/student_bot_iot_fp32.onnx"
+path = "models/nids/student_bot_iot_fp32.onnx"
+sha256 = "0d5eea7ae96d6169c4da719e3dfa50c4a0b09f1f99549a1146fb4755934088c8"
+notes = "NIDS MLP student (19 live features, 8 families), fp32. Latency only: no NIDS test data is local, so inputs are synthetic and no quality is reported."
+
+[[models]]
+id = "nids_bot_iot_int8"
+kind = "onnx_nids"
+task = "nids_latency"
+enabled = true
+source = "kaggle/out/nids_baselines/output/student_bot_iot_int8.onnx"
+path = "models/nids/student_bot_iot_int8.onnx"
+sha256 = "68aea284673af03c00770c28bd7c028b97107bb5f095fa576c2df574f2281a82"
+notes = "NIDS MLP student (bot_iot), onnxruntime dynamic INT8. Latency only (synthetic inputs)."
+
+[[models]]
+id = "nids_cse_cic_ids2018_fp32"
+kind = "onnx_nids"
+task = "nids_latency"
+enabled = true
+source = "kaggle/out/nids_baselines/output/student_cse_cic_ids2018_fp32.onnx"
+path = "models/nids/student_cse_cic_ids2018_fp32.onnx"
+sha256 = "0cb680ad904e2c37855dc58cf110e916a4169a35cf1fefaab70cbef2dc5b995c"
+notes = "NIDS MLP student (cse_cic_ids2018), fp32. Latency only (synthetic inputs)."
+
+[[models]]
+id = "nids_cse_cic_ids2018_int8"
+kind = "onnx_nids"
+task = "nids_latency"
+enabled = true
+source = "kaggle/out/nids_baselines/output/student_cse_cic_ids2018_int8.onnx"
+path = "models/nids/student_cse_cic_ids2018_int8.onnx"
+sha256 = "d3dfdcb16dcaa2780cd39c56d4c156c193dc2c67caeb4e443fc0447e2f9b8d14"
+notes = "NIDS MLP student (cse_cic_ids2018), onnxruntime dynamic INT8. Latency only (synthetic inputs)."
+
+[[models]]
+id = "nids_ton_iot_fp32"
+kind = "onnx_nids"
+task = "nids_latency"
+enabled = true
+source = "kaggle/out/nids_baselines/output/student_ton_iot_fp32.onnx"
+path = "models/nids/student_ton_iot_fp32.onnx"
+sha256 = "483dacd878eed448945dbd8afce00b75f25bf3c1507eee471563951e0a007603"
+notes = "NIDS MLP student (ton_iot), fp32. Latency only (synthetic inputs)."
+
+[[models]]
+id = "nids_ton_iot_int8"
+kind = "onnx_nids"
+task = "nids_latency"
+enabled = true
+source = "kaggle/out/nids_baselines/output/student_ton_iot_int8.onnx"
+path = "models/nids/student_ton_iot_int8.onnx"
+sha256 = "5319071de718ae2535ac4f7b9f9db455a428cfa69d249ef4c360233cf022a9ba"
+notes = "NIDS MLP student (ton_iot), onnxruntime dynamic INT8. Latency only (synthetic inputs)."
+
+[[models]]
+id = "nids_unsw_nb15_fp32"
+kind = "onnx_nids"
+task = "nids_latency"
+enabled = true
+source = "kaggle/out/nids_baselines/output/student_unsw_nb15_fp32.onnx"
+path = "models/nids/student_unsw_nb15_fp32.onnx"
+sha256 = "45abbff54b83c8db7ac64fa1a0d201d17f2c263254d34d1ed7c463c8886bf772"
+notes = "NIDS MLP student (unsw_nb15), fp32. Latency only (synthetic inputs)."
+
+[[models]]
+id = "nids_unsw_nb15_int8"
+kind = "onnx_nids"
+task = "nids_latency"
+enabled = true
+source = "kaggle/out/nids_baselines/output/student_unsw_nb15_int8.onnx"
+path = "models/nids/student_unsw_nb15_int8.onnx"
+sha256 = "ca365c6d49b63e8427958375905b7110d1b629b306eb2ef1fa4aeac5ad31b6ed"
+notes = "NIDS MLP student (unsw_nb15), onnxruntime dynamic INT8. Latency only (synthetic inputs)."
+
+[[models]]
+id = "llama32_1b_spinquant"
+kind = "pte_llm"
+task = "ela_json"
+enabled = true
+path = "models/llama32_1b_spinquant/Llama-3.2-1B-Instruct-SpinQuant_INT4_EO8.pte"
+sha256 = "8715cdba9e91f6bede00cc5f2d6b12397b95225da5630c4972a8da03001cda3b"
+bytes = 1135951488
+extras = [
+  { role = "tokenizer", path = "models/llama32_1b_spinquant/tokenizer.model", sha256 = "82e9d31979e92ab929cd544440f129d9ecd797b69e327f80f17e1c50d5551b55", bytes = 2183982 },
+]
+hf = { repo = "executorch-community/Llama-3.2-1B-Instruct-SpinQuant_INT4_EO8-ET", revision = "911221e0f49d3354cbd4697a9c09feee25cadec7", files = ["Llama-3.2-1B-Instruct-SpinQuant_INT4_EO8.pte", "tokenizer.model", "params.json", "config.json"] }
+notes = "ExecuTorch SpinQuant INT4 Llama 3.2 1B (src/rakshak/llama_source.py PREBUILT_PTE). Both files are sha256-pinned and size-pinned (bytes); the Pi copies were verified 2026-11-06. rbench does not fetch them by default (`rbench fetch` downloads and verifies). Benchmark status: see docs/LLAMA_PI_RESULTS.md."
+
+[[models]]
+id = "llama32_1b_qlora"
+kind = "pte_llm"
+task = "ela_json"
+enabled = false
+path = "models/llama32_1b_qlora/Llama-3.2-1B-Instruct-QLORA_INT4_EO8.pte"
+sha256 = ""
+hf = { repo = "executorch-community/Llama-3.2-1B-Instruct-QLORA_INT4_EO8-ET", revision = "9b418bfbb3391d77d8dc6ecaf936d5253ba0783c", files = ["Llama-3.2-1B-Instruct-QLORA_INT4_EO8.pte", "tokenizer.model", "params.json", "config.json"] }
+notes = "Disabled: the .pte sha256 is not pinned. Pin it here after a verified download, then enable. Not downloaded."
+
+# ---------------------------------------------------------------- datasets
+
+[[datasets]]
+id = "sms_campaign_test"
+task = "sms_binary"
+enabled = true
+source = "data/processed/sms.parquet"
+path = "data/processed/sms.parquet"
+sha256 = "430ded382b22ea1c3c14469c80ff9b34a3214ab82257e89be20d67439053e135"
+split_file = "data/processed/splits/campaign.json"
+split_sha256 = "3e911c50c071a5a4f8b3749ee62cd9176f750cf69dbf60e174f8638663491f36"
+split_source = "data/processed/splits/campaign.json"
+split_part = "test"
+row_filter = "eval_mask"
+columns = ["id", "text", "label_binary", "eval_ok", "synthetic"]
+notes = "SMS test partition of the campaign split (the primary split the SMS models were thresholded on). Rows kept only if eval_ok and not synthetic (rakshak.eval.data.eval_mask). Denominator reported per run."
+
+[[datasets]]
+id = "sms_ela_campaign_test"
+task = "ela_prompts"
+enabled = true
+source = "data/processed/sms.parquet"
+path = "data/processed/sms.parquet"
+sha256 = "430ded382b22ea1c3c14469c80ff9b34a3214ab82257e89be20d67439053e135"
+split_file = "data/processed/splits/campaign.json"
+split_sha256 = "3e911c50c071a5a4f8b3749ee62cd9176f750cf69dbf60e174f8638663491f36"
+split_source = "data/processed/splits/campaign.json"
+split_part = "test"
+row_filter = "eval_mask"
+columns = ["id", "text", "label_binary", "eval_ok", "synthetic"]
+notes = "ELA prompts built from the campaign SMS test partition (same rows as sms_campaign_test). The worker runs rules, builds the evidence package and the ELA v2 points prompt with src/rakshak/ela_eval.py (proxy scam state, label-free). Verifier metrics come from score_advisory."
+
+[[datasets]]
+id = "sms_smishx_external"
+task = "sms_binary"
+enabled = true
+source = "data/processed/external/external_smishx.parquet"
+path = "data/processed/external/external_smishx.parquet"
+sha256 = "872d08e8885e101b33ac83732ec776e36d8cf183a669733baaf15165d3ec7780"
+row_filter = "eval_mask"
+columns = ["id", "text", "label_binary", "eval_ok"]
+notes = "External SmishX SMS set (soups2025), 1,200 rows, eval_ok rows only. Transfer test: uses the campaign threshold. Overlap with the training pool is not audited here."
+
+[[datasets]]
+id = "groundlm_fpr"
+task = "groundlm_fpr"
+enabled = true
+source = "data/processed/external/external_groundlm.parquet"
+path = "data/processed/external/external_groundlm.parquet"
+sha256 = "979aaca4c6a922912d223515ec6a3373276a7f5308aaa8d72e17b9f092850f73"
+row_filter = "policy_negative_scoreable"
+columns = ["id", "text", "label_binary", "policy_negative", "text_available", "eval_ok"]
+notes = "GroundLM external set. Metric: FPR on policy-negatives (label 0, policy_negative, text_available, eval_ok). 1,294 policy-negatives in the file, 1,133 scoreable (DATACARD.md); the denominator is the scoreable count and is reported per run."
+
+[[datasets]]
+id = "url_domain_test"
+task = "url_binary"
+enabled = true
+source = "data/processed/urls.parquet"
+path = "data/processed/urls.parquet"
+sha256 = "ff389178dd752a0240268e550e7c892164392d6c180372d537f6fc299e16efa2"
+split_file = "data/processed/splits/url_domain.json"
+split_sha256 = "170a810a0071d65edf2718607b0e88e94ef81ab9aa06a541cf1feecd164f5a47"
+split_source = "data/processed/splits/url_domain.json"
+split_part = "test"
+row_filter = "none"
+columns = ["id", "url", "label"]
+notes = "URL url_domain split, test partition. Threshold-free AP and ROC-AUC only for url_student (its threshold is unknown; see that model's notes)."
+
+[[datasets]]
+id = "phreshphish_test"
+task = "url_binary"
+enabled = true
+source = "data/processed/urls_phreshphish.parquet"
+path = "data/processed/urls_phreshphish.parquet"
+sha256 = "af9441871e9b542aad03e0c94dd702485a0ab41a786d5f0b0547836c5e322844"
+split_column = "split"
+split_value = "test"
+row_filter = "none"
+columns = ["id", "url", "label", "split"]
+notes = "PhreshPhish official test split (168,060 rows). Quality is threshold-free AP and ROC-AUC (the protocol has no threshold). Use this for url_student."
+
+[[datasets]]
+id = "nids_synthetic"
+task = "nids_latency"
+enabled = true
+path = ""
+sha256 = ""
+synthetic = true
+columns = ["features[19]"]
+notes = "SYNTHETIC, latency only: random float32 rows of the 19 live NIDS features, seeded. No NIDS test data is local, so no quality metrics are reported for this dataset."
+
+[[datasets]]
+id = "ela_generations"
+task = "ela_prompts"
+enabled = false
+source = "kaggle/out/llama_ela_eval/output/generations.jsonl"
+path = "data/ela/generations.jsonl"
+sha256 = "87fecc3142f4b372ce35c1840fb6f8fac292b30cb0d7a2a256698b3fc7f5842c"
+row_filter = "none"
+columns = ["sample_id", "side", "family", "injected", "output"]
+notes = "Disabled: the file holds previous model OUTPUTS, not the ELA evidence packages (prompts). The LLM runner needs the packages rebuilt (rakshak.evidence / rakshak.llm.prompts) before it can run on this dataset."

@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+"""rbench launcher: sets the import paths for the repo (or ~/rakshak-bench on the Pi).
+
+    deploy/pi/bench/bin/rbench list models --json
+"""
+
+import os
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve()
+BENCH = HERE.parents[1]  # deploy/pi/bench
+PI = HERE.parents[2]  # deploy/pi (pi_common, thermal_run)
+ROOT = HERE.parents[4]  # repo root, or ~/rakshak-bench on the Pi (holds src/ and deploy/)
+sys.path[:0] = [str(BENCH), str(PI), str(ROOT / "src")]
+os.environ.setdefault("RBENCH_HOME", str(ROOT))
+
+from rbench.cli import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main())

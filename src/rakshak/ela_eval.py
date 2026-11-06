@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 
 from rakshak.canonicalize import canonicalize
-from rakshak.evidence import EvidencePackage, build_package
+from rakshak.evidence import EvidencePackage, Risk, build_package
 from rakshak.prompts import BOS, EOT, EOT_HDR, SOT, build_points_chat_prompt
 from rakshak.rules import Evidence, run_rules
 from rakshak.verifier import (
@@ -168,16 +168,19 @@ def score_output(output: str, package: EvidencePackage, arm: str) -> dict[str, A
     }
 
 
-def score_advisory(output: str, package: EvidencePackage, lang: str = "en") -> dict[str, Any]:
+def score_advisory(
+    output: str, package: EvidencePackage, lang: str = "en", risk: Risk | None = None
+) -> dict[str, Any]:
     """Metrics for one ELA v2 generation.
 
     Raw-output metrics (``safe_claim``, ``unsupported_n``, ``copied_id_n``) describe what the
     explainer wrote. ``rendered_*`` describe the advisory after the fallback, which should be
-    clean by construction, so a non-zero rate there is a verifier bug.
+    clean by construction, so a non-zero rate there is a verifier bug. ``risk`` is the opt-in
+    attribution guard (G2) passed to the verifier; None keeps the original checks.
     """
     raw = output or ""
-    verdict = check_points(raw, package, lang)
-    advisory = render_advisory(raw, package, lang)
+    verdict = check_points(raw, package, lang, risk)
+    advisory = render_advisory(raw, package, lang, risk)
     rendered = " ".join([advisory["summary"], *(p["text"] for p in advisory["points"])])
     ids = _EVIDENCE_ID_PATTERN.findall(raw)
     unsupported = [f"copied evidence id {t}" for t in ids] + ungrounded_claims(raw, package)

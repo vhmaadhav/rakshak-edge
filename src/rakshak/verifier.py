@@ -461,9 +461,18 @@ def ungrounded_claims(text: str, package: EvidencePackage) -> list[str]:
 
 
 def _text_problems(
-    text: Any, package: EvidencePackage, lang: str, role: str, etype: str | None = None
+    text: Any,
+    package: EvidencePackage,
+    lang: str,
+    role: str,
+    etype: str | None = None,
+    risk: Risk | None = None,
 ) -> list[str]:
-    """Checks shared by points and the summary. ``role`` is "point" or "summary"."""
+    """Checks shared by points and the summary. ``role`` is "point" or "summary".
+
+    ``risk`` is the opt-in attribution guard (G2, see ``attribution_problems``). None keeps the
+    checks that existed before the guard.
+    """
     if not isinstance(text, str):
         return [f"{role} is not a string"]
     body = text.strip()
@@ -487,6 +496,7 @@ def _text_problems(
         problems.append(f"{role} has prompt-injection phrasing")
     if etype is not None and not has_lexicon_keyword(body, lang, etype):
         problems.append(f"no {lang} lexicon keyword for {etype}")
+    problems.extend(attribution_problems(body, risk))
     return problems
 
 
@@ -528,8 +538,14 @@ def _schema_failed(
     )
 
 
-def check_points(llm_output: str, package: EvidencePackage, lang: str = "en") -> PointsVerdict:
+def check_points(
+    llm_output: str, package: EvidencePackage, lang: str = "en", risk: Risk | None = None
+) -> PointsVerdict:
     """Check an explainer output against the points contract for ``package``.
+
+    ``risk`` is the opt-in attribution guard (G2). None (the default) is the original contract,
+    used by the Kaggle jobs. When given it must equal ``package.risk``; the guard then applies to
+    points and summary (see ``attribution_problems``).
 
     Schema: a JSON object with exactly the keys summary and points (lang is optional and must be
     en or hinglish when present), and points is a list of exactly N strings, N being the number
@@ -539,6 +555,7 @@ def check_points(llm_output: str, package: EvidencePackage, lang: str = "en") ->
     """
     if lang not in V2_LANGS:
         raise ValueError(f"lang must be 'en' or 'hinglish', got {lang!r}")
+    _check_risk_arg(risk, package)
     types = [e.type for e in package.evidence]
     n = len(types)
     obj = extract_json_object(llm_output or "")
@@ -569,9 +586,9 @@ def check_points(llm_output: str, package: EvidencePackage, lang: str = "en") ->
 
     checks = []
     for i, (etype, text) in enumerate(zip(types, obj["points"], strict=True)):
-        probs = _text_problems(text, package, lang, "point", etype)
+        probs = _text_problems(text, package, lang, "point", etype, risk)
         checks.append(PointCheck(i, etype, not probs, probs))
-    summary_probs = _text_problems(obj["summary"], package, lang, "summary")
+    summary_probs = _text_problems(obj["summary"], package, lang, "summary", None, risk)
     return PointsVerdict(
         ok=all(c.ok for c in checks) and not summary_probs,
         schema_ok=True,
@@ -592,14 +609,16 @@ def template_point(etype: str, lang: str = "en") -> str:
     return f"{prefix}{_TYPE_PHRASE[lang][etype]}."
 
 
-def render_advisory(llm_output: str, package: EvidencePackage, lang: str = "en") -> dict[str, Any]:
+def render_advisory(
+    llm_output: str, package: EvidencePackage, lang: str = "en", risk: Risk | None = None
+) -> dict[str, Any]:
     """The advisory a user sees: the system's action and ids, and each point from the explainer
     where it passed or from the template where it failed.
 
     ``mode`` is "llm" (full pass), "partial" (some points or the summary fell back) or
     "template" (the schema failed, so every sentence is the template).
     """
-    verdict = check_points(llm_output, package, lang)
+    verdict = check_points(llm_output, package, lang, risk)
     points_out: list[dict[str, Any]] = []
     for i, e in enumerate(package.evidence):
         if verdict.schema_ok and verdict.points[i].ok:
@@ -625,6 +644,118 @@ def render_advisory(llm_output: str, package: EvidencePackage, lang: str = "en")
         "summary": summary,
         "summary_source": summary_source,
         "points": points_out,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Edge guards (G1 and G2). Opt-in: nothing above changes unless a caller passes them.
+#
+# G1 (``skip_llm_for_risk``): a LOW-risk decision gets no explainer text. The advisory is the
+# template (``template_only_advisory``) and the explainer is not called.
+#
+# G2 (``attribution_problems``): a point or summary that attributes scam intent to the message
+# ("is a scam", "scammers", "a common tactic used by scammers", "trying to rush you") is rejected
+# at LOW and MEDIUM risk. HIGH is not checked. At MEDIUM and UNCERTAIN only a hedged form is
+# allowed: "may|could|might be a scam|fraud|phishing|fake", or "<scam|fraud|dhoka|dhokha|thagi>
+# ho sakta|sakti|sakte hai". The match is case-insensitive, on word boundaries, and a negation
+# is NOT an exemption: "not a scam" is rejected too, because a negated mention is still a claim
+# about the sender. Templates are deterministic and are not run through G2 by the final checks.
+# ---------------------------------------------------------------------------
+
+_ATTRIBUTION_WORDS = (
+    # scam / fraud / phishing family
+    "scam", "scams", "scammer", "scammers", "scammed", "scamming", "scammy",
+    "fraud", "frauds", "fraudster", "fraudsters", "fraudulent", "defraud", "defrauds",
+    "defrauding", "phish", "phishing", "phisher", "phishers", "spoof", "spoofing",
+    "conman", "conmen", "con artist", "con artists", "con man", "swindle", "swindler",
+    "swindlers",
+    # deception, theft and intent
+    "trick", "tricks", "tricked", "tricking", "trickery", "cheat", "cheats", "cheated",
+    "cheating", "steal", "steals", "stealing", "stole", "stolen", "theft", "thief", "thieves",
+    "lure", "lures", "lured", "luring", "bait", "impersonate", "impersonates",
+    "impersonating", "impersonation", "pretend", "pretends", "pretending", "hack", "hacker",
+    "hackers", "hacking", "malicious", "bogus", "fake", "exploit", "exploits", "exploiting",
+    "tactic", "tactics", "victim", "victims",
+    # Hinglish (romanised) equivalents of the same words
+    "dhoka", "dhokha", "dhokhaa", "dhokebaaz", "dhokebaz", "dhokebaazi", "thag", "thagi",
+    "thagna", "thagne", "thagon", "thagega", "jaalsaaz", "jalsaaz", "chor", "chori",
+    "lootera", "luteraa", "lutere", "loot", "nakli", "farzi",
+)
+_ATTRIBUTION_PHRASES = (
+    r"trying to (?:rush|scare|pressure|trick|fool|cheat|steal|extract|dupe|deceive|defraud|con"
+    r"|scam|hack|rob)",
+    r"(?:rush|rushes|rushing|pressure|pressuring|scare|scaring|fool|fooling|dupe|duping|deceive"
+    r"|deceiving|rob|robbing) you",
+    r"take advantage",
+    r"designed to (?:steal|trick|scam|cheat|defraud|rob|extract)",
+    r"intends? to (?:steal|trick|scam|cheat|defraud|rob|extract)",
+)
+
+
+def _attribution_alternatives() -> list[str]:
+    alts = [r"\s+".join(re.escape(p) for p in w.split()) for w in _ATTRIBUTION_WORDS]
+    alts += list(_ATTRIBUTION_PHRASES)
+    return alts
+
+
+ATTRIBUTION_RE = re.compile(
+    r"(?i)(?<![a-z0-9])(?:" + "|".join(_attribution_alternatives()) + r")(?![a-z0-9])"
+)
+# Hedged forms allowed at MEDIUM and UNCERTAIN. The whole phrase is the span; the attribution
+# match must sit inside it.
+HEDGE_RE = re.compile(
+    r"(?i)(?<![a-z0-9])(?:(?:may|could|might)\s+be\s+(?:an?\s+)?(?:scam|fraud|phishing|fake)"
+    r"|(?:scam|fraud|dhoka|dhokha|thagi)\s+ho\s+(?:sakta|sakti|sakte)\s+hai)(?![a-z0-9])"
+)
+# Added 2026-11-06 (Fix A): "is likely a scam|fraud|phishing" is a hedge too, at MEDIUM and
+# UNCERTAIN only. The attribution guard still rejects any other attribution term in the same
+# sentence. LOW stays strict, HIGH unchecked.
+LIKELY_HEDGE_RE = re.compile(
+    r"(?i)(?<![a-z0-9])likely\s+(?:an?\s+)?(?:scam|fraud|phishing)(?![a-z0-9])"
+)
+_HEDGED_RISKS = (Risk.MEDIUM, Risk.UNCERTAIN)
+
+
+def attribution_problems(text: str, risk: Risk | None) -> list[str]:
+    """G2 problems for one point or summary at ``risk``. Empty when the guard is off (None) or
+    the risk is HIGH, and empty when every attribution term sits inside a hedge at MEDIUM or
+    UNCERTAIN (HEDGE_RE, or LIKELY_HEDGE_RE). Each problem starts with "attribution of scam intent"
+    so callers can count them."""
+    if risk is None or risk is Risk.HIGH or not isinstance(text, str):
+        return []
+    hedges = [m.span() for m in HEDGE_RE.finditer(text)]
+    if risk in _HEDGED_RISKS:
+        hedges += [m.span() for m in LIKELY_HEDGE_RE.finditer(text)]
+    hits: list[str] = []
+    for m in ATTRIBUTION_RE.finditer(text):
+        if risk in _HEDGED_RISKS and any(s <= m.start() and m.end() <= e for s, e in hedges):
+            continue
+        hits.append(m.group(0).lower())
+    if not hits:
+        return []
+    return [f"attribution of scam intent at {risk.value}: {', '.join(sorted(set(hits)))}"]
+
+
+def _check_risk_arg(risk: Risk | None, package: EvidencePackage) -> None:
+    if risk is not None and risk is not package.risk:
+        raise ValueError(
+            f"risk={risk.value} does not match the package risk {package.risk.value}"
+        )
+
+
+def skip_llm_for_risk(package: EvidencePackage) -> bool:
+    """G1: True when the advisory must be template-only because the decision is LOW risk."""
+    return package.risk is Risk.LOW
+
+
+def template_only_advisory(package: EvidencePackage, lang: str = "en") -> dict[str, Any]:
+    """The points-contract advisory built only from templates (the G1 output)."""
+    if lang not in V2_LANGS:
+        raise ValueError(f"lang must be 'en' or 'hinglish', got {lang!r}")
+    return {
+        "lang": lang,
+        "summary": _template_summary(package, lang),
+        "points": [template_point(e.type, lang) for e in package.evidence],
     }
 
 

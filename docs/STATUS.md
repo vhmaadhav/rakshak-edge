@@ -1769,3 +1769,11 @@ and original source snapshot remain unchanged; no model result is known.
 - Added `deploy/pi/` (thermal governor, job guard, dashboard, systemd units, install/uninstall/sync) and `tests/test_pi_*.py` (49 tests). systemd install on the Pi waits on the owner's sudo.
 - Added `docs/OPTIMISATION_RESEARCH.md` (cited research pass, unverified claims tagged). It ranks first: measure the `.pte` on the Pi, cut prompt/decode length, GroundLM FPR, Llama contribution audit, Android via LlamaDemo.
 - No Kaggle, Modal or GPU spend. No Llama benchmark has been run yet.
+
+## 2026-11-06 (evening): edge wrap-up, Fix C re-run, 40-row eval at 3 threads
+
+- Repo: everything uncommitted on `main` 7c2491b. Scoped tests **449 passed** (2 threads); `ruff check` clean on changed areas. `verifier.py` and `ela_eval.py` were already unformatted at HEAD and were not reformatted; the new `pi_dashboard.py` benchmark tab is not formatted either.
+- Pi: systemd `rakshak-thermald` and `rakshak-dashboard` are installed, enabled and active (the HANDOFF "pending" line is out of date). Service started with `--threads 3` and stopped; no edge or bench process left.
+- 40-row eval with Fix C (cleanup: 2 echo strips, 8 duplicate points blanked; threads 3): raw point pass 30 of 45 (the 8 blanked duplicates count as fails; excluding them 30 of 37, unchanged from before). Evidence total p50/p95 2 096/6 350 ms (was 2 256/7 520 at 2 threads). Model sentences identical to the previous run for all 40 rows. Hand-checked the 4 changed outputs: all factually correct; rows 4 and 28 still show repeated sentences (the dedupe falls back to the same template line).
+- Docs: `docs/HANDOFF.md` state section rewritten (Pi, rbench, Llama on ExecuTorch, guards and Fixes A/B/C, edge service and soak, GroundLM FPR table, the corrected 35% slot figure, open decisions, ranked next tasks). The re-run table is in HANDOFF (not yet in `docs/EDGE_PIPELINE.md`, which has the Fix C design in section 3b). Other details: `docs/LLAMA_PI_RESULTS.md`, `docs/GROUNDLM_EDGE_FPR.md`, `docs/PI_LLM_OPTIMISATION.md`.
+- Open: the Fix B visible-notice trade-off (41.7% vs 0.09% GroundLM FPR), cooler and 27 W PSU for final numbers, Android phone, commit timing.

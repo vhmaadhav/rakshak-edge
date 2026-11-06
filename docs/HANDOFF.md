@@ -1,46 +1,249 @@
 # Handoff: Rakshak-Edge (for Sachin)
 
-Last updated 2026-11-06. Owner until now: Maadhav (`vhmaadhav`). Start here, then `docs/STATUS.md` (session log) and `docs/CONTEXT.md` (decisions).
+Last updated 2026-11-06 (evening). Owner until now: Maadhav (`vhmaadhav`). Start here, then `docs/STATUS.md` (session log) and `docs/CONTEXT.md` (decisions).
 
 ## State on 2026-11-06 (read this first)
 
-**Repo.** `main` is the only branch. All 13 open PRs (#2–#14) were squash-merged on 2026-11-06,
-and the uncommitted Codex worktree work (policy annotation, NIDS provenance) landed as one commit.
-No open PRs, no other branches, no worktrees. Full test suite passes locally (torch-dependent tests skip).
-The results paragraphs below were written per PR and merged by union, so a few repeat; the newest
-statement of a result wins, and `docs/STATUS.md` has the dated log.
+**Repo.** All of today's work (rbench, the edge service, Llama on the Pi, guards G1/G2, Fixes A–D, quiet detector-only
+mode, Hinglish routing, the GroundLM edge FPR eval, the detector fix plan and group-negative split) is committed on `main` as one
+batch on top of `7c2491b`, with `verifier.py`, `ela_eval.py` and the dashboard's benchmark tab left unformatted (decision e).
+Local eval outputs (`/results/`) are gitignored because they contain dataset SMS text. No branches or PRs.
+Full suite before the commit: **1362 passed, 28 skipped** (torch absent on the laptop); `ruff check .` clean.
 
-**Phase 1 is due 2026-11-23 (17 days).** Nothing has run on Arm yet. The deliverable needs Llama on
-ExecuTorch on device, an app, a demo video and a report, so deployment beats more training.
+**Phase 1 is due 2026-11-23 (17 days).** The on-device path now runs end to end on the Pi: SMS in, student decision,
+rules, guarded Llama explainer, JSON out. The deliverable still needs an Android app, a demo video and
+the report.
 
-**Raspberry Pi 5 is up** (details: `docs/PI_SETUP.md`).
+### Repo cleanup and formatting (2026-11-06)
+
+- `ruff check` passes on every changed or new area. `ruff format --check` passes on all new files (`deploy/pi/service/*`,
+  `deploy/pi/bench/*`, the new tests, `slot.py`, `edge_pipeline.py`, `test_edge_service.py`).
+- `src/rakshak/ela_eval.py` and `src/rakshak/verifier.py` were **not** reformatted. Both were already unformatted at HEAD
+  (26 and 30 lines of `ruff format` diff). The diff adds only logic: the `risk` parameter (G1/G2) and the lexicon and
+  hedge code. `verifier.py` now also has about 110 unformatted lines of new code (the attribution word tuples, the
+  guard branches). `deploy/pi/pi_dashboard.py` was formatted at HEAD; its new benchmark tab (uncommitted, about 470 lines)
+  is not, and `ruff format --check` fails on it. Also a formatting decision (open decision e).
+
+### Raspberry Pi 5 (details: `docs/PI_SETUP.md`, `deploy/pi/README`)
 
 | Item | Value |
 |---|---|
-| Access | `ssh -i ~/.ssh/pi5 hermoine@pi5.local` (192.168.29.39 on HomeJio Wi-Fi). Key login works; sudo needs Maadhav's password |
-| Board | Pi 5 Model B Rev 1.1, 4 GB, 4× Cortex-A76, Raspberry Pi OS Lite (Debian 13), booted from a USB stick (no SD card) |
-| CPU features | `asimddp` (dotprod) present, **no i8mm**, so ExecuTorch/KleidiAI uses the SDOT int8 path |
-| Power | No official 27 W PSU. `usb_max_current_enable=1` is set in `config.txt` so USB boot works. Idle 5.15 V, about 2.0 W, `throttled=0x0` |
-| Cooling | **No heatsink or fan.** Idle 44–48 °C. Sustained 4-core Llama decode will throttle quickly |
-| Thermal kit | `deploy/pi/`: `rakshak_thermald.py` (frequency-cap governor), `thermal_run.py` (job guard: pause 75 °C, resume 65 °C, kill 80 °C, CSV log), `pi_dashboard.py` (live dashboard). Synced to `~/rakshak-pi`; **systemd install is pending** (`cd ~/rakshak-pi && sudo ./install.sh`) |
-| Dashboard | `ssh -i ~/.ssh/pi5 -N -L 8765:127.0.0.1:8765 hermoine@pi5.local`, then open http://localhost:8765 |
+| Access | `ssh -i ~/.ssh/pi5 -o IdentitiesOnly=yes hermoine@pi5.local` (key login; sudo needs Maadhav's password, none used) |
+| Board | Pi 5 Model B Rev 1.1, 4 GB, 4× Cortex-A76, Raspberry Pi OS Lite (Debian 13), boots from a USB 2.0 stick (no SD) |
+| CPU | `asimddp` (dotprod) present, **no i8mm**: ExecuTorch uses the SDOT int8 path |
+| Power | **No 27 W PSU.** `usb_max_current_enable=1` in `config.txt`. The PMIC is the energy source (not a calibrated meter) |
+| Cooling | **No heatsink or fan.** Idle 44–55 °C; batches peak 70–73 °C. Throttle flags `0x0` at every start and end today |
+| Thermal kit | `rakshak_thermald` (frequency-cap governor, **systemd, enabled and active**), `thermal_run.py` (job guard: pause 75, resume 65, kill 80, CSV log), `pi_dashboard.py` (**systemd `rakshak-dashboard.service`, enabled and active**). Dashboard: `ssh -i ~/.ssh/pi5 -N -L 8765:127.0.0.1:8765 hermoine@pi5.local`, then http://localhost:8765 |
+| Models | `~/rakshak-bench/models/`: `sms_student` (ONNX, threshold 0.35127517580986023) and `llama32_1b_spinquant` (`.pte` 1,135,951,488 bytes). Never touched by sync |
 
-Run every heavy Pi job through `thermal_run.py` so each benchmark has a temperature/throttle log.
-Report numbers with the cooling and power state; final benchmark numbers want an Active Cooler and a 5 A PSU.
+Heavy Pi jobs go through `thermal_run.py`. The eval client will not start a batch at 65 °C or above, and the service refuses explainer calls at 75 °C or above (503). Report numbers with the
+cooling and power state: final numbers want an Active Cooler and a 27 W (5 A) PSU.
 
-**Next (ranked; reasoning in `docs/OPTIMISATION_RESEARCH.md`):**
-1. **Pi smoke test of the pinned SpinQuant `.pte`** through `executorch.runtime` (Python wheel first, no sudo),
-   under `thermal_run.py`: load time, TTFT, tok/s, peak RSS, max temp, throttle flags. Try 2 and 4 threads.
-   Kill rule: 4 h without a successful load → try the QLoRA `.pte`, then the custom export.
-2. **Cut Llama work per message** to one short prefill plus at most 16–24 new tokens.
-3. **GroundLM FPR test** on the 1,133 scoreable policy-negatives (go: ≤ 11 FPs). If it fails, choose thresholds
-   with Learn-then-Test before any retraining.
-4. **Llama contribution audit**: template-only vs rank vs slot on the same packages. The rank arm picks between
-   frames that differ only by a prefix, so it adds almost nothing by construction.
-5. **Android app** from the ExecuTorch LlamaDemo with the `executorch-android` 1.5.1 AAR.
+### rbench (`deploy/pi/bench/`)
 
-Open inconsistency: this file reports slot-arm verifier pass 0.91 while `docs/ELA_RESEARCH.md` cites 7.7%.
-Reconcile before the report.
+Benchmark harness for the Pi: `rbench list|run`, registry with SHA and byte pins (`registry.toml`), dataset and
+model status labels (`ready`, `incomplete`, `present (not verified)`), a thermal guard that pauses and kills on
+temperature, and `sync_bench.sh` (`--code-only`, never deletes, never writes under `models/llama32_1b_spinquant/`).
+Tests: `tests/test_rbench_*.py`, `tests/test_pi_*.py`.
+
+### Llama 3.2 1B on ExecuTorch on the Pi (details: `docs/LLAMA_PI_RESULTS.md`)
+
+- **Versions:** executorch 1.5.1, torch 2.14.0+cpu, pytorch-tokenizers 1.6.0, torchao 0.18.0, tokenizers 0.23.3, Python
+  3.13.5, kernel 6.18.50+rpt-rpi-2712. Prebuilt wheels only, no source build.
+- **Model:** `executorch-community/Llama-3.2-1B-Instruct-SpinQuant_INT4_EO8-ET` at revision `911221e0`, `.pte` sha256
+  `8715cdba…cda3b`. Llama 3.2 Community License. The Meta repo is gated, so the pinned community checkpoint is used.
+- **Runtime fixes (runtime loads, not re-export):** preload `libcustom_ops_aot_lib.so` (custom SDPA and fast Hadamard
+  kernels) and `libexecutorch_kernels_quantized.so` with `ctypes.RTLD_GLOBAL`; call `runner.reset()` before each prompt
+  (KV cache overflow after about 6 prompts). Code: `deploy/pi/bench/rbench/runners/pte_llm.py`. No fused-INT4
+  `xnn_status_invalid_parameter` seen at 1.5.1 (not tested with `per_op_mode`).
+- **Speed and memory (valid 10-prompt runs, `ela_*`):** load 7.5–11.4 s (method load 2.6–3.9 s), TTFT 3.9–7.3 s, prefill
+  45–84 tok/s, decode 9.8–11.6 tok/s, peak RSS 1.83–1.84 GB. Thermal: start 52–60 °C, max 68.8–72.7 °C, no pauses.
+- **Prompt path, points vs slot (30 evidence rows, threads 2):** the points contract (one JSON from the model) gave
+  raw advisory pass 1/30 and p50 9.93 s. The slot arm (code writes the JSON, the model writes one sentence per evidence
+  item, stop at sentence end) gave raw advisory pass 15/30, point pass 29/46 (63%), p50 2.65–2.77 s. Final output
+  passes 30/30 by construction (fallback to template).
+- **slot_kw** (keyword in the assistant prefix): worse (raw advisory 12/30, point 24/46). Kept as opt-in only.
+- **Slot figure correction (resolves the 0.91 vs 7.7% inconsistency):** `kaggle/out/llama_ela_eval/output/metrics.json`
+  reports slot `verifier_pass_rate` 0.9133, but 260 of the 300 clean rows have zero evidence and a zero-point advisory
+  passes trivially. On the 40 evidence-bearing rows the FP16 slot pass is **14/40 (35%)** and the point pass is
+  **16/58 (27.6%)**. `docs/ELA_RESEARCH.md` 7.7% is an older contract, superseded. Quote 35%, not 0.91.
+- **Edge prompt variant `describe_kw`** (Fix A, below) is the explainer prompt the service uses.
+
+### Guards and fixes on the explainer (`src/rakshak/verifier.py`, `deploy/pi/service/edge_pipeline.py`)
+
+- **G1 (no explainer for LOW):** LOW-risk advisories get the template only; no LLM call. Skipped 9 of 30 rows in the
+  unguarded Part 1 run and 1 of 30 in the service run; changes no final output.
+- **G2 (attribution guard):** at LOW any scam-intent attribution is rejected, negation included. At MEDIUM and UNCERTAIN
+  attribution is allowed only inside a hedge (`may/could/might be a scam`, `likely a scam`, and the Hinglish forms).
+  HIGH is not checked, so a HIGH point can say "is a scam" (one case today, row 22, "claims to be a police or government
+  agency", which is correct). Tests: `tests/test_verifier_guards.py`.
+- **Fix A (describe, do not judge):** `describe_kw` prompt. Trial on 11 points: 11/11 raw pass, against 6/11 for the old
+  prompt. Known defect: it sometimes echoes "restates the fact" (2 of 11 in the trial).
+- **Fix B (detector flags, no rule evidence):** a message with student score ≥ threshold and no rule evidence is
+  UNCERTAIN with `VERIFY_INDEPENDENTLY` and a fixed summary, no explainer call (`path: detector_only`). Before this, two
+  benign rows were shown "no known scam pattern". `evidence._risk` is unchanged (Kaggle evals depend on it).
+- **Fix C (cleanup, deterministic, `generate_slot_advisory(cleanup=True)`):** removes prompt echoes at the end of a
+  sentence and blanks exact or near-exact duplicate points (difflib ≥ 0.9); blanked points fall back to the template.
+  Tests: `tests/test_edge_cleanup.py`. Its repeat rule no longer fires within one type, because of Fix D below.
+- **Fix D (one point per evidence type, `edge_pipeline.collapse_by_type`):** the explainer runs once per type on the first
+  matched item, and the advisory is built against that collapsed package (the verifier's one-point-per-item contract
+  holds for it). The response keeps the full `evidence` list, and each point has `count` and `evidence_ids`. Pi re-run
+  (40 rows, 3 threads): points 45 to 33, LLM calls 45 to 33, total p50/p95 2 096/6 350 to 1 706/3 012 ms (evidence 30).
+  Row 21 went partial to template (its first call was empty). Tests: `tests/test_edge_collapse.py`. See
+  `docs/EDGE_PIPELINE.md` section 3c.
+
+### Edge service (how to run, what it measured)
+
+```bash
+~/rakshak-bench/deploy/pi/service/start_service.sh --threads 3     # service in unshare -rn, plus the socket relay
+~/rakshak-bench/deploy/pi/service/stop_service.sh                  # relay, then service
+ssh -i ~/.ssh/pi5 -N -L 8770:127.0.0.1:8770 hermoine@pi5.local     # then http://localhost:8770
+# on the Pi: eval_service.py select | run | report; soak.py run --threads N --requests 100
+```
+
+- **Offline by construction:** the service runs in its own network namespace with `lo` only, no route, no DNS. The client
+  talks over the Unix socket `run/edge.sock`. Verified in `docs/EDGE_PIPELINE.md` section 2.
+- **API:** `POST /analyze` returns decision (risk, action, score, threshold, scam state), evidence, advisory (path, mode,
+  points with `llm_text` and `cleanup`), verifier (G2 rejections), `llm_calls`, `timings_ms`, device (temperature,
+  throttle, PMIC energy), RSS. 503 `cooling` at SoC ≥ 75 °C. `GET /health` and the page (no external assets).
+- **Threads:** default is **3**. The soak (100 requests, 0 aborts, 0 throttle flags, one run per count) gave p50/p95 total
+  2 400/9 265 ms (2 threads), 1 939/7 152 ms (3), 1 820/7 524 ms (4). 4 threads peaks at 73.0 °C; 3 threads gives the
+  lowest p95 with more margin. The 3-vs-4 choice is a judgement, not a measured optimum.
+
+**40-row eval, same rows as before (30 evidence + 10 benign), today's Fix C run at 3 threads.** "Before" is the Fix A/B run
+at 2 threads (`results/edge_eval/before_cleanup_t2/` on the Pi). The thread count and cleanup changed together, but the
+model's sentences are identical in both runs for all 40 rows (greedy decoding; checked), so the output differences are
+the cleanup alone.
+
+| Measure | Before (Fix A/B, 2 threads) | After (Fix C, 3 threads) |
+|---|---|---|
+| Raw point pass (model sentences that pass the verifier) | 38 of 45 (84%) | **30 of 45 (67%)** |
+| Same, excluding the 8 blanked duplicates | 30 of 37 (81%) | 30 of 37 (81%) |
+| Advisory mode llm / partial / template, evidence 30 | 22 / 2 / 6 | **19 / 5 / 6** |
+| Advisory raw pass, called advisories, evidence | 22 of 29 | 19 of 29 |
+| G2-rejected sentences (distinct) | 1 | 1 (row 25, "is likely an investment scam") |
+| G1 skipped (LOW, no call), evidence / all 40 | 1 / 9 | 1 / 9 |
+| Fix B path (detector only), all 40 | 2 | 2 (rows 35, 38, both benign label 0) |
+| Decisions, evidence (HIGH / MEDIUM / UNCERTAIN / LOW) | 1 / 20 / 8 / 1 | 1 / 20 / 8 / 1 |
+| Cleanup: points echo-stripped / deduplicated (blanked) | n/a | **2 / 8** (of 45 points) |
+| Final output passes the contract | 40 of 40 | 40 of 40 |
+| Total p50 / p95, evidence 30 (ms) | 2 256 / 7 520 | **2 096 / 6 350** |
+| Total p50 / p95, all 40 (ms) | 2 062 / 6 305 | **1 814 / 5 420** |
+| LLM per advisory, evidence (ms, n = 29) | 2 275 / 7 618 | 2 133 / 6 417 |
+| LLM per call (ms, n = 45) | 2 062 / 2 568 | 1 791 / 2 543 |
+| Energy per request, evidence (J, p50 / p95 / mean) | 8.9 / 30.8 / 12.8 | 8.0 / 27.9 / 11.9 |
+| Energy per request, all 40 (J, p50 / p95 / mean) | 7.8 / 27.4 / 9.6 | 7.3 / 25.1 / 8.9 |
+| RSS after batch (MB, peak) | 1 676 (1 839) | 1 676 (1 839) |
+| SoC at batch start, max during batch | 55.4 °C, 70.3 °C | 54.3 °C, 71.9 °C |
+| 503 refusals, throttle flags at start and end | 0, `0x0` | 0, `0x0` |
+
+Per-stage latency after Fix C, evidence 30 (p50 / p95, ms): canonicalise 0.90 / 1.60; detect (student ONNX) 3.53 / 6.70;
+evidence and decision 0.98 / 2.54; verify and assemble 2.60 / 4.55. Energy is the PMIC rails (`vcgencmd pmic_read_adc`),
+not a calibrated meter. The 2 Fix-B rows make no LLM call, so they are excluded from the LLM columns (the report script
+counts them as "called"; read the LLM rows here, not the script's "all").
+
+**Cleanup changes, all 10 (hand-checked, 4 cases).** The two echo strips (rows 0 and 14) and the eight duplicates (rows 4
+×5, 11 ×2, 28 ×1) were all examined against the SMS text in `results/edge_eval/rows.json`:
+- Row 0 (prize SMS, label 1, MEDIUM): "This message claims a prize or lottery." Correct. The echo "and has been matched"
+  is removed.
+- Row 14 (electricity disconnection SMS, label 1, MEDIUM): "This message threatens electricity disconnection." Correct.
+  "and restates the fact" is removed.
+- Row 4 (Prize Patrol SMS, label 1, MEDIUM): the model sentence is kept ("...is asking the reader to do something"),
+  correct but generic. The five repeats became the template "This message claims a prize or lottery.", so the advisory
+  still shows the same sentence six times. **Not fixed: the dedupe moves the repetition into the template.**
+- Row 28 (bit.ly SMS, label 1, MEDIUM): the model sentence is kept ("contains a shortened link and is likely to be a link to
+  a website or service"), correct. The exact repeat is the template "This message contains a shortened link." Repetitive.
+Verdict: 4 of 4 factually correct, no overclaim; two of the four are still repetitive. Each of the 8 blanked duplicates had
+passed the verifier before, which is why the raw pass fell from 38 to 30 of 45 while the pass on the remaining sentences
+stayed at 30 of 37.
+
+**Other hand-check (carried from today's earlier runs).** Section 3 of `docs/EDGE_PIPELINE.md` has 8 outputs: 6 correct
+and 2 mild overclaims (rows 3 and 25). Section 2 has 6 (no unsupported claim; one HIGH "is a scam" stated unhedged by policy). A small
+sample, not a wrong-claim rate.
+
+**Residual defects.** (1) repeated identical template points (above; resolved by Fix D, see ranked task 1); (2) the model echoes prompt words ("restates the
+fact", "matched" in the trial); (3) 4 of 45 calls end unterminated and fall back to the template; (4) generic clauses
+("is asking the reader to do something") pass the verifier and add little; (5) a HIGH point can state scam intent as fact;
+(6) the student flags benign bank, UPI and telecom notices at high confidence (see GroundLM below).
+
+### GroundLM full-pipeline false-positive rate (laptop, no LLM; `docs/GROUNDLM_EDGE_FPR.md`)
+
+In-sample: GroundLM rows informed rule design (`docs/GROUNDLM_FPR.md`). Independent Indian validation is still OPEN.
+Decision path: shipped student threshold 0.35127517580986023, rules, state, `build_package`, the Fix B override, and
+`choose_action`. The explainer is not run; it does not change risk or action. Scores come from the laptop ONNX run.
+
+1,133 scoreable policy negatives (Wilson 95%):
+
+| Alert | FP / 1,133 | Rate | 95% CI |
+|---|---:|---:|---|
+| (a) student score ≥ threshold | 471 | 41.57% | [38.73, 44.46] |
+| (b) any rule evidence | 12 | 1.06% | [0.61, 1.84] |
+| (c) risk ≥ MEDIUM (warning) | 1 | 0.09% | [0.02, 0.50] |
+| (d) risk ≥ UNCERTAIN (visible notice with Fix B) | 472 | 41.66% | [38.82, 44.55] |
+| (e) HIGH only | 1 | 0.09% | [0.02, 0.50] |
+
+SmishX (independent, non-Indian; recall on 226 smishing, ham FPR on 606 legitimate):
+
+| Alert | Recall | Ham FPR |
+|---|---:|---:|
+| (a) student | 69.47% | 9.08% |
+| (b) rule evidence | 25.66% | 4.95% |
+| (c) risk ≥ MEDIUM | 17.26% | 3.14% |
+| (d) risk ≥ UNCERTAIN | 76.55% | 9.57% |
+| (e) HIGH only | 2.21% | 1.49% |
+
+470 of the 472 (d) flags have no rule evidence (student-only). They fall in bank (161 of 161) and UPI (146 of 146)
+legitimate messages and in the telecom and balance-notice templates. Most are confident (403 of 471 at score ≥ 0.8), so this is
+a calibration and training problem. A threshold cannot fix it: the smallest threshold with GroundLM FPR ≤ 1% is 0.99793,
+which drops campaign recall to 71.9% and SmishX scam recall to 5.8%. The go criterion (≤ 11 FPs on 1,133) is met only by
+alert (c), the MEDIUM-and-above warning. The visible-notice alert (d) is about 40 times over it.
+
+### Open decisions for Maadhav
+
+(a) **DECIDED (2026-11-06): quiet for demo; verify mode kept behind `detector_only_mode`; detector fix on bank/UPI/telecom
+notices remains the research task.** Detector-only flags (score at or above threshold, no rule evidence) are LOW / IGNORE with
+the neutral summary "No specific scam pattern was found in this message." (`advisory.path` = `detector_only_quiet`). No Llama call.
+Setting: `--detector-only-mode {quiet,verify}` or `RAKSHAK_DETECTOR_ONLY_MODE`; default quiet. Measured: GroundLM visible-warning FPR
+**0.18%** (2 of 1,133, [0.05, 0.64]) against 41.66% in verify; SmishX visible recall 23.45% (quiet) against 76.55% (verify); campaign
+test recall 16.2% against 98.1%. The recall cost is accepted for the demo and is stated in the demo. Details: `docs/EDGE_PIPELINE.md`
+("Detector-only mode"), `docs/GROUNDLM_EDGE_FPR.md`.
+(b) **Cooler and 27 W PSU** for the final benchmark numbers. Without them, latency and throttle numbers are for this setup only.
+(c) **Android phone:** which device, and is one available? The Android app (ExecuTorch LlamaDemo with the `executorch-android`
+1.5.1 AAR) needs one for the demo.
+(d) **Commit timing.** DECIDED (2026-11-06): committed as one batch.
+(e) **verifier.py formatting.** DECIDED (2026-11-06): left as is; no formatting-only commit.
+
+### Ranked next tasks
+
+1. DONE by Fix D (checked 2026-11-06 on the Pi's latest `results/edge_eval/responses.jsonl`, the Fix D run at 3 threads):
+   row 4 is now one `prize_lottery` point (count 6), and row 28 is one `shortened_url` point (count 2). None of the 40 rows has two points
+   with text similarity ≥ 0.8. No re-run needed.
+2. Final numbers with the cooler and the 27 W PSU: 100-request soak at 3 and 4 threads, a live 503 gate test (forced
+   temperature), and a repeat of the 40-row eval. Report the cooling and power state with every number.
+3. DONE (Hinglish, 2026-11-06, `docs/EDGE_PIPELINE.md` section 5). Per-request routing by `detect_lang`; `--hinglish-mode`
+   defaults to `template` (verifier Hinglish templates, no LLM, 40 of 40 pass). The Hinglish Llama prompt does not win: raw point pass
+   8 of 37 (22%), 29 of 37 calls unterminated (the model quotes the matched text and stops on the quote mark), and the sentences
+   that pass are often wrong Hinglish (10-sentence model check, not native-speaker). Routing: 2 of the 40 English eval rows route
+   hinglish (`906572c8cc42edc04053`, `62046b0c0c23c1bb48fb`); the other 38 are unchanged. Hinglish eval set: 30 scam + 10 benign
+   (`results/edge_eval_hinglish/rows.json`). Detector recall 30 of 30 scam, 0 of 10 benign flags; one benign rule false alert (row 34).
+   Open: a Hinglish-tuned explainer prompt or stop rule (not tuned on the eval rows); native-speaker review.
+4. Android app from the ExecuTorch LlamaDemo (AAR 1.5.1), calling the Pi service or the on-device model. Due 2026-11-23.
+5. Demo video and the report (Phase 1 deliverables), with the telemetry from the service's `/health` and `/analyze`.
+6. Decide the HIGH "is a scam" policy (stated fact vs hedged) and the "likely" hedge limit (G2 only matches "likely" directly
+   before the term; row 25 is the one G2 rejection).
+7. DONE: committed as one batch (2026-11-06).
+
+### Untested
+
+- A live 503 cooling refusal (only mocked in `tests/test_edge_service.py`).
+- Fix A beyond 11 trial points; the `describe_kw` echo of "restates the fact".
+- Fix B beyond 2 real hits in the 40 rows (5 in the scan); the UNCERTAIN choice is not user-tested.
+- Hinglish explainer output through the service.
+- More than 40 requests per eval (soak 100 requests on each thread count, one run each).
+- Thermal behaviour past 73 °C, and any run with a cooler.
+- The page in a real phone browser (desktop at 375 px only). The relay under concurrent browser connections.
+- Restart after a crash (the scripts assume a clean stop).
+- (Done) Full test suite before the commit: 1362 passed, 28 skipped.
 
 ## Earlier notes (2026-11-01 to 11-03)
 

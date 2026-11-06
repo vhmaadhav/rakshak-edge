@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Run rbench on the Pi from the laptop, or pull its results back.
+#
+#   deploy/pi/bench/rbench-remote list models --json
+#   deploy/pi/bench/rbench-remote run --model sms_student --dataset sms_campaign_test --limit 300
+#   deploy/pi/bench/rbench-remote pull            copy the Pi's results/ into bench_results/
+#
+# Every argument except `pull` is passed through to the Pi's rbench unchanged, and the remote exit
+# code (rbench's stable codes, see deploy/pi/bench/README.md) is the exit code of this script.
+# Env: PI_HOST (default hermoine@pi5.local), PI_KEY (default ~/.ssh/pi5),
+#      RBENCH_REMOTE_DIR (default rakshak-bench), RBENCH_PULL_DIR (default <repo>/bench_results).
+
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(cd "$HERE/../../.." && pwd)"
+PI_HOST="${PI_HOST:-hermoine@pi5.local}"
+PI_KEY="${PI_KEY:-$HOME/.ssh/pi5}"
+REMOTE_DIR="${RBENCH_REMOTE_DIR:-rakshak-bench}"
+PULL_DIR="${RBENCH_PULL_DIR:-$REPO/bench_results}"
+SSH_OPTS=(-i "$PI_KEY" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10)
+
+if [[ $# -eq 0 ]]; then
+  sed -n '2,11p' "$0" >&2
+  exit 2
+fi
+
+if [[ "$1" == "pull" ]]; then
+  mkdir -p "$PULL_DIR"
+  # No --delete: results already pulled are kept even after the Pi prunes them.
+  rsync -a --partial -e "ssh ${SSH_OPTS[*]}" "$PI_HOST:$REMOTE_DIR/results/" "$PULL_DIR/"
+  echo "pulled results into $PULL_DIR"
+  exit 0
+fi
+
+# $HOME is expanded by the Pi's shell; only the user's arguments are quoted.
+remote_cmd="\$HOME/$REMOTE_DIR/.venv/bin/python \$HOME/$REMOTE_DIR/deploy/pi/bench/bin/rbench $(printf '%q ' "$@")"
+exec ssh "${SSH_OPTS[@]}" "$PI_HOST" "$remote_cmd"

@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rakshak edge pipeline</title>
+<style>
+:root{
+  --bg:#f4f6f9; --card:#ffffff; --fg:#141820; --muted:#5b6675; --line:#d8dee6;
+  --ok:#17803a; --warn:#a85f00; --bad:#c42b2b; --accent:#2457d6;
+  --banner-bad:#fdeaea; --banner-warn:#fff3d6;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1116; --card:#171b22; --fg:#e6e9ef; --muted:#98a2b0; --line:#2a313c;
+    --ok:#3fb950; --warn:#e6a511; --bad:#ff6b63; --accent:#7aa2ff;
+    --banner-bad:#3d1719; --banner-warn:#3a2c10;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1116; --card:#171b22; --fg:#e6e9ef; --muted:#98a2b0; --line:#2a313c;
+  --ok:#3fb950; --warn:#e6a511; --bad:#ff6b63; --accent:#7aa2ff;
+  --banner-bad:#3d1719; --banner-warn:#3a2c10;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--fg)}
+body{font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden}
+main{padding:16px;max-width:900px;margin:0 auto}
+h1{font-size:18px;margin:0 0 4px;font-weight:700}
+h2{font-size:14px;margin:0 0 8px;font-weight:700}
+.sub{color:var(--muted);font-size:13px;margin-bottom:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;
+  margin-bottom:12px;min-width:0}
+.label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+textarea{width:100%;min-height:96px;font:14px/1.4 system-ui,sans-serif;color:var(--fg);
+  background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;resize:vertical}
+button{font:600 14px system-ui,sans-serif;color:#fff;background:var(--accent);border:0;
+  border-radius:8px;padding:9px 16px;cursor:pointer;margin-top:8px}
+button[disabled]{opacity:.55;cursor:wait}
+.row{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;border:1px solid var(--line);
+  font-size:12px;font-weight:700}
+.risk-HIGH{color:var(--bad);border-color:var(--bad)}
+.risk-MEDIUM,.risk-UNCERTAIN{color:var(--warn);border-color:var(--warn)}
+.risk-LOW{color:var(--ok);border-color:var(--ok)}
+.src-llm{color:var(--accent);border-color:var(--accent)}
+.src-template{color:var(--muted)}
+.ok{color:var(--ok)} .bad{color:var(--bad)} .muted{color:var(--muted)}
+.banner{display:none;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-weight:600}
+.banner.show{display:block}
+.banner.bad{background:var(--banner-bad);color:var(--bad);border:1px solid var(--bad)}
+.banner.warn{background:var(--banner-warn);color:var(--warn);border:1px solid var(--warn)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
+.kv div:nth-child(odd){color:var(--muted)}
+.point{border-top:1px dashed var(--line);padding:8px 0}
+.point:first-child{border-top:0;padding-top:0}
+.point .text{overflow-wrap:anywhere}
+.llm-text{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted);
+  overflow-wrap:anywhere;margin-top:4px}
+.problem{font-size:12px;color:var(--bad);overflow-wrap:anywhere;margin-top:2px}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:600}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.note{font-size:12px;color:var(--muted);margin-top:6px}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Rakshak edge pipeline</h1>
+    <div class="sub">Runs on this Raspberry Pi 5. The SMS student and the Llama explainer are
+      loaded once; nothing leaves the device.</div>
+  </header>
+
+  <div id="banner" class="banner" role="status"></div>
+
+  <section class="card">
+    <h2>Paste an SMS</h2>
+    <textarea id="sms" maxlength="2000" placeholder="Paste the message text here"></textarea>
+    <div class="row">
+      <button id="go" type="button">Analyse</button>
+      <span id="status" class="muted"></span>
+    </div>
+  </section>
+
+  <section id="result" class="card" hidden>
+    <div class="row" style="justify-content:space-between">
+      <div><div class="label">Risk</div><div id="risk" class="big"></div></div>
+      <div><div class="label">Action</div><div id="action" style="font-weight:700"></div></div>
+      <div><div class="label">Total</div><div id="total" class="big"></div></div>
+    </div>
+    <div class="kv" style="margin-top:10px">
+      <div>Score</div><div id="score"></div>
+      <div>Scam state</div><div id="state"></div>
+      <div>Advisory mode</div><div id="mode"></div>
+      <div>Explainer</div><div id="llmskip"></div>
+    </div>
+  </section>
+
+  <section id="evidenceCard" class="card" hidden>
+    <h2>Rule evidence</h2>
+    <div id="evidence"></div>
+  </section>
+
+  <section id="advisoryCard" class="card" hidden>
+    <h2>Advisory</h2>
+    <div class="point">
+      <div class="label">Summary</div>
+      <div id="summary" class="text"></div>
+      <div id="summarySource" class="note"></div>
+    </div>
+    <div id="points"></div>
+    <div id="g2" class="note"></div>
+  </section>
+
+  <section id="timingCard" class="card" hidden>
+    <h2>Stages</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Stage</th><th class="n">ms</th></tr></thead>
+      <tbody id="stages"></tbody>
+    </table></div>
+    <div class="note" id="llmCalls"></div>
+  </section>
+
+  <section id="deviceCard" class="card" hidden>
+    <h2>Device</h2>
+    <div class="kv" id="device"></div>
+  </section>
+</main>
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+
+  function fmt(v, digits) {
+    if (v === null || v === undefined) return "n/a";
+    return Number(v).toFixed(digits === undefined ? 1 : digits);
+  }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = String(text);
+    return e;
+  }
+  function row(table, label, value) {
+    table.appendChild(el("div", "", label));
+    table.appendChild(el("div", "", value));
+  }
+  function banner(kind, text) {
+    var b = $("banner");
+    b.className = "banner show " + (kind || "");
+    b.textContent = text;
+  }
+  function clearBanner() { $("banner").className = "banner"; $("banner").textContent = ""; }
+
+  function render(d) {
+    $("result").hidden = false;
+    var risk = d.decision.risk;
+    $("risk").textContent = risk;
+    $("risk").className = "big risk-" + risk;
+    $("action").textContent = d.decision.action;
+    $("total").textContent = fmt(d.timings_ms.total, 0) + " ms";
+    $("score").textContent = fmt(d.decision.score, 4) + " (threshold " + fmt(d.decision.threshold, 4) + ")";
+    $("state").textContent = d.decision.scam_state + " / " + d.decision.evidence_count + " rule hit(s)";
+    $("mode").textContent = d.advisory.mode;
+    $("llmskip").textContent = d.advisory.llm_skipped_low_risk
+      ? "not called (LOW risk, template only)"
+      : d.llm_calls.length + " call(s)";
+
+    var ev = $("evidence"); ev.textContent = "";
+    if (!d.evidence.length) ev.appendChild(el("div", "muted", "No rule fired."));
+    d.evidence.forEach(function (e) {
+      var p = el("div", "point");
+      p.appendChild(el("span", "pill", e.id + " " + e.type + " w=" + fmt(e.weight, 2)));
+      p.appendChild(el("div", "text", "matched: " + e.text));
+      ev.appendChild(p);
+    });
+    $("evidenceCard").hidden = false;
+
+    $("summary").textContent = d.advisory.summary.text;
+    $("summarySource").textContent = "source: " + d.advisory.summary.source + " (" + d.advisory.summary.check + ")";
+    var pts = $("points"); pts.textContent = "";
+    d.advisory.points.forEach(function (p, i) {
+      var box = el("div", "point");
+      var head = el("div", "");
+      head.appendChild(el("span", "pill src-" + p.source, p.source));
+      head.appendChild(document.createTextNode(" "));
+      head.appendChild(el("span", "pill", p.evidence_id + " " + p.type));
+      head.appendChild(document.createTextNode(" "));
+      if (p.check.ok === null) head.appendChild(el("span", "muted", "explainer not run"));
+      else head.appendChild(el("span", p.check.ok ? "ok" : "bad", p.check.ok ? "verifier: pass" : "verifier: fail"));
+      box.appendChild(head);
+      box.appendChild(el("div", "text", (i + 1) + ". " + p.text));
+      if (p.llm_text) box.appendChild(el("div", "llm-text", "explainer wrote: " + p.llm_text));
+      (p.check.problems || []).forEach(function (pr) { box.appendChild(el("div", "problem", pr)); });
+      pts.appendChild(box);
+    });
+    var g2 = d.verifier.g2_rejected || [];
+    $("g2").textContent = g2.length
+      ? "Attribution guard rejected " + g2.length + " sentence(s); the template was shown instead."
+      : "Attribution guard: nothing rejected.";
+    $("advisoryCard").hidden = false;
+
+    var t = d.timings_ms, body = $("stages"); body.textContent = "";
+    [["Canonicalise", t.canonicalise], ["Detect (student ONNX)", t.detect],
+     ["Evidence and decision", t.evidence], ["Explainer, all calls", t.llm_total],
+     ["Verify and assemble", t.verify], ["Total", t.total]].forEach(function (r) {
+      var tr = el("tr", "");
+      tr.appendChild(el("td", "", r[0]));
+      tr.appendChild(el("td", "n", fmt(r[1], 1)));
+      body.appendChild(tr);
+    });
+    $("llmCalls").textContent = t.llm_calls.length
+      ? "Per call (ms): " + t.llm_calls.map(function (x) { return fmt(x, 0); }).join(", ")
+      : "No explainer call for this decision.";
+    $("timingCard").hidden = false;
+
+    var dev = d.device, dt = $("device"); dt.textContent = "";
+    row(dt, "SoC temp start / end", fmt(dev.start.temp_c) + " / " + fmt(dev.end.temp_c) + " C");
+    row(dt, "Throttled start / end", (dev.start.throttled || "n/a") + " / " + (dev.end.throttled || "n/a"));
+    row(dt, "Energy this request", fmt(dev.energy.energy_j, 2) + " J (" + dev.energy.method + ")");
+    row(dt, "Mean power", fmt(dev.energy.mean_w, 2) + " W");
+    row(dt, "Service RSS", fmt(dev.rss_mb, 0) + " MB");
+    $("deviceCard").hidden = false;
+  }
+
+  $("go").addEventListener("click", function () {
+    var text = $("sms").value;
+    if (!text.trim()) { banner("warn", "Paste an SMS first."); return; }
+    clearBanner();
+    var btn = $("go"); btn.disabled = true; $("status").textContent = "running on the Pi...";
+    fetch("/analyze", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({sms: text})
+    }).then(function (r) {
+      return r.json().then(function (j) { return {status: r.status, body: j}; });
+    }).then(function (res) {
+      if (res.status === 200) { render(res.body); $("status").textContent = "done"; return; }
+      if (res.status === 503) {
+        banner("bad", "The Pi is too hot (" + fmt(res.body.temp_c) + " C, limit " +
+          fmt(res.body.limit_c) + " C). The explainer was not run. Try again when it has cooled.");
+      } else {
+        banner("bad", res.body.error || ("request failed (" + res.status + ")"));
+      }
+      $("status").textContent = "";
+    }).catch(function (err) {
+      banner("bad", "Could not reach the service: " + err);
+      $("status").textContent = "";
+    }).then(function () { btn.disabled = false; });
+  });
+})();
+</script>
+</body>
+</html>
