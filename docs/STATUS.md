@@ -165,6 +165,180 @@
   They establish frozen 4-bit base + LoRA, NF4/double quantization and preparation APIs;
   they do not establish Rakshak results. Exact package pins/T4 runtime/Hinglish paraphrase
   yield and ExecuTorch adapter export remain UNVERIFIED. No B Kaggle job launched yet.
+# Completed C-adversary gate — 2026-11-01
+
+- Saved-output audit v1/tree `f50b5a0c3bbd5b55d085b046d1ee1df0d7a21516ca6bae98facf45e3a5ae21a1`, **ok**,60.3s; one wait/fetch. Recorded decision **go**: ScamShield mean F1 0.733961→0.749275, paired delta0.015314 [0.013591,0.017423], p0.000999; other-source guards pass.
+- Campaign ERM→adversary .974774→.975553; lang_shift .369773→.396633; Mishra .937259→.945886; UCI .882857→.891299; temporal .871039→.866594. All seeds/absolute CIs/paired tests/external failures in `SOURCE_ADVERSARY_RESULTS.md`. No prior ERM substitution, seed selection or held-out improvement claim.
+- Keep the intervention for further validation; no checkpoint deployment. Independent Indian validation OPEN. The newly requested fused false-alarm audit takes precedence over further source-method experiments.
+
+# C next experiment predeclaration — 2026-11-01
+
+- Static provenance check while jobs are pending: corrected the datacard's IMC25 synthetic=True typo to match the existing loader's `synthetic=False`. This documents the source flag, not independent authenticity. No data, split, model code or running bundle changed.
+
+- Launched **sms_source_adversary-c-adv-20261101 v1**, dirty base56892e7, tree `a09fb20ed34903e9605e7f7e48c26aed055a4da18ae4a41a0d7c8588214b9573`. Exact planned args/attachments/T4/internet above; original single wait_event subscriber opened. Together with B this is two GPU kernels. Startup Torch checks and all model results pending; no runtime/quality pass claimed.
+
+- Prior C milestone is committed56892e7 and open as PR #3; both balancing/DRO arms killed.
+  This new isolated `ci/source-adversary-20261101` branch leaves that PR and PR #2 unchanged.
+- Hypothesis: conditional training-source adversarial regularization reduces learned source
+  shortcuts without aligning different label marginals. Fixed candidate: learned CNN features
+  only, per-training-label MLP64 source heads, CE1 with reversed encoder coefficient ramping
+  to.05 over3epochs, inverse label/source-cell weights. No test/external training rows.
+- Go: positive ScamShield paired campaign-bootstrap mean-F1 lower CI; no other source-fold loss
+  larger than ERM CI half-width. Otherwise kill. Seeds1/2/3, same six frozen splits and
+  train-only KD, max15/patience3 cal PR-AUC, AdamW.002/wd.0001, batch128, alpha.7/T2.
+  Cal-only thresholds; all external operating points reported without tuning. Detailed primary
+  sources and limits: `docs/SOURCE_ADVERSARY.md`; adaptation, not exact DANN/CDAN, benefit UNVERIFIED.
+- Focused metadata/gate/dependency checks: **10 passed,1 skipped in0.18 s**, pre-test Tctl37.5 C,
+  changed-file ruff clean. Torch absent locally; synthetic gradient/RNG/zero-weight checks are
+  mandatory on Kaggle before corpus access. No full-suite rerun before next finished milestone.
+- Planned private T4 job `sms_source_adversary --run-name c-adv-20261101 --internet
+  --datasets maadhavvh/rakshak-data maadhavvh/rakshak-teacher-logits
+  --job-args="--seeds 1 2 3 --epochs 15 --n-boot 1000 --teacher-seed 0"`.
+  One completion subscription/fetch only after launch; B remains on its original event waiter.
+  No new experiment result or deployment claim yet.
+
+# Completed C experiment — 2026-11-01
+
+- **Final C milestone verification:** ONE complete unit-suite invocation exited0:
+  **830 passed,21 skipped,144 warnings in1376.39 s (0:22:56)**. Required nice19,
+  taskset0-3, OMP2/MKL2; temporary CPU quota15% then25%, thermal guard85 C.
+  Pre-run Tctl38.2 C, final38.4 C; no thermal interrupt. Torch is absent locally;
+  source-gradient/KD invariants and54 actual fits succeeded on Kaggle. Full `ruff check .`:
+  **All checks passed!** No further source-code changes after these checks.
+  Git fetch completed; base2463245 matches the reviewed branch (0ahead/0behind).
+  Repo-local identity checked as `vhmaadhav <vhmaadhav@hotmail.com>`; no override.
+  Prepare one C guard/report milestone commit and a separate PR into main; no merge.
+
+- Milestone full unit suite remains on its single invocation. Started with15% temporary CPU quota; after sustained38 C and confirmed near-continuous CFS throttling, raised only that scope to25% (same nice/affinity/thread limits and85 C guard). The monitor's printed15% label denotes its initial configuration; final verification records both actual quotas. No restart or new test run.
+
+- `sms_source_balance-c-clean-20261101` **v1**, tree
+  `62a788d27aa9db20b84964f00b8208d3025c3be8f5128352d5c76c53b5ae589e`, base2463245 dirty:
+  **ok in5,316.6 s**, six frozen splits,54 successful fit units. Args `--seeds 1 2 3
+  --epochs 15 --n-boot 1000 --teacher-seed 0`; private data + teacher-logit attachments,
+  T4/internet. Original ONE event waiter completed and ONE fetch verified. No skipped folds.
+- `sms_source_audit-c-audit-20261101` **v1**, tree
+  `e83b49d3e41ca29a849b1c0247bfe95ed9b140e918f565a6f9fa3c8bd5166239`: **ok in74.1 s**,
+  args `--source-tree 62a788d27aa9db20b84964f00b8208d3025c3be8f5128352d5c76c53b5ae589e`.
+  Private data + corrected kernel attachment. ONE event/fetch; both decisions **kill**.
+  Source metrics SHA256 `db3811b2ede62d577e3dad40684276d0ec0580d231d0505cafe3d5d54fb46538`.
+- ScamShield mean F1: ERM0.750254; balanced0.743732, paired delta−0.006522
+  CI[−0.007940,−0.005173]; DRO0.739853, delta−0.010402 CI[−0.012204,−0.008830].
+  Both primary gates fail; other source-fold loss guards pass. Do not cherry-pick temporal gains.
+  Complete per-split/per-seed/threshold/external results: `docs/SOURCE_BALANCE_RESULTS.md`.
+- Membership audit **confirms** inherited KD contamination: campaign4,147 exact test-copy
+  extras; ScamShield2,122 exact test copies,11,137 test-campaign extras,9,707 held-source rows.
+  Counts overlap; all original train/test campaign checks zero except temporal3 (unchanged).
+  Historical ~0.80 Hinglish KD claim withdrawn as clean evidence; fresh train-only ERM mean0.4000.
+- Implemented default train-only KD plus rejection of `--kd-unlabeled`; programmatic
+  `build_training_pool` also refuses extras. Legacy broad builder retained for membership audits.
+  Guard/membership tests **14 passed in0.82 s**, pre-test Tctl41.0 C; changed-file ruff clean.
+  No new training/eval needed: corrected remote experiment already used exactly this train-only pool.
+- GroundLM model FPR is poor: ERM seed1 at cal-1%-FPR threshold407/1,133=35.92%,
+  cluster CI[21.80%,48.54%]; SmishX fraud267/881=30.31% [25.81%,34.67%]. All seeds reported,
+  no external threshold tuning. GroundLM/rule-feature design is **in-sample**; SmishX is
+  **independent, non-Indian-specific** for corrected models. No clean held-out improvement claim.
+  Independent Indian validation remains OPEN; PhreshPhish is not applicable to SMS-only changes.
+
+# Current C checkpoint — 2026-11-01
+
+- Initial broad-pool run cancelled by user, server acknowledged, single listener retired;
+  partial artifacts quarantined without inspecting model outcomes.
+- Corrected train-only `sms_source_balance-c-clean-20261101` v1/tree `62a788d27aa9` completed
+  ok; saved-output audit also ok. Both interventions **kill**. Train-only KD guard and complete
+  negative results are prepared for their own milestone PR; full suite830passed/21skipped and ruff clean.
+
+# Run updates — 2026-11-01: C (chronological)
+
+- Acceptance completeness check now requires exactly all three frozen source folds (UCI, Mishra–Soni, ScamShield), whose canonical names were checked in `datasets/splits.py`/`loaders.py`. Missing-fold fixture included: **2 passed in 0.01 s**, Tctl36.2 C, ruff clean. Final locally prepared audit tree `e83b49d3e41c`; still not launched, no inference/gate changes.
+
+- Static frozen-split review caught a pre-launch acceptance-helper naming mismatch: partitions are `source_holdout:holdout_scamshield` (and corresponding `holdout_*` sources), not the abbreviated name. Corrected helper/fixtures, **2 passed in 0.01 s**, Tctl36.2 C; ruff/diff clean. Rebuilt saved-output audit locally only (tree `6c165e1fdc0e`), not launched. Running corrected C training bundle/thresholds unchanged.
+
+- Before outcomes: added a saved-output `sms_source_audit` acceptance check. It requires a successful exact source tree, all seeds1/2/3 for every run, both paired arms, positive ScamShield lower CI and the predeclared other-fold CI-half-width limit. No training/inference or gate changes. Synthetic boundary/missing-result checks **2 passed in 0.01 s**, pre-test Tctl36.0 C; changed-file ruff clean. Run only after corrected C finishes; retain the original subscription.
+
+- C development checks: **2 passed, 3 skipped** (local torch absent; synthetic torch gradient/KD
+  invariants run at job start on Kaggle before training). Changed-file ruff clean. Tctl 42.1 C.
+  Campaign-fitted models also report external GroundLM/SmishX FPR/recall at cal-frozen thresholds;
+  GroundLM/rules design exposure remains in-sample, SmishX independent non-Indian-specific.
+  PhreshPhish is a URL protocol and is not an endpoint for this SMS-only intervention.
+- Launched privately: `sms_source_balance-c-src-20261101` **version 1**, base `2463245`
+  dirty tree `8a3a0189e52a`. Single completion subscriber open, no polling; results pending.
+- Additional synthetic statistical check distinguishes mean F1 over the three seeds from F1
+  of a majority vote: **3 passed, 3 skipped in 0.08 s** total focused checks, Tctl 40.6 C.
+  The three torch-dependent checks remain skipped locally; runtime invariants are in the Kaggle job.
+- User confirmed cancellation; **one** cancellation-verification API/CLI read returned
+  `KernelWorkerStatus.CANCEL_ACKNOWLEDGED` (no polling loop). C's original single waiter is
+  retired; the cancelled container cannot send its callback. One fetch attempt archives or
+  reports missing partial outputs; those model outcomes are quarantined and not used.
+  Aggregate pool-audit fixtures: **2 passed in 0.08 s**, Tctl 39.1 C, ruff clean.
+- Corrected run planned: `sms_source_balance --run-name c-clean-20261101 --gpu t4 --internet
+  --datasets maadhavvh/rakshak-data maadhavvh/rakshak-teacher-logits
+  --job-args="--seeds 1 2 3 --epochs 15 --n-boot 1000 --teacher-seed 0"`.
+  Frozen train IDs only for all arms, no unlabeled extras; data/model hyperparameters otherwise
+  fixed. Campaign, source_holdout, lang_shift, temporal and external endpoints unchanged.
+- Cancellation archive: fetch succeeded once, with partial `results.json` status `running`
+  from the last checkpoint (2,274.3 s), **not** a successful completion. Tree
+  `8a3a0189e52afaa87a922f829eeec3734c72f2ef38fa2dc7fd678eff7612d866`; server cancellation was
+  separately acknowledged. Partial predictions/metrics remain private and uninspected/quarantined.
+  Exactly one local old-run waiter was terminated; B's listener was preserved.
+- Replacement launched: `sms_source_balance-c-clean-20261101` **version 1**, dirty base
+  `2463245`, tree `62a788d27aa9`. Same declared seeds/hyperparameters/attachments; train-only
+  pool correction + pre-training membership audit. One `wait_event --timeout 43200` opened.
+  B + this replacement are the only active GPU kernels. No model results yet.
+- The quarantined run's log was queried only for the exact startup test marker:
+  `source objective synthetic torch invariants passed`. It confirms the remote source-loss
+  gradient and KD mean-equivalence checks passed before training. No model outcome was read.
+
+
+# Session log — 2026-11-01: C protocol correction before inspecting model outcomes
+
+- Code review found that inherited `sms_teacher.dump_transfer` scores **every corpus row outside
+  test IDs**; `build_pool(... include_unlabeled=True)` adds all those extra rows to KD training.
+  Because `sms.parquet` retains raw duplicates and campaign-excluded rows, ID-only exclusion
+  can reintroduce test copies/campaign neighbours and external-overlap removals. Actual counts
+  are UNVERIFIED until Kaggle membership audit; no model outcomes were inspected for this decision.
+- First C run `sms_source_balance-c-src-20261101` v1/tree `8a3a0189e52a` is **protocol-invalid
+  for the source-generalization go gate**. Cancellation requested, not yet achieved: browser
+  controls are disabled; installed CLI exposes no cancel command/session-ID resolution. The
+  official SDK supports cancellation only with a known true session ID; no ID is guessed.
+  Its single event waiter remains open. User asked asynchronously to cancel or let it finish.
+- **Corrected predeclaration:** all three ERM/balanced/DRO arms use exactly each run's original
+  training IDs with their matched teacher logits (`include_unlabeled=False`); split files and
+  external sets unchanged. Historical ~.75 is a reference, not an assumed reproduction; the
+  paired control is fresh train-only ERM. Same three seeds, hyperparameters and go/kill gates.
+- New job audits inherited extra-row membership (exact test/cal copies, test campaigns, external
+  exact overlap, held-out source) on Kaggle before training and writes only aggregate counts.
+  Go for protocol: train positions equal frozen train positions, no extra KD rows. Kill any
+  source-generalization claim if this invariant fails. No outcome-driven sampling/threshold tune.
+  Replacement run will use a new name only after one GPU slot is confirmed free.
+
+# Session log — 2026-11-01: C scope clarification before results
+
+- Source_holdout is the frozen split name, not an end-to-end independence guarantee:
+  **in-sample for rule-feature design**, because ScamShield test rows informed those rules.
+  Concurrent ERM controls use the identical frozen features. Report paired split changes
+  with that caveat; no clean independent held-out improvement claim. No test/cal labels
+  enter training pools, and cal-only selection/thresholds remain unchanged.
+
+# Session log — 2026-11-01: C source-intervention predeclaration
+
+- Isolated branch `ci/source-balance-20261101` from `2463245`; PR #2/main untouched.
+- Hypothesis: equal training-source sampling, and a second balanced+group-DRO arm, lift
+  dual-base KD student ScamShield-holdout F1 (~0.75; teacher ~0.87) without harming other folds.
+- **Go:** paired campaign-clustered 95% CI for ScamShield mean F1 improvement excludes zero;
+  no other source-holdout fold loses more than its ERM CI half-width. Otherwise withhold
+  an improvement claim/kill deployment. Three fixed seeds 1/2/3 per arm; report all folds and
+  campaign/lang_shift/temporal. Campaign CI is conditional on those three training seeds.
+- Controls: ERM, balanced replacement sampling at identical update count, and balanced+group-DRO
+  (exponentiated group weights eta=0.01). Same dual-base, KD alpha .7 / T=2, AdamW lr .002 /
+  weight decay .0001, max 15 epochs, patience 3 by cal PR-AUC. Cal-only thresholds; no test tuning.
+  Group labels are training sources, not held-out-source outcomes. Teacher files matched to each
+  run, hash/membership checked; unlabeled soft targets retain masked labels.
+- Primary research: [Sagawa et al., group DRO](https://arxiv.org/abs/1911.08731), which explicitly
+  warns that regularization/early stopping matters; no gain is assumed. This is a source-group
+  adaptation of the method, not an exact reproduction. Runtime/result UNVERIFIED before Kaggle.
+- Planned private job `sms_source_balance --run-name c-src-20261101 --gpu t4 --internet
+  --datasets maadhavvh/rakshak-data maadhavvh/rakshak-teacher-logits
+  --job-args="--seeds 1 2 3 --epochs 15 --n-boot 1000 --teacher-seed 0"`.
 
 # Session log — 2026-11-01: review findings A
 
@@ -481,3 +655,241 @@ Kaggle for all compute; no Modal without Maadhav's explicit per-run OK; cloud-cr
 
 - Exact artifact upload/create request completed. Immediate GetDatasetMetadata verification returned403; this was a publication verification failure, not a model or privacy pass. No re-upload/version/recreation performed. A separate single owner GetDataset read succeeded: **maadhavvh/rakshak-ela-models-b20261101, isPrivate=true, version1, owner maadhavvh,940,569,686bytes**. Safe verification receipt retained locally; source model hashes unchanged, quality_retained=false,shipment_approved=false. **HF publish pending**.
 - Publication-only helper now verifies the owner GetDataset record (exact ref/owner/private/version), avoiding the failed metadata endpoint. Focused synthetic allowlist/privacy-owner checks **2 passed in0.02s**, Tctl40.1C; ruff clean after line wrapping. This small post-full-suite API fix changes no training/inference/scoring/export/gate. Full861-pass milestone suite above is not rerun; the new API branch is covered by these focused tests.
+# New top-priority fused audit — 2026-11-01
+
+- Hypothesis/experiment/go-kill frozen in `docs/FUSED_FPR_AUDIT.md` before benchmark compute: GroundLM SCAM<=1%, >=UNCERTAIN<=10%, SmishX SCAM recall>=student-only frozen cal1%-FPR. Report unconditional negative denominators separately from existing selective-library conditional FPR; campaign CIs and paired recall tests, no fitting on external.
+- Frozen shipped fusion state/thresholds unavailable in checkout; private HF access returns404 via connector/local account. Clarification requested; do not substitute invented shipped state. Preparing code/aggregate-only diagnostics independently. No GPU audit launched or result claimed.
+
+- Frozen triage audit helpers verified on synthetic abstention/tie and empty-negative cases: **2 passed in0.63s**, Tctl42.0C before, ruff clean. Rates over all negatives differ intentionally from conditional auto-decision FPR; unknown endpoints cannot pass the gate. No model fitting or benchmark scoring occurred locally.
+
+- Aggregate diagnostic preparation: proxy/statistic checks **4 passed in0.65s**, Tctl40.5C; saved-score ID-binding/training-count fixture **1 passed in0.68s**, Tctl40.4C, after correcting module import/Canon field errors caught by unit tests. Ruff clean. `sms_transactional_audit` is prepared but NOT launched. It emits aggregate counts/CIs only, reports missing sender metadata and unknown policy labels; no geography/authenticity inference. Corrected ERM source tree+metrics hash and every eligible saved score ID are enforced. No benchmark outcomes inspected or used to define categories.
+
+- Candidate(b) predeclared before external audit outcomes: paired baseline-schema vs opt-in protective-context logistic fusion, unchanged corrected ERM seeds1/2/3 + fixed URL expert, every frozen fold, four campaign cal stages, no external fitting, no test-selected hyperparameters. Same global fused gates plus no GroundLM FPR increase/no frozen-fold recall loss beyond baseline CI half-width. This is preparation for a **new cal-only baseline/candidate**, not a shipped-system measurement. Opt-in feature schema leaves the default matrix/state unchanged and validates saved schemas; cal-ID poison/round-trip and affected fusion tests pass (final output recorded next). No new model job launched.
+
+- Affected fusion checks **18 passed in0.84s**, Tctl39.8C before, ruff clean. Candidate feature names use `transaction_keywords` rather than asserting notification authenticity; these are lexical indicators, not trusted sender evidence. Before any new benchmark run, design-set register now records GroundLM/SmishX **aggregate feedback** as in-sample for selection of the new intervention; earlier SmishX independence remains scoped to the frozen reviewed rules/control. No raw external messages were used to author candidate features.
+
+- Cal-only preparation: fixed four-campaign stages and opt-in feature round-trip/isolation checks **3 passed in0.66s**, Tctl39.8C, ruff clean. Frozen URL aggregation contract checked without loading a model (**1 passed in0.63s**, Tctl39.5C). Source model/scaler hashes recorded in audit plan. No fitted benchmark state, GPU launch or actual URL inference yet; deployed-state question remains pending.
+
+- Cal-only candidate runner prepared, not launched. All six canonical folds and all three seeds are required for go; missing/infeasible data is unmeasurable. Every fitted state is saved/hashed before test/external decisions; saved external scores are exact-ID bound. Paired external FPR/alert/recall and internal recall tests are included; known fraud and legacy labels stay separate. Synthetic gate/ID guard/isolation checks **4 passed in0.64s**, Tctl44.5C before, ruff clean. No benchmark result, shipped configuration or deployment claim.
+
+# Diagnostic compute predeclaration — 2026-11-01
+
+- Use the free second kernel while B evaluation recovery continues: `sms_transactional_audit`, planned run `p1-diag-20261101`, args `--n-boot 1000`, private data plus exact corrected-source output. Hypothesis: transactional lexical/structure proxies are concentrated in external student false alarms and underrepresented among frozen training fraud negatives. Experiment reports fixed-category counts/rates/CIs, all three ERM seeds and train source/unknown-policy counts from saved predictions at unchanged cal1%-FPR thresholds.
+- This is diagnostic measurement, not an intervention go claim: completion requires exact source/hash/eligible-ID binding and all predeclared aggregate endpoints; invalid/missing provenance kills the audit. Lexical proxies cannot establish real Indian authenticity or a causal data gap, so that explanation stays UNVERIFIED without independent real-SMS provenance. No row examples, model fitting, teacher call or threshold changes. Fused-system/candidate gates remain unchanged and cannot be decided from this student-only audit. Candidate(b) features/gates were frozen before these diagnostic outcomes; no feedback-driven retuning.
+
+- Diagnostic launched privately: `sms_transactional_audit-p1-diag-20261101` **v1**, dirty base56892e7/tree`c16875190b4c`, `--n-boot 1000`; attached private data and `rakshak-sms-source-balance-c-clean-20261101`. One wait_event opened, no polling. B recovery plus this diagnostic are the two kernels; no cal-only candidate launched. Data-gap hypothesis remains UNVERIFIED pending aggregate results/provenance limits above.
+
+# P1 aggregate diagnostic result — 2026-11-01
+
+- `sms_transactional_audit-p1-diag-20261101` **v1**, tree`c16875190b4cf0251769663a12f35e80034554bc9134664a50ea3f44b787d504`, **ok81.8s**. One wait/fetch; source hash and score-ID binding passed. No training/inference/threshold changes. All three ERM seeds reported; seed1 reproduces GroundLM407/1133 and SmishX267/881 false alarms.
+- GroundLM seed1 overlapping proxies: bank195/201 FPR97.01%, campaignCI[95.18%,98.92%] (7clusters); UPI70/74=94.59% [91.18%,97.50%] (2clusters); delivery51/71=71.83% [2.08%,95.33%] (9clusters); telecom/utility87/93=93.55% [69.23%,100%] (9clusters). No-URL406/1111 false alarms. These are proxy subgroup rates with approximate campaign grouping, not human family labels or independent Indian evidence.
+- Frozen campaign train76,591 rows:37,645 known fraud negatives,16,367 unknown policy. Negative source counts ScamShield34,421/UCI2,727/Mishra388/Anmol69/Bolewara40. Negative proxy counts bank1,554/UPI317/OTP641/protectiveOTP-noURL315/delivery125/telecom-utility345. Sender metadata absent for all train/external rows; no sender-style conclusion. Source names/proxies do not establish real Indian authenticity; causal data-gap hypothesis remains **UNVERIFIED**.
+- SmishX seed1: URL-free negative FPR16/551=2.90% campaignCI[1.63%,4.36%]; overall267/881=30.31%. No causal or universal threshold conclusion. Full per-seed/category CIs will be formatted in a dated report; categories overlap and must not be summed.
+- Proceed to the already predeclared candidate(b) using unchanged features/hyperparameters/gates, both new cal-only schemas, all three ERM seeds/all six folds. It is **not** a shipped-system audit: no frozen deployed configuration has been located and the artifact question remains pending. No diagnostic-driven feature/threshold changes. SmishX/GroundLM feedback exposure is already in the design-set register. Independent Indian validation stays OPEN.
+
+- Cal-only candidate launched privately: `fusion_transactional-p1-cal-20261101` **v1**, dirty base56892e7/tree`67b2545f3d29`; args `--n-boot 1000`, private data + corrected Cclean score kernel + pinned URL-student kernel. Latest focused guard/calibration/schema/URL-contract checks **5 passed in0.66s**, Tctl40.1C, ruff clean. No feature/threshold change from the predeclared candidate; null SMS text is treated as empty consistently with the original student featuriser. One event waiter to follow, no polling. B recovery plus this job are the two kernels; diagnostic is finished/fetched. This is a new cal-only baseline/candidate, not a shipped-state FPR claim.
+
+# P1 candidate(b) negative result — 2026-11-01
+
+- `fusion_transactional-p1-cal-20261101` **v1**, tree`67b2545f3d290a11a565003c15b15639ed70ecaf87861b7c22b44ef32b8c6d84`, **ok361.4s**, one wait/fetch. All 36 fusion fits completed and all test/external reports saved with frozen-state hashes. These are **new cal-only baseline/candidate** results; deployed configuration still unidentified.
+- Registered runner decision: **unmeasurable**, reason undefined required fold recall. UCI has642 legacy spam positives but **zero `label_scam=1` positives**; its fraud recall is NA. Do not relabel it or silently switch the original fraud guard to legacy spam recall. Both endpoints are reported for every fold/seed.
+- Operational decision: **kill candidate(b)** on explicit already-measurable safety violations, independently of the missing UCI fraud recall. Seed1 GroundLM SCAM FPR baseline398/1133=35.13% CI[21.26%,47.44%] →candidate418/1133=36.89% [22.27%,49.75%]; >=UNCERTAIN419/1133=36.98%→423/1133=37.33%. Both exceed absolute1%/10% gates and candidate worsens baseline. SmishX candidate SCAM recall56/226=24.78% CI[16.14%,35.43%] vs student119/226=52.65%; no lower-recall exception. All seeds/negative results/coverage/paired CIs will be retained.
+- No post-outcome fitting or feature changes. A saved-output reporting audit will retain the runner's original unmeasurable decision, list NA endpoints and all observable violations, and distinguish rejection from a fully measurable all-fold gate. Default fusion schema remains unchanged; optional candidate code is for reproduction, not shipment. Next P1 arm is separately predeclared train-only hard-negative augmentation. New-arm internal gates must declare the legacy UCI endpoint/NA fraud status before any training, never invent fraud labels.
+
+- Saved-output supplement predeclared after outcomes for reporting completeness only: preserve the registered `unmeasurable` decision, list all observable failures plus NA fraud-recall endpoints, never replace UCI fraud labels or promote an incomplete gate. No fitting, generation, resampling or new outcome-dependent threshold. Synthetic NA/failure check **1 passed in0.63s**, Tctl40.4C, ruff clean. Bind source metrics SHA`1ccaf29eb90e4542dc93881282255d6f4670651d888bd50abc5e2d3d68378984` and frozen states SHA`87b5da994a3c7d579362243fc8cfcf8bfa827cd08621842478cff25f02218ce6` in the private reporting job.
+
+# P1 measurement/candidate(b) reporting milestone — 2026-11-01
+
+- `fusion_final_audit-p1-final-20261101` **v1**, tree`7efd60c0756370f5facecd16e5eaf6386be113c9be55fad7693a22403b83b0c7`, **ok63.1s**, one wait/fetch. Preserves registered unmeasurable gate; operational **kill**,14 observable failures/3 UCI fraud-recall NA endpoints. No resampling/refitting/label changes in supplement.
+- Full formatted remote statistics: `FUSION_TRANSACTIONAL_RESULTS.md` (every seed/six folds/both endpoints/FPR at SCAM and>=UNCERTAIN/recall/coverage/paired CIs), `TRANSACTIONAL_DIAGNOSTIC.md` (all fixed proxy cohorts/seed rates/CIs/training census). GroundLM seed1 paired SCAM FPR increase+1.765pp CI[0.520,3.018]pp,p0.004995; harm is not hidden by recall gains on other folds. CRC remains diagnostic due underlying cal checkpoint selection/shift; no certified risk claim.
+- HANDOFF headline and DATACARD endpoint limitation updated. New-cal baseline/candidate explicitly differs from unidentified shipped configuration; that audit and independent Indian validation stay OPEN. This is a completed measurement + rejected-candidate milestone, not a completed false-alarm fix. Future(a) has a separate protocol/branch. No synthetic data/model training yet for(a), no per-family calibration.
+
+# P1 completed measurement milestone verification — 2026-11-01
+
+- One full-suite invocation: **841 passed,21 skipped,144 warnings in175.11s**, exit0. nice19/taskset0-3/OMP2/MKL2 plus50% CPU quota/85C stop guard; Tctl39.1C before/47.2C after, no thermal interruption. Full ruff **All checks passed!**. The staged whitespace check later caught one extra blank line at EOF in source_inputs.py; removed in a formatting-only follow-up, without rewriting the pushed milestone. No semantic code changes after verification. Default fusion behavior remains unchanged; candidate(b) is experimental reproduction code, rejected for shipment. No actual local training/inference/benchmark evaluation.
+# New priority / local inbox tooling — 2026-11-01
+
+- User reprioritised full frozen fused-pipeline false alarms above further C methods and clean KD rerun above URL/NIDS. GroundLM student35.92% and SmishX30.31% at cal1%-FPR are not rules/evidence0.0883% and not fused metrics. Full shipped fusion state/threshold inventory is pending clarification; repo has fitting code but no saved state, and both private HF access paths return404. No newly fitted result will be called shipped.
+- Separate `ci/transactional-fpr-20261101` based56892e7 preserves main dirty docs and PRs2/3/4. Added code-only `tools/inbox_export`: local UTF8 XML/compatible JSON received-SMS parser, deterministic typed scrubber, five-label manual privacy-confirmation CLI, local owner-only Parquet outside Git. No real messages, network/upload, model labelling or collection. Independent Indian validation stays **OPEN**. Supported XML fields checked against official SyncTech docs; JSON is a conversion format, not a native-export claim.
+- Software acceptance and privacy limits (recorded after focused implementation checks, before full-suite verification): `docs/INBOX_EXPORT.md`; focused synthetic checks **5 passed in0.22s**, ruff clean, Tctl41.0C before. Arbitrary names/subdomains require human review; no automatic anonymisation claim.
+
+# Code-only inbox milestone verification — 2026-11-01
+
+- Latest focused checks **5 passed in0.25s**, Tctl40.2C before; full ruff clean. One milestone full-suite invocation: **835 passed,21 skipped,144 warnings in176.49s**, exit0. nice19/taskset0-3/OMP2/MKL2,50% CPU quota and85C stop guard; Tctl40.2C before/53.1C after, no interruption. No code changes after verification. Gate passes on synthetic fixtures only; no real-data anonymity/performance claim.
+# Run update — 2026-11-01: C-adversary complete; new priority order
+
+- `sms_source_adversary-c-adv-20261101` v1, dirty tree `a09fb20ed34903e9605e7f7e48c26aed055a4da18ae4a41a0d7c8588214b9573`, **ok**, 3,635.9s, six splits/36 fits, zero failed units. One original event subscription and one fetch. Args seeds1/2/3, epochs15, nboot1000, teacher-seed0 unchanged. Final acceptance is delegated to the predeclared saved-output gate job.
+- `sms_source_audit-c-adv-audit-20261101` v1, tree `f50b5a0c3bbd`, launched with `--source-tree a09fb20ed34903e9605e7f7e48c26aed055a4da18ae4a41a0d7c8588214b9573 --arms adversarial`; one wait_event subscription. No training/inference in this audit.
+- User's new priority after existing B/C decisions: **fused** Indian transactional false alarms, then clean train-only KD vs no-KD, then further B/C/E/F. Student-only GroundLM FPR 35.92% and SmishX 30.31% are distinct from the rule-layer 0.0883%; no fused result yet. GroundLM design exposure remains in-sample; independent Indian validation stays OPEN. PRs2/3 remain unmerged and unchanged.
+
+# Milestone verification — 2026-11-01: C-adversary
+
+- One full suite invocation for this finished milestone: **834 passed,22 skipped,144 warnings in178.88s**, exit0. Required nice19/taskset0-3/OMP2/MKL2 plus50% CPU quota and85C stop guard. Tctl43.5C before/50.1C after; no thermal interruption. Local Torch missing skips remain explicit; Kaggle synthetic Torch checks passed before training. Full `ruff check .`: **All checks passed!** No code changes after verification.
+## 2026-11-02 — E0 three-seed URL controls declared/implemented, no benchmark outcomes
+
+- URL_CONTROLS_CAL.md predeclares artifact-only phase before code/compute:3charcnn-wide seeds1/2/3, originalPhreshtrain/domain-groupedcal and frozenurl_domain, fullfitdata, original8epochs/batch512/AdamW.002/patience3/AMPfp16/200bytes. No teacher/KD/testprediction or benchmarkmetrics inthisphase. Teacherrecipe/eligibility mustbefixedbeforeteacherfit andbeforeany newtestoutcome.
+- Hypothesis: correctlyseeded, all-six savedcontrols/cal-onlylogits are needed for fairtrain-only KDeligibility. TechnicalGO only ifall6reloadexactly/finitecompleteoriginalcalIDs/no testscoring; no performance/shipmentGO. Found existingrun_unit seeds AFTER construction; wrapper seedsbeforeconstruction, leaves originalURLjobunchanged. Selectedweights/config/scaler/fit-cal-testIDhashes bindbeforelatermetrics. Originalsingle-classurl_temporal unmeasurable unchanged, nofakednegatives.
+- Focusedvalidation hypothesis:3synthetictests pass0skip/error/failure onprivateKaggle,no datasets/models. Two new tests enforceindependentpriorRNG/exactweights/cal-onlyscorecalls/cacheIDs andtest-IDoverlap rejectionbeforeconstruction; existingprivateattachmentbuilder regression. Genericremoteunitdriver sameasM, no laptopmodelwork. ScientificURLmetric gates forfutureteacher/KD mustbespecifiedseparately beforetheirfit; E0exposesnone.
+- Researchonly pinnedApache2ByT5smallcard/config; actualByT5source1198627927bytes/hash isrecordedinURL_TEACHER_RESEARCH.md. No localweightsdownloaded, downstreamURLbenefitUNVERIFIED. HF publish pending. No E0job launched before focusedtests pass. M3isotheractivekernel onoriginalsubscription.
+
+- Focusedjob firstnameurlcal-focus-20261102 wasrejectedbylocallauncher(length21), no remotejob/wait. Correctunit_validation-urlcal-unit-20261102v1/treeb187ea6c8477 emittedGO3tests/0skip/error/failure; originalONEsubscribercomplete, fetchingonce. Addedonlyinputparquet/splitfilehash metadata and changedurl_temporal note toexplicitlyhistorical/notnewlyscored; no model/training/gate changes. NewE0corpusjob stillrequiresverifiedfetchPASS beforelaunch.
+
+- Verifiedfocusedreceipt:unit_validation-urlcal-unit-20261102v1/treeb187ea6c8477498a615f666aa86ec9bfe76e9d65dec8cb0a369874806af9c60e ok92.9s,3passed0skip/error/failure,ONEevent/fetch;metricsSHA9bf4e308c36c7dfc4aad7617d5d07fb3e2b24a7f36a7096e6d76e682a5d88ec0. Ruffallclean. Nowlaunchcal-onlysixcontrols(no teacher/testoutcomes),originalpredeclunchanged.
+
+## 2026-11-02 — E0 cal-only URL controls launched
+
+- url_controls_cal-e0-20261102v1/treeebcc1bb75c6e9668a789928946c7247e66b560305d5e62e38598fe7d675f715b, nojobargs/overrides, privateT4/internet/rakshak-data only. ONEoriginaleventsubscription, no result. Sixfixedcontrols/cal-onlylogits/inputfile+partitionhashes, no testpredictions/protocolmetrics/teacher/KD. Originalartifact-onlyGOunchanged.
+- M3isotheractivekernel/originalwait;max2kernels. All earlierunits/familyjobsfinishedwithoriginaloneevent/fetch. PR12KILLmilestonecomplete/privatearchiveverified; PR11descriptionlinksPR12withoutbranchpush. No merges/mainpush/forcepush. HF publish pending.
+
+## 2026-11-02 — E0 complete, E1/E2 implemented before cal outcomes
+
+- url_controls_cal-e0-20261102v1/treeebcc1bb75c6e9668a789928946c7247e66b560305d5e62e38598fe7d675f715b ok1415.3s, ONEevent/fetch. Firstfetchfailed networkDNS afterpermissioncontextreset; restorednetwork grant, resumeddownloadonce, no statuspoll/relaunch. Six selected weights/cal-logit hashes verified; manifestSHA88b20cd71febccdc1ed81d8c2a9ec0f1b984b9eed9f44c389f357b5bfcc4ac7d. TechnicalartifactGOonly/no newtestoutcomes.
+- E1/E2predecl URL_TEACHER_PLAN.md existedbefore E0calresults read. FixedByT5encoder seed0/eachdataset, no testscoring; cal-onlyteachereligibility at weightedPhresh.0005/.001AP or naturalURLdomainAP, paired1000registered-domainresamples vsmean3E0seeds. GOeligibility only ifallrequiredCI lower>0and>=950validdraws. Freezeeligibility BEFOREoriginalfit-onlyteacher targets/KD3seeds. Actualscientificteacher/KDtestgates separately frozen, no benchmarkselectedretry. Onefixed11hdeadlineperdataset, incompleteaborts.
+- Implemented maskedmean+side128head/sourcehash/encoderkeys-shapes-dtypes-finiteness guards; AMP/gradientcheckpoint/weightedBCE/partial-update-normalization/skipcounts; alloriginalfit/cal/testIDs/sourcearchive binding and exactCPUweightserialization. No E1modelrun yet. No localpretrainedweights downloaded/executed.
+- FocusedpureAPtests2passed1.68s locally onsyntheticfixtures,Tctl53.2Cbefore firstrun (later41.4C), nice19/taskset0-3/OMP2/MKL2/OpenBLAS1. WeightedrankAP matchesofficialsklearnAP withties/zeroweights; fixedclassmass/bootstrap/eligibilityguards. No realURLscoring.
+- Predeclare focusedGPUvalidation4synthetictests GOiff4pass/0skip/error/failure: exactbyteprefix/EOS; tinyT5encoderload/mask/backprop; tinyCUDAteachertraining cal-only/finalpartialupdate/checkpointreload; actualbundledependenciesandeligibility-before-targetguard. No dataset/modelinputs. ExistingM3remains otheractivekernel/originalwait.
+
+### 2026-11-02 — URL teacher validation and fixed Phresh run
+
+- Focused private Kaggle `unit_validation-urlt-unit-20261102` v1, tree
+  `32438d3c6657373927ddb55ccea2c6047ca2792046d84cacd4a1937b69f39368`:
+  **4 passed / 0 skipped / 0 failed**, pytest23.25s, total159.1s. Two earlier
+  synthetic AP tests also passed locally under the prescribed CPU/thermal limits.
+- On continuation the original tool-session handles were missing and no local
+  completion receipt existed. One bounded cached-notification read recovered the
+  exact unit completion; one fetch verified job/git/tree/outcome. No duplicate
+  blocking unit wait or Kaggle status polling. The same bounded read found no M3
+  completion; its original process is missing. Replacement event-subscription
+  authorization requested; M3 continues to count against capacity, not relaunched.
+- After the four checks passed, launched private T4
+  `url_teacher_kd-p1-20261102` **v1**, tree
+  `84d35409ac4ac48138a2a38673bd14efd7682b40808d64a9b80762d3f7e5e64d`,
+  base246324575928 (dirty source snapshot), args
+  `--dataset phreshphish --controls-manifest-sha256 88b20cd71febccdc1ed81d8c2a9ec0f1b984b9eed9f44c389f357b5bfcc4ac7d`.
+  Inputs: private rakshak-data + completed E0 kernel; unique p1 run, one blocking
+  event wait, no result/fetch yet. At most two GPU kernels counting M3.
+- Hypothesis/recipe/unchanged gates are frozen in URL_TEACHER_PLAN.md. Cal-only
+  eligibility precedes original-fit-only KD targets; scientific test/benchmark
+  gates unmeasured. No expert substitution in fusionv1, no held-out/SOTA claim.
+  HF publish pending; independent Indian validation OPEN.
+
+### 2026-11-02 — Fixed URL teacher stops unmeasurable
+
+- `url_teacher_kd-p1-20261102` v1/tree84d35409ac4a completed **error112.8s**;
+  original single event + one verified fetch. Exact error:
+  `FloatingPointError: nonfinite FP32 teacher loss; stop fixed arm`.
+  No selected teacher checkpoint, eligibility JSON, train targets or KD model
+  produced. No completed epoch was logged; number of partial updates is unknown.
+- **Teacher/KD scientific comparison UNMEASURABLE.** Stop the fixed arm, no
+  precision/batch/hyperparameter switch, no secondary teacher run to rescue it.
+  Underlying numerical cause UNVERIFIED. Focused synthetic4PASS was necessary
+  implementation validation, not evidence of real pretrained numerical stability.
+- Continue the existing E0 three-seed control report with original frozen weights;
+  cal reconstruction<=1e-5 and all6thresholds freeze before test scoring, original
+  official975subset statistics/paired-domain draws retained. No new training.
+- New protocol optimization synthetic2PASS1.15s on local synthetic fixtures only,
+  nice19/taskset0-3/OMP2/MKL2/OpenBLAS1, pre-testTctl45.8C; ruff clean. Explicit
+  row-repeat/sklearn and shared-draw comparisons cover ties/zero multiplicities/
+  invalid subsets/three-seed means. No actual URL scores evaluated locally.
+
+### 2026-11-02 — frozen URL control evaluation launched
+
+- Focused `unit_validation-urle-unit-20261102`v1/tree
+  3a0060fa7bdd9763e141cee0ff04db2a903708cebb7783c82259e4a17d51da27:
+  **2PASS0skip**, total93.7s, one event/fetch. Synthetic checkpoint/cal-only
+  restoration/tamper guard and actual sibling-job bundle/threshold ordering pass.
+- `url_controls_eval-e0eval-20261102`v1 launched after those checks, same E0
+  manifest88b20cd71febccdc1ed81d8c2a9ec0f1b984b9eed9f44c389f357b5bfcc4ac7d,
+  private data+completed E0 kernel/T4/internet, one event subscription. Allsix
+  full-cal parity/threshold manifests precede test scoring; official subsets,
+  per-seed endpoints/domain CIs/fullbenchmark/fulltest and temporalNA diagnosis.
+  No teacher/KD model or new training. Results pending; M3 still counted active.
+
+- Private URL archive publisher prepared (not uploaded): exact E0 manifest/source,
+  evaluation tree and failed-teacher tree required; allowlist13files (six original
+  checkpoints, sourcezip, aggregate/manifests/failure JSON), never URL row parquets.
+  Synthetic privacy/hash/symlink2PASS.02s, required CPU/threads pre-testTctl44.4C.
+  Private create and owner/isPrivate/version verification required before claiming
+  publication; HF publish pending. Full milestone suite still NOT run.
+
+### 2026-11-02 — URL control report recovery from unchanged saved scores
+
+- Original `url_controls_eval-e0eval-20261102`v1/tree
+  4fdfe6994123ec28645a3383841f9e251bd27e5e2cacf91235aa3db2bb65a3ec:
+  error478.4s at FINAL temporal-file check, one event/fetch. Exact error:
+  `FileNotFoundError: no split files match ['url_temporal'] under .../splits`.
+  Allsix test-score files and pre-outcome threshold manifest survived. No aggregate
+  metrics.json was emitted. E0 input manifest already lists only url_domain and
+  url_phreshphish split files; the historical temporal narrative is not confirmation
+  that the currently attached frozen data still contains it. Do not create a split.
+- Cache-only recovery predeclared: exact parent tree/failure, manifestSHA
+  54e4fa8f9f1d6128ac31f6515b698d768fa8facf98931b00cb3acfd64bf91509,
+  allsix fixed score hashes, original ordered fit/cal/test IDs and original frozen
+  thresholds must verify. Same1000domain resamples/seed13/official subset report;
+  no model execution, no new targets/fitting/threshold selection. Temporal now
+  **UNMEASURABLE: file absent**, not a falsely reconfirmed single-class result.
+  Original teacher/KD gates stay UNMEASURABLE, unchanged. Any cache mismatch aborts.
+- New cache/source/order/hash/bundle guards synthetic2PASS.69s, CPU-limited with
+  pre-testTctl42.1C, ruff clean. Six score-file SHA values are pinned in the recovery
+  source; hashes only read locally, no URL prediction/metric computation locally.
+
+- First cache recovery `url_controls_recompute-e0stats-20261102`v1/tree
+  3fec836a5feffdd67eba4eef761604a81438acba54546077cb79b60c561052ef
+  error94.9s: adapter passed the top-level manifest where its `controls` mapping
+  was required (`KeyError: phreshphish`), before endpoint report generation.
+  Corrected the mapping; new realistic saved-manifest regression1PASS.68s,
+  nice19/taskset0-3/OMP2/MKL2/OpenBLAS1, Tctl48.9C, preserves allthree original
+  thresholded reports/counts. Scientific gates and scores unchanged.
+- Its ONEfetch downloaded the complete failure files but exited1 because the
+  generic CLI-output error detector matched filename `failed_eval_results.json`.
+  Receipt/job/git/tree/error outcome verified from downloaded JSON manually;
+  no repeat fetch. Recovery artifact renamed `original_eval_results.json` to
+  avoid that filename false positive; launcher/fetch scripts unchanged.
+
+### 2026-11-02 — six frozen URL controls reported; full milestone validation
+
+- Cache-only `url_controls_recompute-e0stats2-20261102`v1/tree
+  17576395e1c2fc76e32d4970c15ca5c180844da3527a40542680e07c6d34b7c2
+  ok435.9s, one event/fetch, allsix original score hashes and threshold bindings.
+  MetricsSHA0093e20c39a8d372f391d1ffaec05be89950f56bd00563f5bbc1141853d8f5ee.
+- Three-seed mean official Phresh AP .443457CI[.323937,.620641] at.05% and
+  .558907CI[.428609,.705899] at.1%; P@R90 .073388[.052072,.183454] and
+  .132927[.076425,.275599]. All975original subsets retained, all1000validdraws
+  at every rate. No stronger-teacher/KD claim: both remain UNMEASURABLE. Original
+  missing temporal remains UNMEASURABLE, never recreated; no new inference.
+- Full milestone validation now predeclared: one full privateKaggle invocation,
+  allcollected(min835), 0failure/error, max18inherited optional skips. No data/model
+  inputs. Include publisher's changed recovery binding and a new missing-temporal
+  regression; original inference job now explicitly reports missingfile status
+  rather than dropping completed metrics. No scoring/training change or rerun.
+
+- Formatted137line URL_THREE_SEED_RESULTS.md ONLY from precomputed aggregateJSON
+  (no local score/model evaluation), all975subsets/allrates/3seeds/fulltest/fullbench/
+  url_domain campaign CIs; all1000valid domain draws. Full-cal logit parity was
+  exactly0 on allsix controls. HANDOFF headline updated, prior historical single-
+  seed figures distinguished. No paired old/new gain claim. Stage15file private
+  archive validated successfully without upload; publication waits for fullsuite.
+
+- Full milestone `unit_validation-url-full-20261102`v1/tree
+  f028f748590f286f03112ac2f710f3e8c077eed42e6a0052f02a3edcc24186c3:
+  **858passed0skipped**,157warnings125.18s (total211.7s), one event/fetch.
+  Includes new publisher recovery-source binding and missing-temporal regression.
+  Ruffallclean. Parent pull/rebase checked unchanged; repo identity confirmed
+  vhmaadhav <vhmaadhav@hotmail.com>. No full suite or model work locally.
+
+- Private archive upload completed; immediate owner GetDataset returned403 during
+  processing, so owner/isPrivate/version verification is still pending. No repeat
+  upload; make one later owner-record read. No public publication requested.
+
+### 2026-11-02 — URL measurement milestone finalized
+
+- One later owner read verified maadhavvh/rakshak-url-e0-20261102 version1,
+  ownermaadhavvh/isPrivate=true,17083574bytes, archive_manifestSHA
+  ced9776473225eba4d48ef68d574d2f017f50b4bfeb1ed01cb66a1f5f3013234. Initial
+  processing403 retained; no re-upload. HF publish pending. Exact15file allowlist,
+  six checkpoints/source/aggregate/failure provenance, no raw URLs/row-score files.
+- Three-seed control measurements retained; stronger-teacher/KD/temporal remain
+  UNMEASURABLE. No external-selected rescue recipe, SOTA or fusedFPR claim.
+  Report/HANDOFF include all rates/seed CIs and limitations; independent Indian
+  validation OPEN. Full858PASS0skip/ruffclean, parent pull/rebase unchanged, identity
+  vhmaadhav confirmed. One milestone own-branch commit; merge order #2→URL, no merge.

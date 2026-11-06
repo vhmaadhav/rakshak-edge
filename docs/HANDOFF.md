@@ -7,6 +7,32 @@ GroundLM urgency and ScamShield widening numbers are **in-sample: these rows inf
 design**. Read the design-set register in `docs/GROUNDLM_FPR.md` before making a safety claim.
 Independent Indian held-out validation remains OPEN; SmishX is independent, non-Indian-specific.
 
+Transactional false-alarm measurement (2026-11-01): the rule/evidence0.0883% is
+**not student or fused FPR**. Newly fitted cal-only fusion baseline/candidate(b), seed1:
+
+| Known fraud endpoint | New baseline | Candidate(b) |
+|---|---|---|
+| GroundLM SCAM FPR |398/1133=35.13% [21.26,47.44]% |418/1133=36.89% [22.27,49.75]% |
+| GroundLM >=UNCERTAIN FPR |419/1133=36.98% |423/1133=37.33% |
+| SmishX SCAM recall |27/226=11.95% |56/226=24.78% (student119/226=52.65%) |
+
+**Kill candidate(b)**: absolute safety/no-increase/recall gates fail. Original runner gate
+also remains unmeasurable on UCI fraud recall (zero mapped fraud positives; legacy spam
+positives642). No relabelling or endpoint substitution. These are **new cal-only models,
+not an identified shipped configuration**; shipped-state artifact identification remains OPEN.
+GroundLM/SmishX feedback is in-sample for new intervention selection, not untouched validation.
+All three seeds/six folds/both endpoints/coverage/paired CIs: `docs/FUSION_TRANSACTIONAL_RESULTS.md`.
+Aggregate diagnostic/source counts: `docs/TRANSACTIONAL_DIAGNOSTIC.md`; real-Indian provenance
+and causal data-gap explanation remain UNVERIFIED. Independent Indian validation stays OPEN.
+C-adversary (`ci/source-adversary-20261101`, train-only, three seeds) passes its recorded gate:
+ScamShield mean F1 **0.7340 → 0.7493**, paired campaign gain **+0.0153 [0.0136, 0.0174]**;
+both other source folds pass the no-regression guard. These are **in-sample for rule-feature
+design**, not independent held-out improvements; no checkpoint is shipped by this harness.
+Every split/seed and external FPR/recall: `docs/SOURCE_ADVERSARY_RESULTS.md`.
+Priority now: frozen **fused** transactional false-alarm audit, then clean train-only KD vs no-KD.
+The student-only 35.92% GroundLM FPR is distinct from the rules/evidence 0.0883%; fused FPR
+is not yet measured. Independent Indian validation remains OPEN.
+
 ## 1. Goal and constraints
 
 - **Project:** offline SMS and URL scam detector on Arm devices, for **Bharat AI-SoC Challenge 2026-27, Problem Statement 3** (on-device cyber safety). Name in the code: Rakshak-Edge.
@@ -99,9 +125,46 @@ Caveat: the shipped checkpoint in HF is the scamshield-holdout run (last kept by
 | Model | Campaign F1 | lang_shift F1 | temporal F1 |
 |---|---|---|---|
 | no-KD dual-base, seed 1 | 0.975 | **0.356** (fails Hinglish) | 0.903 |
-| KD dual-base, seed 1 (shipped) | 0.977 | **0.795** (seeds 2, 3: 0.816, 0.804) | 0.909 |
+| Historical KD dual-base, seed 1 (artifact exists; contaminated protocol) | 0.977 | 0.795 (seeds 2, 3: 0.816, 0.804) | 0.909 |
 
-KD fixes the Hinglish collapse (lang_shift F1 0.36 to 0.80) with no campaign loss. The exported variant is chosen by mean cal PR-AUC across runs. The exported model is the campaign run's first seed (seed 1), per the job code. Caveat: lang_shift is a lower bound, because the language tagger misses Hinglish (about 51% agreement on ScamShield Hinglish rows).
+**Withdraw the claim that KD fixes Hinglish generalization.** The inherited unlabeled transfer
+pool reintroduced excluded rows: campaign had 4,147 exact test copies; the ScamShield fold had
+2,122 exact test copies and 9,707 held-out-source rows. Historical KD numbers cannot establish
+disjoint generalization or independent external validation. Do not promote that artifact from
+these metrics. The historical export selected the campaign run's seed1 by cal PR-AUC.
+
+Corrected train-only KD, three seeds1/2/3 (mean F1; full campaign CIs, every source fold and
+per-seed external FPR/recall in [SOURCE_BALANCE_RESULTS.md](SOURCE_BALANCE_RESULTS.md)):
+
+| Arm | Campaign F1 | lang_shift F1 | temporal F1 | ScamShield source_holdout F1 |
+|---|---:|---:|---:|---:|
+| ERM control | 0.9753 | **0.4000** | 0.8513 | 0.7503 |
+| Source-balanced (kill) | 0.9735 | 0.3367 | 0.8875 | 0.7437 |
+| Balanced + group-DRO (kill) | 0.9727 | 0.4214 | 0.8946 | 0.7399 |
+
+Both interventions fail the predeclared ScamShield improvement gate (paired delta CIs wholly
+negative). Keep the train-only guard, not an intervention or a new deployment artifact.
+These comparisons are **in-sample for rule-feature design**. Temporal retains three original
+train/test campaign overlaps and only 77 positives; its split is unchanged. Language tagging
+still misses Hinglish (about 51% agreement on ScamShield Hinglish rows).
+
+At the cal-1%-FPR threshold, corrected ERM seed1 has GroundLM FPR 407/1,133 =35.92%
+[21.80%,48.54%], recall69/91 =75.82% [61.02%,87.40%] (**in-sample for rule-feature design**).
+SmishX fraud FPR267/881 =30.31% [25.81%,34.67%], recall119/226 =52.65%
+[43.71%,62.72%] (**independent, non-Indian-specific**). All seeds/arms/thresholds are in the
+report; these are negative external results, not a low-FPR deployment claim.
+| Clean no-KD dual-base, mean seeds1/2/3 | 0.9744 | **0.4058** [0.3697,0.4412] | 0.8656 |
+| Clean KD dual-base, mean seeds1/2/3 (KILL) | 0.9748 | **0.3520** [0.3181,0.3840] | 0.8696 |
+
+Current clean language-shift headline: **student≈0.41 versus historical teacher≈0.80**.
+The old contaminated≈0.81 claim is WITHDRAWN: transfer extras reintroduced test
+copies/campaign neighbours/held-out-source rows. Clean train-only single-teacher
+KD made the gap worse, paired delta−0.0539 CI[−0.0696,−0.0383], p0.000999.
+No OOF/ensemble or held-out improvement claim. Full matched six-fold/three-seed
+report and caveats: [PR#9](https://github.com/vhmaadhav/rakshak-edge/pull/9),
+commitb17021f, docs/CLEAN_KD_RESULTS.md on that branch. Independent Indian
+validation OPEN. Language tagging still misses Hinglish; it does not justify
+restoring the withdrawn result.
 
 **Classical SMS baselines (`sms_baselines`)**: char LR campaign F1 0.973, SVC campaign F1 0.978. Job ended `partial`: 10 of 190 units failed. Rules-only LR is near 0.67, so it is a floor. Canonicalising the text cuts attack success (for example 4.1% to 0.4% in the XLM-R pilot).
 
@@ -110,6 +173,21 @@ KD fixes the Hinglish collapse (lang_shift F1 0.36 to 0.80) with no campaign los
 - url_domain test (30,432): char-LR F1 0.996; **charcnn-wide** student F1 0.999, recall 1.000 at 1% FPR.
 - PhreshPhish, URL-only, AP (mean over subsets) at base rates 0.05% / 1%: charcnn-wide 0.484 / 0.865; transformer-L4 0.245 / 0.590. The paper's GTE row uses URL and HTML (0.605 / 0.876). This is a different protocol. Quote as a separate row only.
 - Caveat: the URL `transformer` distillation targets are in-sample logits (no cross-fitting). Its numbers are not held-out.
+
+**New three-seed URL controls (E0,2026-11-02), original official protocol:**
+Phresh URL-only mean AP0.4435 [domainCI0.3239,0.6206] at0.05%, and0.5589
+[0.4286,0.7059] at0.1%; P@R90 .0734[.0521,.1835]/.1329[.0764,.2756]. All975
+subsets and1000valid paired-domain draws retained. Every seed/rate/full benchmark/
+test and url_domain CI: docs/URL_THREE_SEED_RESULTS.md. url_domain maxF1 for
+seeds1/2/3 is.999216/.999281/.999564. Prior single-seed URL figures above are
+historical, not matched controls. Seed-before-construction corrected in E0.
+
+The pinned Apache2ByT5 teacher stopped at nonfinite loss before a selected model
+or KD targets. **Teacher/KD UNMEASURABLE**, no stronger-teacher or distillation
+win. Stop fixed arm without recipe/precision changes. Original temporal split
+file is absent in current frozen input: UNMEASURABLE, not newly confirmed NA.
+In-sample intervention selection from prior benchmark feedback; no independent/
+SOTA/deployment claim. No URL expert substitution in frozenfusionv1; HFpending.
 
 **Network IDS (`nids_baselines`, NetFlow-v2 schema)**
 
@@ -125,6 +203,7 @@ KD fixes the Hinglish collapse (lang_shift F1 0.36 to 0.80) with no campaign los
   pass **25.81% [13.04%, 40.82%]** English overall. Matched 150 packages: **21.62%
   [8.00%, 40.00%] English / 62.16% [40.61%, 79.59%] Hinglish** (clustered intervals).
   These are lexical checks, not entailment scores; the base English arm is weak.
+  These are lexical checks, not entailment scores; English remains weak.
 - Rank telemetry: **0 generated tokens**, **2,992 scored continuation tokens**, **248 candidate
   strings**, **86% zero-work clean rows**. Worked T4 p50/p95 **0.3110 / 1.0782 s**. The old
   character-based count and 0/150 rank injection denominator are withdrawn. Summary/action and
@@ -176,10 +255,20 @@ SmishX fraud warning (paired +0.4425 pp, CI [0, 1.4360] pp, p=0.5485); no indepe
 claim. Model-side GroundLM FPR and independent Indian held-out validation remain OPEN.
 
 **Not completed:** model-side GroundLM FPR; verified `llama_export` output; Pi 5 benchmarks; Android app.
+**Not completed:** GroundLM FPR for all retained/teacher models (corrected train-only student
+measured above, fails the reference gate); verified `llama_export` output; Pi 5 benchmarks;
+Android app; independent Indian validation.
 
 ## 6. What failed and why
 
-- **Hinglish collapse** in the no-KD student: fixed by distilling from the mmBERT teacher's transfer logits (KD).
+- **Hinglish generalization remains unresolved.** Train-only KD ERM mean F1 is0.4000;
+  the historical ~0.80 improvement used a contaminated unlabeled pool. Source-balanced/DRO
+  do not meet the primary ScamShield gate. Never add raw transfer extras to training.
+**Not completed:** model-side GroundLM FPR; verified `llama_export` output; Pi 5 benchmarks; Android app.
+
+## 6. What failed and why
+
+- **Hinglish generalization remains unresolved:** clean no-KD≈0.41 versus historical teacher≈0.80; clean KD≈0.35 is KILL. The contaminated≈0.81 claim remains WITHDRAWN (PR#9).
 - **Colab free tier**: a detached run was reclaimed after about 45 min. Use Colab only for short jobs.
 - **URL transformer distillation**: in-sample targets, so no cross-fitting. Not usable as a held-out claim until redone.
 - **sms_baselines**: 10 of 190 units failed (partial). Cause not yet triaged. Read `kaggle/out/sms_baselines/output/run.log`.

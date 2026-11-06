@@ -7,7 +7,8 @@ Built by `python -m rakshak.datasets.build` (about 3 minutes on the laptop, seed
 - `splits/*.json`: id lists only. No text is stored twice.
 - `build_report.json`: all numbers in this card, plus top-20 campaign examples.
 
-Every figure below is read from `build_report.json`. Nothing is estimated by hand.
+Source/build figures below are read from `build_report.json`. The separately versioned KD
+membership audit in section5b comes from its cited private Kaggle run, not the build report.
 
 ## 1. Sources, provenance and licences
 
@@ -57,7 +58,7 @@ Not used: Nahapetyan et al. S&P 2024 (no data released to us, pending); Hindi IE
 Coverage is reported in section 3a of this card after each build.
 - **PhishTank, OpenPhish:** all label 1 (no benign side).
 
-`synthetic` is True only for ScamShield `Synthetic_Tier_C` (3,720 rows, all in train). It is False for ScamShield `real_*` IDs, which is the dataset's own naming and not independently verified. It is True for IMC25 user reports. It is unknown (null) for the other SMS sources.
+`synthetic` is True only for ScamShield `Synthetic_Tier_C` (3,720 rows, all in train). It is False for ScamShield `real_*` IDs, which is the dataset's own naming and not independently verified. The loader sets it to **False for IMC25 user reports** (`datasets/loaders.py`, `load_imc25`); the earlier True wording was a documentation error. This source flag reflects the user-report provenance description, not an independent authenticity audit. It is unknown (null) for the other SMS sources.
 
 `eval_ok` marks rows allowed in a test or cal set. It is False for duplicates, known-synthetic rows, augmentation-only sources (anmol, bolewara) and rows in label-conflicting text groups (13 rows). Duplicates are never in any partition.
 
@@ -164,6 +165,24 @@ Numbers: section 6a.
 | external_groundlm (GroundLM policy set) | 1,393 | 1,224 | 1,224 | 0 | 442 | 2 | 442 |
 
 Pool = 110,827 kept SMS rows. Cross-set exact overlap between SmishX and GroundLM: 0. **Pool rows dropped from every TRAIN partition: 1,410** (train sizes shrink by the per-family count in `build_report.json`, e.g. campaign -1,019, legacy_uci -2,633). GroundLM: 169 IIITD rows are hash-only, and 161 of the 1,294 policy-negatives among them cannot be scored. So 1,133 of the 1,294 policy-negatives are scoreable; the FPR denominator is 1,133, not 1,294. The GroundLM overlap is high (442 exact), so any model trained on the pool would have seen those texts. The build drops them from TRAIN, which is the only way the external FPR is clean.
+
+## 5b. KD transfer-pool correction — 2026-11-01
+
+Private `sms_source_balance-c-clean-20261101` v1/tree `62a788d27aa9` audits the inherited
+extra-row KD pool. The old teacher transfer file covered every raw corpus row outside test
+IDs; adding its `unlabeled` rows bypassed frozen campaign/source/external exclusions.
+Campaign extras contain **4,147 exact test copies and 2,138 external exact overlaps**;
+ScamShield-fold extras contain **2,122 exact test copies, 11,137 test-campaign rows and
+9,707 held-out-source rows**. Categories overlap; external count combines both external sets.
+Full per-split counts and artifact hashes: [SOURCE_BALANCE_RESULTS.md](SOURCE_BALANCE_RESULTS.md).
+Historical KD ~0.80 lang_shift results are withdrawn as clean generalization evidence.
+
+Corrected experiments train on frozen train IDs only; `sms_student` now defaults to that
+policy and rejects `--kd-unlabeled`, with a matching `build_training_pool` API guard. This
+does not change split files or external rows. SmishX independence applies to the corrected
+train-only models, not historical models that reintroduced overlap rows. The original
+frozen temporal training split shares three campaign IDs with test; report that caveat and
+keep the split unchanged. Original campaign/lang/source folds have zero such train overlap.
 
 ## 6. Splits
 
@@ -272,3 +291,15 @@ hf download highestintheroom/rakshak-data --repo-type dataset --local-dir data/h
 ```
 
 Requires an org-scoped Hugging Face token with read access on `highestintheroom`. Do not make the repo public without a per-source licence review.
+
+
+## Endpoint applicability audit — 2026-11-01
+
+Frozen UCI source_holdout test has642 legacy spam-inclusive positives but zero
+`label_scam=1` positives under the existing policy mapping (verified by the private
+cal-only fusion audit, tree67b2545f3d29). Fraud recall on this fold is therefore NA,
+not zero; this does not establish that its messages contain no real scams. Keep
+legacy spam and fraud endpoints separate. No labels/splits/external rows changed.
+New GroundLM/SmishX aggregate feedback motivated transactional candidate selection:
+subsequent candidate results are in-sample for that intervention choice, as recorded
+in GROUNDLM_FPR.md, not untouched independent validation.

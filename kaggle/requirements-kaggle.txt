@@ -32,3 +32,6 @@ onnxruntime==1.31.0
 # Exact transformers/T4 compatibility is validated by the private QLoRA job, not assumed.
 peft==0.21.2
 bitsandbytes==0.50.2
+
+# Focused synthetic remote validation.
+pytest==9.2.0
