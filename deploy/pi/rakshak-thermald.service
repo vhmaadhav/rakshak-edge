@@ -1,0 +1,18 @@
+[Unit]
+Description=Rakshak Pi 5 userspace thermal governor
+After=multi-user.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /opt/rakshak-pi/rakshak_thermald.py --state-dir /run/rakshak --ceiling 2400 --floor 1500
+RuntimeDirectory=rakshak
+RuntimeDirectoryPreserve=yes
+RuntimeDirectoryMode=0755
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

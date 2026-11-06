@@ -1760,3 +1760,12 @@ and original source snapshot remain unchanged; no model result is known.
   All139 archived source/test/config files byte-identical current after validation.
   No active GPU kernels or pending subscriptions now. Strict pilot exact counts
   remain pending the single recovery-fetch exception; no repeat download made.
+
+## 2026-11-06: repo consolidated, Pi 5 online, thermal kit
+
+- Merged all 13 open PRs (#2–#14) into main by squash; #9–#13 were rebuilt as main plus their one new commit after the squash merges broke the shared history. Conflicts resolved as unions; on pin clashes main's pins won; `kaggle/test_selection.json` keeps collect_all with minimum 870 / maximum 21 skipped. Pytest passed after each merge (953 passed / 28 skipped at #13).
+- Ported uncommitted Codex worktree work (policy annotation pipeline, NIDS provenance) as one commit (7ef27d8); the fusion v1 WIP was already on main in a newer form. All branches except main and all worktrees removed. File backups are in the session scratchpad.
+- Superseded: the 2026-10-31 Pi discovery note (no wired link, unknown user). The Pi is now on Wi-Fi with key SSH; see `docs/PI_SETUP.md` "2026-11-06: Pi online".
+- Added `deploy/pi/` (thermal governor, job guard, dashboard, systemd units, install/uninstall/sync) and `tests/test_pi_*.py` (49 tests). systemd install on the Pi waits on the owner's sudo.
+- Added `docs/OPTIMISATION_RESEARCH.md` (cited research pass, unverified claims tagged). It ranks first: measure the `.pte` on the Pi, cut prompt/decode length, GroundLM FPR, Llama contribution audit, Android via LlamaDemo.
+- No Kaggle, Modal or GPU spend. No Llama benchmark has been run yet.

@@ -1,8 +1,49 @@
 # Handoff: Rakshak-Edge (for Sachin)
 
-Last updated 2026-11-01. Owner until now: Maadhav (`vhmaadhav`). Start here, then `docs/STATUS.md` (session log) and `docs/CONTEXT.md` (decisions).
+Last updated 2026-11-06. Owner until now: Maadhav (`vhmaadhav`). Start here, then `docs/STATUS.md` (session log) and `docs/CONTEXT.md` (decisions).
 
-Review fixes are on `sachin/handoff-tasks-1-2`, prepared for one PR into main. Do not push main.
+## State on 2026-11-06 (read this first)
+
+**Repo.** `main` is the only branch. All 13 open PRs (#2–#14) were squash-merged on 2026-11-06,
+and the uncommitted Codex worktree work (policy annotation, NIDS provenance) landed as one commit.
+No open PRs, no other branches, no worktrees. Full test suite passes locally (torch-dependent tests skip).
+The results paragraphs below were written per PR and merged by union, so a few repeat; the newest
+statement of a result wins, and `docs/STATUS.md` has the dated log.
+
+**Phase 1 is due 2026-11-23 (17 days).** Nothing has run on Arm yet. The deliverable needs Llama on
+ExecuTorch on device, an app, a demo video and a report, so deployment beats more training.
+
+**Raspberry Pi 5 is up** (details: `docs/PI_SETUP.md`).
+
+| Item | Value |
+|---|---|
+| Access | `ssh -i ~/.ssh/pi5 hermoine@pi5.local` (192.168.29.39 on HomeJio Wi-Fi). Key login works; sudo needs Maadhav's password |
+| Board | Pi 5 Model B Rev 1.1, 4 GB, 4× Cortex-A76, Raspberry Pi OS Lite (Debian 13), booted from a USB stick (no SD card) |
+| CPU features | `asimddp` (dotprod) present, **no i8mm**, so ExecuTorch/KleidiAI uses the SDOT int8 path |
+| Power | No official 27 W PSU. `usb_max_current_enable=1` is set in `config.txt` so USB boot works. Idle 5.15 V, about 2.0 W, `throttled=0x0` |
+| Cooling | **No heatsink or fan.** Idle 44–48 °C. Sustained 4-core Llama decode will throttle quickly |
+| Thermal kit | `deploy/pi/`: `rakshak_thermald.py` (frequency-cap governor), `thermal_run.py` (job guard: pause 75 °C, resume 65 °C, kill 80 °C, CSV log), `pi_dashboard.py` (live dashboard). Synced to `~/rakshak-pi`; **systemd install is pending** (`cd ~/rakshak-pi && sudo ./install.sh`) |
+| Dashboard | `ssh -i ~/.ssh/pi5 -N -L 8765:127.0.0.1:8765 hermoine@pi5.local`, then open http://localhost:8765 |
+
+Run every heavy Pi job through `thermal_run.py` so each benchmark has a temperature/throttle log.
+Report numbers with the cooling and power state; final benchmark numbers want an Active Cooler and a 5 A PSU.
+
+**Next (ranked; reasoning in `docs/OPTIMISATION_RESEARCH.md`):**
+1. **Pi smoke test of the pinned SpinQuant `.pte`** through `executorch.runtime` (Python wheel first, no sudo),
+   under `thermal_run.py`: load time, TTFT, tok/s, peak RSS, max temp, throttle flags. Try 2 and 4 threads.
+   Kill rule: 4 h without a successful load → try the QLoRA `.pte`, then the custom export.
+2. **Cut Llama work per message** to one short prefill plus at most 16–24 new tokens.
+3. **GroundLM FPR test** on the 1,133 scoreable policy-negatives (go: ≤ 11 FPs). If it fails, choose thresholds
+   with Learn-then-Test before any retraining.
+4. **Llama contribution audit**: template-only vs rank vs slot on the same packages. The rank arm picks between
+   frames that differ only by a prefix, so it adds almost nothing by construction.
+5. **Android app** from the ExecuTorch LlamaDemo with the `executorch-android` 1.5.1 AAR.
+
+Open inconsistency: this file reports slot-arm verifier pass 0.91 while `docs/ELA_RESEARCH.md` cites 7.7%.
+Reconcile before the report.
+
+## Earlier notes (2026-11-01 to 11-03)
+
 GroundLM urgency and ScamShield widening numbers are **in-sample: these rows informed rule
 design**. Read the design-set register in `docs/GROUNDLM_FPR.md` before making a safety claim.
 Independent Indian held-out validation remains OPEN; SmishX is independent, non-Indian-specific.
@@ -355,10 +396,6 @@ Android app; independent Indian validation.
 - **Hinglish evidence has a new research candidate, not a shipment.** M3hybrid0.8916 versus its fresh byte0.4633 passes its fixed research gate; the previous clean no-KD0.4058/teacher≈0.80 and clean KD0.3520KILL remain separate reference runs;
   the historical ~0.80 improvement used a contaminated unlabeled pool. Source-balanced/DRO
   do not meet the primary ScamShield gate. Never add raw transfer extras to training.
-**Not completed:** model-side GroundLM FPR; verified `llama_export` output; Pi 5 benchmarks; Android app.
-
-## 6. What failed and why
-
 - **Hinglish generalization remains unresolved:** clean no-KD≈0.41 versus historical teacher≈0.80; clean KD≈0.35 is KILL. The contaminated≈0.81 claim remains WITHDRAWN (PR#9).
 - **Colab free tier**: a detached run was reclaimed after about 45 min. Use Colab only for short jobs.
 - **URL transformer distillation**: in-sample targets, so no cross-fitting. Not usable as a held-out claim until redone.
@@ -372,7 +409,7 @@ Android app; independent Indian validation.
 2. **Rank-arm audit, then ELA QLoRA.** Find out why the rank arm runs in 0 s with 0 tokens. Check the candidate scoring path on all 300 items. Then run `llama_export` and the verifier-gated QLoRA (`docs/ELA_RESEARCH.md`, A3). *Acceptance:* a written audit with a fixed rerun; the slot per-point pass rate reported per language; unsupported-claim rate still 0; export produces `Llama-3.2-1B-Instruct-8da4w-xnnpack.pte`.
 3. **ScamShield confound.** ScamShield supplies most of the negatives and some of the positives (`docs/DATACARD.md` section 5). *Acceptance:* a source-balanced and Hinglish-only eval, with and without ScamShield, for the shipped student and teacher. Report as a companion row to every SMS claim.
 4. **Spam versus scam relabel.** Five-way taxonomy (benign_transactional, benign_personal, promotion, scam, unclear). Use the labelling jobs in `docs/BUDGET.md` (cloud agents, no Claude-written Llama training text). *Acceptance:* relabelled `label_policy` in the data; metrics on scam versus not-scam; promotions not counted as fraud.
-5. **Pi 5 benchmarks and `llama_main`.** Install `executorch==1.5.1` on 64-bit Pi OS. Run the `.pte` through `executorch.runtime` first. Build `llama_main` natively only if needed. *Acceptance:* p50/p95 latency, tok/s, peak RSS, thermals (stop at 85 °C) on a Pi 5 **4 GB** and 8 GB if available, or a documented out-of-memory result.
+5. **Pi 5 benchmarks and `llama_main`.** The Pi is set up (see "State on 2026-11-06"). Install `executorch==1.5.1` in a venv on the Pi. Run the `.pte` through `executorch.runtime` first, under `deploy/pi/thermal_run.py`. Build `llama_main` natively only if needed. *Acceptance:* p50/p95 latency, tok/s, peak RSS, max temperature and throttle flags (guard pauses at 75 °C, stops at 80 °C; no cooler fitted) on the Pi 5 **4 GB**, or a documented out-of-memory result.
 6. **Android app.** Share-to-scan and paste UX (Play restricts READ_SMS). Runs the student and the `.pte` on device. *Acceptance:* a build that works in airplane mode with an on-device latency number. AppFunctions is Phase 2 only.
 7. **Report and demo.** Technical report and demo video for the challenge. *Acceptance:* every number traceable to a `results/` file; claims limited per `docs/CONTEXT.md`.
 8. **HF cleanup (needs an org-scoped token).** The HF model card still says `vhmaadhav/rakshak-data`. The teacher folder `mmbert-base-campaign-s0` holds the scamshield-holdout run (see section 5). Fix both once an org-scoped token is available.
@@ -383,6 +420,7 @@ Android app; independent Indian validation.
 - **No Modal** without Maadhav's explicit per-run OK.
 - **CPU temperature:** check `sensors | grep Tctl` before local compute. At 85 °C or above, stop heavy work and hunt runaway processes.
 - **Never poll.** No status or sleep loops. Use the ntfy wait once per launch.
+- **Pi 5 has no cooler.** Run heavy Pi work only through `deploy/pi/thermal_run.py`. No stress tests, overclocking, voltage changes or disabling thermal protection. Check `vcgencmd get_throttled` before and after every benchmark.
 - **Commit rarely,** in large milestones, as the repo owner's git identity (repo-local config). Do not override it.
 - **No Claude-written training text** for the Llama explainer (job F is disabled in `rakshak.llm.cli`).
 - **Never post outside our own repos.** No issues, PRs or comments on upstream projects without asking.

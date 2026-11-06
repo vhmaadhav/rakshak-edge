@@ -1,0 +1,15 @@
+[Unit]
+Description=Rakshak Pi 5 monitoring dashboard (127.0.0.1:8765, via SSH tunnel)
+After=network.target
+
+[Service]
+Type=simple
+User=hermoine
+Group=hermoine
+Environment=HOME=/home/hermoine
+ExecStart=/usr/bin/python3 /opt/rakshak-pi/pi_dashboard.py --host 127.0.0.1 --port 8765 --run-dir /home/hermoine/rakshak-pi/run --thermal-dir /run/rakshak
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
