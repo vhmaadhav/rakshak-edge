@@ -20,6 +20,7 @@ Transactional false-alarm measurement (2026-11-01): the rule/evidence0.0883% is
 also remains unmeasurable on UCI fraud recall (zero mapped fraud positives; legacy spam
 positives642). No relabelling or endpoint substitution. These are **new cal-only models,
 not an identified shipped configuration**. The owner confirmed no fusion state was previously frozen; the later immutable v1 reference below supersedes these score-only baseline numbers for full-system claims.
+not an identified shipped configuration**; shipped-state artifact identification remains OPEN.
 GroundLM/SmishX feedback is in-sample for new intervention selection, not untouched validation.
 All three seeds/six folds/both endpoints/coverage/paired CIs: `docs/FUSION_TRANSACTIONAL_RESULTS.md`.
 Aggregate diagnostic/source counts: `docs/TRANSACTIONAL_DIAGNOSTIC.md`; real-Indian provenance
@@ -44,6 +45,14 @@ only; Arm/Android portability UNVERIFIED**. The earlier ONNX artifact attempt fa
 its original numerical gate and stays KILL. Full six-fold/both-label endpoints,
 coverage, paired tests and provenance: `docs/FUSION_V1_RESULTS.md`. Private Kaggle
 publication/privacy receipt is in STATUS.md; **HF publish pending**.
+C-adversary (`ci/source-adversary-20261101`, train-only, three seeds) passes its recorded gate:
+ScamShield mean F1 **0.7340 → 0.7493**, paired campaign gain **+0.0153 [0.0136, 0.0174]**;
+both other source folds pass the no-regression guard. These are **in-sample for rule-feature
+design**, not independent held-out improvements; no checkpoint is shipped by this harness.
+Every split/seed and external FPR/recall: `docs/SOURCE_ADVERSARY_RESULTS.md`.
+Priority now: frozen **fused** transactional false-alarm audit, then clean train-only KD vs no-KD.
+The student-only 35.92% GroundLM FPR is distinct from the rules/evidence 0.0883%; fused FPR
+is not yet measured. Independent Indian validation remains OPEN.
 
 ## 1. Goal and constraints
 
@@ -147,6 +156,9 @@ train-only targets, not OOF/ensemble. Full matched six-fold/three-seed results a
 external student-only diagnostics belong to the separate clean-KD milestone
 (`sms_clean_kd-kd1-20261101`v1; see issue1). No fused/deployed-FPR claim from this comparison.
 
+| no-KD dual-base, seed 1 | 0.975 | **0.356** (fails Hinglish) | 0.903 |
+| Historical KD dual-base, seed 1 (artifact exists; contaminated protocol) | 0.977 | 0.795 (seeds 2, 3: 0.816, 0.804) | 0.909 |
+
 **Withdraw the claim that KD fixes Hinglish generalization.** The inherited unlabeled transfer
 pool reintroduced excluded rows: campaign had 4,147 exact test copies; the ScamShield fold had
 2,122 exact test copies and 9,707 held-out-source rows. Historical KD numbers cannot establish
@@ -173,6 +185,18 @@ At the cal-1%-FPR threshold, corrected ERM seed1 has GroundLM FPR 407/1,133 =35.
 SmishX fraud FPR267/881 =30.31% [25.81%,34.67%], recall119/226 =52.65%
 [43.71%,62.72%] (**independent, non-Indian-specific**). All seeds/arms/thresholds are in the
 report; these are negative external results, not a low-FPR deployment claim.
+| Clean no-KD dual-base, mean seeds1/2/3 | 0.9744 | **0.4058** [0.3697,0.4412] | 0.8656 |
+| Clean KD dual-base, mean seeds1/2/3 (KILL) | 0.9748 | **0.3520** [0.3181,0.3840] | 0.8696 |
+
+Current clean language-shift headline: **student≈0.41 versus historical teacher≈0.80**.
+The old contaminated≈0.81 claim is WITHDRAWN: transfer extras reintroduced test
+copies/campaign neighbours/held-out-source rows. Clean train-only single-teacher
+KD made the gap worse, paired delta−0.0539 CI[−0.0696,−0.0383], p0.000999.
+No OOF/ensemble or held-out improvement claim. Full matched six-fold/three-seed
+report and caveats: [PR#9](https://github.com/vhmaadhav/rakshak-edge/pull/9),
+commitb17021f, docs/CLEAN_KD_RESULTS.md on that branch. Independent Indian
+validation OPEN. Language tagging still misses Hinglish; it does not justify
+restoring the withdrawn result.
 
 **Classical SMS baselines (`sms_baselines`)**: char LR campaign F1 0.973, SVC campaign F1 0.978. Job ended `partial`: 10 of 190 units failed. Rules-only LR is near 0.67, so it is a floor. Canonicalising the text cuts attack success (for example 4.1% to 0.4% in the XLM-R pilot).
 
@@ -181,6 +205,21 @@ report; these are negative external results, not a low-FPR deployment claim.
 - url_domain test (30,432): char-LR F1 0.996; **charcnn-wide** student F1 0.999, recall 1.000 at 1% FPR.
 - PhreshPhish, URL-only, AP (mean over subsets) at base rates 0.05% / 1%: charcnn-wide 0.484 / 0.865; transformer-L4 0.245 / 0.590. The paper's GTE row uses URL and HTML (0.605 / 0.876). This is a different protocol. Quote as a separate row only.
 - Caveat: the URL `transformer` distillation targets are in-sample logits (no cross-fitting). Its numbers are not held-out.
+
+**New three-seed URL controls (E0,2026-11-02), original official protocol:**
+Phresh URL-only mean AP0.4435 [domainCI0.3239,0.6206] at0.05%, and0.5589
+[0.4286,0.7059] at0.1%; P@R90 .0734[.0521,.1835]/.1329[.0764,.2756]. All975
+subsets and1000valid paired-domain draws retained. Every seed/rate/full benchmark/
+test and url_domain CI: docs/URL_THREE_SEED_RESULTS.md. url_domain maxF1 for
+seeds1/2/3 is.999216/.999281/.999564. Prior single-seed URL figures above are
+historical, not matched controls. Seed-before-construction corrected in E0.
+
+The pinned Apache2ByT5 teacher stopped at nonfinite loss before a selected model
+or KD targets. **Teacher/KD UNMEASURABLE**, no stronger-teacher or distillation
+win. Stop fixed arm without recipe/precision changes. Original temporal split
+file is absent in current frozen input: UNMEASURABLE, not newly confirmed NA.
+In-sample intervention selection from prior benchmark feedback; no independent/
+SOTA/deployment claim. No URL expert substitution in frozenfusionv1; HFpending.
 
 **Network IDS (`nids_baselines`, NetFlow-v2 schema)**
 
@@ -195,12 +234,42 @@ report; these are negative external results, not a low-FPR deployment claim.
 - Slot arm: JSON parse 0.9167; verifier pass 0.9033; unsupported-claim rate 0; per-point lexicon
   pass **25.81% [13.04%, 40.82%]** English overall. Matched 150 packages: **21.62%
   [8.00%, 40.00%] English / 62.16% [40.61%, 79.59%] Hinglish** (clustered intervals).
+  These are lexical checks, not entailment scores; the base English arm is weak.
   These are lexical checks, not entailment scores; English remains weak.
 - Rank telemetry: **0 generated tokens**, **2,992 scored continuation tokens**, **248 candidate
   strings**, **86% zero-work clean rows**. Worked T4 p50/p95 **0.3110 / 1.0782 s**. The old
   character-based count and 0/150 rank injection denominator are withdrawn. Summary/action and
   the candidate bank are fixed; this is an architecture restriction, not learned robustness.
   Full provenance, per-family bounds and paired tests: `docs/RANK_ARM_AUDIT.md`.
+
+**Verifier-gated QLoRA (Kaggle, 2026-11-01; FP16 GO / export-retention FAIL)**
+
+| Frozen advisory endpoint | Base | Selected FP16 adapter | Campaign95% CI |
+|---|---|---|---|
+| EN evidence point pass |16/62=25.81% |60/62=96.77% |91.23%–100% |
+| Hinglish evidence point pass |23/37=62.16% |24/37=64.86% |43.46%–80.96% |
+| Slot harmful injection flips |0/150 |0/150 |IID Wilson upper2.50%; each family0/30 |
+
+Final recorded gate **go**, zero unsupported/reassuring advisory rows. EN paired gain
++70.97pp [55.09,85.25]pp; Hinglish+2.70pp [−23.08,30.30]pp. Raw full-contract pass
+only13.33%; verifier/fallback remains necessary. Freeform35/150→36/150 harmful flips
+is exploratory and does not establish safety. **In-sample for rule/contract design and
+repeated frozen-sample comparison**, not independent held-out improvement. No evaluation
+SMS entered targets; only deterministic templates + pinned Llama paraphrases, private
+10,934train/3,026dev. Built with Llama. Final audit tree`1c08f453b8b9`, recoverytree`d8120f4e72e4`.
+Adapted8da4w PTE exists:860,959,104bytes, same-PTE600-row quality run completed.
+**Retention FAIL** under the fixed paired−5pp margin:
+
+| Export endpoint | Adapted PTE | Paired PTE−FP16 campaign95%CI |
+|---|---|---|
+| EN evidence-point pass |52/62=83.87% |−12.90pp [−28.96,0.00]pp |
+| Hinglish evidence-point pass |22/37=59.46% |−5.41pp [−28.89,+17.86]pp |
+
+Both lower bounds fail−5pp.
+Unsupported0/slot harms0/150 (fivefamilies0/30) cannot override that failure.
+Keep FP16 as research only; do not deploy this PTE or infer Pi5/Android performance.
+Full result/provenance: docs/ELA_QLORA_RESULTS.md. Private Kaggle archive
+`maadhavvh/rakshak-ela-models-b20261101`v1,privacy verified; **HF publish pending**.
 
 **Frozen rules audit (Kaggle, 2026-11-01; `docs/REVIEW_AUDIT.md`)**
 
@@ -217,6 +286,7 @@ reference FPR gate at both thresholds; rules-only recall is weak. Widening adds 
 SmishX fraud warning (paired +0.4425 pp, CI [0, 1.4360] pp, p=0.5485); no independent gain
 claim. Model-side GroundLM FPR and independent Indian held-out validation remain OPEN.
 
+**Not completed:** model-side GroundLM FPR; verified `llama_export` output; Pi 5 benchmarks; Android app.
 **Not completed:** GroundLM FPR for all retained/teacher models (corrected train-only student
 measured above, fails the reference gate); verified `llama_export` output; Pi 5 benchmarks;
 Android app; independent Indian validation.
@@ -226,6 +296,14 @@ Android app; independent Indian validation.
 - **Hinglish generalization remains unresolved.** Matched clean no-KD mean F1 is0.4058 versus teacher≈0.80; clean KD is0.3520 and KILL;
   the historical ~0.80 improvement used a contaminated unlabeled pool. Source-balanced/DRO
   do not meet the primary ScamShield gate. Never add raw transfer extras to training.
+- **Hinglish generalization remains unresolved.** Train-only KD ERM mean F1 is0.4000;
+  the historical ~0.80 improvement used a contaminated unlabeled pool. Source-balanced/DRO
+  do not meet the primary ScamShield gate. Never add raw transfer extras to training.
+**Not completed:** model-side GroundLM FPR; verified `llama_export` output; Pi 5 benchmarks; Android app.
+
+## 6. What failed and why
+
+- **Hinglish generalization remains unresolved:** clean no-KD≈0.41 versus historical teacher≈0.80; clean KD≈0.35 is KILL. The contaminated≈0.81 claim remains WITHDRAWN (PR#9).
 - **Colab free tier**: a detached run was reclaimed after about 45 min. Use Colab only for short jobs.
 - **URL transformer distillation**: in-sample targets, so no cross-fitting. Not usable as a held-out claim until redone.
 - **sms_baselines**: 10 of 190 units failed (partial). Cause not yet triaged. Read `kaggle/out/sms_baselines/output/run.log`.

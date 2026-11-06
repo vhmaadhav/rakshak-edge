@@ -3,7 +3,9 @@
 import math
 
 
-def source_gate(metrics):
+def source_gate(metrics, *, arms=("balanced", "dro")):
+    if not arms or "erm" in arms or len(set(arms)) != len(arms):
+        raise ValueError("distinct non-control intervention arms are required")
     runs, comparisons = metrics["runs"], metrics["comparisons"]
     folds = sorted(name for name in runs if name.startswith("source_holdout:"))
     target = "source_holdout:holdout_scamshield"
@@ -12,13 +14,13 @@ def source_gate(metrics):
     if set(folds) != required:
         raise ValueError("all three frozen source folds are required")
     for name, run in runs.items():
-        for arm in ("erm", "balanced", "dro"):
+        for arm in ("erm", *arms):
             if set(run["arms"][arm]) != {"1", "2", "3"}:
                 raise ValueError(f"{name}/{arm}: all three frozen seeds are required")
-        if set(comparisons.get(name, {})) != {"balanced", "dro"}:
-            raise ValueError(f"{name}: both paired intervention comparisons are required")
+        if set(comparisons.get(name, {})) != set(arms):
+            raise ValueError(f"{name}: all paired intervention comparisons are required")
     decisions = {}
-    for arm in ("balanced", "dro"):
+    for arm in arms:
         checks = {}
         for name in folds:
             row = comparisons[name][arm]

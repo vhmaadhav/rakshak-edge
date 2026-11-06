@@ -1,3 +1,202 @@
+# Current B checkpoint — 2026-11-01
+
+- Parallel C milestone completed: PR #3 (`56892e7`), both source-control arms killed. The inherited KD pool reintroduced excluded rows; the historical ~0.80 Hinglish claim is withdrawn as clean evidence. C now guards train-only KD and reports all folds/external failures. See `docs/SOURCE_BALANCE_RESULTS.md` on `ci/source-balance-20261101`; no C code is mixed into this B branch. C verification830passed/21skipped, ruff clean. B remains pending on its original event subscription.
+
+- Data gate passed; private synthetic dataset v1 published and verified. QLoRA version1/tree
+  `e17dfb992e8b` is pending on its original single event waiter. No export or model-quality claim.
+- Final saved-output audit adds paired point differences, per-family tests and an explicit
+  positive-reassurance check; all changes predate inspecting model outcomes. Focused safety
+  comparison tests: **7 passed in 0.99 s**, Tctl 40.2 C, ruff clean.
+
+# Run updates — 2026-11-01: B (chronological)
+
+- Frozen-audit attachment selector regression: **1 passed in0.27 s**, Tctl38.2 C, ruff clean. Synthetic files verify exact successful tree/hash binding and reject partial or duplicate attachments. No model/scoring change; post-audit bundle remains `1c08f453b8b9`, not launched until B finishes.
+
+- Before model outcomes: verified the pinned mirror has no licence file. Its card links Meta's official Llama3.2 agreement. Retained the exact 7,669-byte text at upstream commit `8d29d93fa5700a60532e0061a02ffa89d0acd3fc`, SHA256 `8cc15535a8a34b41888f644b339a1a9eb428af793a4f5e24df58a3e5b1487d74`. Added licence/NOTICE/Built with Llama packaging for future training runs; the current running bundle is unchanged. The saved-output audit will copy the selected adapter verbatim into its private outputs, verify the weights hash and attach these notices. No inference, target or gate changes. Resource check **1 passed in 0.05 s**, Tctl41.8 C; ruff clean.
+
+- Before model outcomes: conditional export retention criterion recorded in `docs/ELA_QLORA.md`: both language paired PTE-minus-FP16 lower CI bounds >= -5 pp, original absolute quality gates, zero unsupported/reassuring claims and no new slot harmful flips. No test-driven export retry; export remains forbidden unless the final QLoRA audit is go. No export code or run yet.
+
+- Data job launched privately: `ela_data-b-data-20261101`, kernel **version 1**, base `2463245`
+  dirty tree `aea5cd47a85a`. Args `--packages 1200 --attempts 8 --seed 13`; single event waiter
+  opened, no polling. Data-gate tests **18 passed in 0.83 s** with restricted CPUs/threads;
+  changed-file ruff clean, pre-test Tctl 41.2 C. Results pending; no training claim.
+- Corrected data run launched: `ela_data-b-data2-20261101` **version 1**, tree `91cd95088bb2`,
+  base `2463245` dirty; same args/model/seed. One completion subscription, no polling.
+  Format-wrapper/E99 checks: **19 passed in 0.49 s**; lint clean, Tctl 42.0 C.
+- QLoRA evaluation/comparison and bundle tests: **10 passed in 1.49 s**, changed-file ruff clean.
+  The frozen evaluator receives an optional model pair and checks the exact prior sample manifest;
+  default base evaluation is unchanged. Primary safety comparison is the ELA slot arm; rank is
+  a negative control and freeform exploratory. Campaign bootstrap is primary; ordinary Wilson
+  intervals are shown separately as IID references, not mislabelled as clustered Wilson.
+- Issue #1 updated with A1 completion plus B/C predeclarations, launches and the negative data run.
+- Qwen caveat independently checked on 2026-11-01: official
+  [Qwen2.5-3B-Instruct card](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct/blob/main/README.md)
+  explicitly says `license: other`, `license_name: qwen-research`; it is **not Apache-2.0**.
+  Not used for any targets. Chosen Llama pin/licence above remains unchanged.
+- Bundle/evaluation dependency checks after QLoRA preparation: **8 passed in 0.81 s**;
+  Tctl 44.0 C before the run. No complete suite run during ongoing experiments.
+- Experiment protocol/provenance documented in `docs/ELA_QLORA.md`; no headline update while
+  quality is pending. Frozen point-denominator mismatch now aborts comparison; synthetic gate
+  checks **4 passed in 0.75 s**, Tctl 43.2 C, lint clean. Both isolated worktrees are ruff clean.
+- Publication succeeded: **private** Kaggle dataset
+  `maadhavvh/rakshak-ela-synthetic-b20261101`, **version 1**. Read-only metadata and dataset APIs
+  independently returned `is_private=True`; recorded before training. Content hashes unchanged.
+  No raw data, targets or weights staged in git. Final-run model stack will record exact versions.
+- QLoRA launch: `ela_qlora-b-qlora-20261101` **version 1**, base `2463245` dirty tree
+  `e17dfb992e8b`. T4/internet; attached `maadhavvh/rakshak-data`, private synthetic dataset v1,
+  and frozen kernel `maadhavvh/rakshak-llama-ela-eval-a1-20261101`.
+  Args `--data-manifest-sha256 03d5b85ec0d6e7ab313cb5b0fe849a6696d003a490f5deb52a4f20f333a6c69a
+  --epochs 3 --seed 13`. Single `wait_event --timeout 43200` opened, no status polling.
+  Together with Track C there are two GPU kernels; data runs are complete. Results pending.
+- Before model results: predeclared a paired quality supplement from saved generations only.
+  Absolute EN go/kill gates remain unchanged; additionally report tuned-minus-base pooled
+  point-pass campaign CI and null-centred paired p-value for EN/Hinglish. No new generation,
+  sample change or tuning. `ela_paired_audit` binds both successful kernel trees and hashes,
+  rejects unmatched IDs/point denominators, then resamples campaigns with common point counts.
+  Planned attachment: frozen A1 output + completed `ela_qlora-b-qlora-20261101` output.
+  Synthetic statistic tests **3 passed in 0.06 s**, pre-test Tctl 40.0 C, ruff clean.
+- Saved-output supplement will also report paired McNemar/Fisher tests and separate Wilson
+  references per attack family, retaining zero-eligible rank families as unestimated (not zero risk).
+  Raw/rendered unsupported flags on the same row count once in the row total; any flag still kills.
+  No model-generation/training change. New synthetic reporting tests passed; see focused output.
+- Expanded post-output comparison fixtures: **6 passed in 1.81 s**, pre-test Tctl 39.4 C;
+  changed-file ruff clean. Model inference still uses the frozen `e17dfb992e8b` bundle;
+  supplement changes reporting only and binds those saved generations.
+
+
+# Session log — 2026-11-01: safety reporting clarification before model outcomes
+
+- The scorer reports positive safe/no-risk reassurance separately from unsupported IDs/entities.
+  A clean/injected pair can both reassure, producing no *flip*. Before inspecting model outcomes,
+  the saved-output supplement therefore records raw/rendered reassurance rows separately and
+  withholds go/kills shipment if any occur, just as the training data gate already rejects them.
+  This strengthens the existing zero-unfounded-claims condition; thresholds/model/data unchanged.
+  Action-only new harmful flips still block go independently. No production verifier change.
+
+# Session log — 2026-11-01: B comparison scope clarification before results
+
+- Keep the known design exposure explicit: this is a repeated frozen-sample comparison,
+  **in-sample for rule/contract design**. Base outcomes were observed and ScamShield test rows
+  informed rule features; no clean independent held-out improvement claim is authorized.
+  QLoRA targets still contain no corpus/eval messages, dev-only selection and predeclared
+  gates are unchanged. Independent Indian validation remains OPEN.
+
+# Session log — 2026-11-01: B data gate passed
+
+- `ela_data-b-data2-20261101` v1, tree
+  `91cd95088bb27e2cf1b77588dff5d9d4e5dc75037a35e777ffe5a4b6bc6d07d2`, **ok**, 331.9 s;
+  one event/fetch, provenance and file hashes verified. Same packages=1200/attempts=8/seed=13.
+- Teacher attempts **256**, kept **131** (EN51/128, Hinglish80/128), rejected **125** (77/48).
+  Exact final targets: **10,934 train / 3,026 dev**, **250 unique singleton parent records**;
+  571 duplicate prompt/target candidates removed. Target sources: 9,194 deterministic templates,
+  122 distinct direct Llama paraphrases, 4,644 verified compositions. Full raw generations and
+  per-reason rejections retained privately in `paraphrase_audit.jsonl`/manifest.
+- Frequent rejection reasons include malformed JSON/extra text, positive instructions (e.g.
+  `pay`, three occurrences), and verifier evidence-keyword failures. No rejected sentence was
+  rewritten or repaired into a target. All retained targets passed both gates, all composition
+  groups are train/dev-disjoint, no corpus messages were read. **Keep data path**, not a model win.
+- Manifest SHA256 `03d5b85ec0d6e7ab313cb5b0fe849a6696d003a490f5deb52a4f20f333a6c69a`.
+  Publication target: private `maadhavvh/rakshak-ela-synthetic-b20261101`; first create command
+  rejected title length before uploading, shorter title retry pending. No public flag used.
+
+# Session log — 2026-11-01: B data run 1 negative result and format correction
+
+- `ela_data-b-data-20261101` v1, tree
+  `aea5cd47a85a6bb731d1f34524447bebd26da19210f6304638dff84a7863a02c`, outcome **error**,
+  303.2 s. Single event received and fetch verified. Args `--packages 1200 --attempts 8 --seed 13`.
+  All **256 paraphrases rejected** (128 EN / 128 Hinglish): model frequently emitted a JSON
+  string instead of the requested object, or extra text. No training and no publication.
+  10,594 train / 2,976 dev template/composition rows were written, but are incomplete output,
+  not a successful dataset. No quality result follows.
+- Minimal format correction: allow a valid teacher JSON string to be enclosed verbatim as the
+  single `points` item; no sentence rewriting, malformed-output repair or gate relaxation.
+  E99 still rejected by the scorer even after wrapping. Same prompt, model, seed and counts.
+  Go for corrected data run: gated paraphrases >0, train/dev composition disjoint, all targets
+  pass both checks, hashes/provenance complete. Otherwise stop before QLoRA.
+
+# Session log — 2026-11-01: B QLoRA experiment predeclaration
+
+- Rebased isolated `ci/ela-qlora-20261101` onto `2463245`; PR #2 left for review.
+- Hypothesis: existing deterministic templates plus verifier-gated pinned Llama paraphrases
+  teach evidence verbalisation without corpus messages or assistant-written targets.
+- **Go:** EN point-pass campaign-clustered lower 95% CI >40% (base 25.81%, [13.04,40.82]);
+  Hinglish not worse than 62.16% beyond CI overlap; unsupported claims remain zero;
+  harmful flips do not increase across five injection families (paired McNemar/Fisher vs base).
+  **Kill:** EN lower bound <=25% or any new unsupported claims. Between gates is inconclusive,
+  no export. Frozen 300 messages and injection pairs are evaluated only after dev selection.
+- Teacher chosen: `unsloth/Llama-3.2-1B-Instruct` revision
+  `5a8abab4a5d6f164389b1079fb721cfab8d7126c`. Its pinned model card was read on 2026-11-01:
+  `license: llama3.2`, the custom Llama 3.2 Community License, not Apache-2.0.
+  [Pinned card](https://huggingface.co/unsloth/Llama-3.2-1B-Instruct/blob/5a8abab4a5d6f164389b1079fb721cfab8d7126c/README.md).
+  Built with Llama attribution retained. Qwen not used; Qwen size-specific licences not assumed.
+- Data job: 1,200 abstract packages, existing four template variants, eight paraphrase attempts
+  per evidence type/language, gated singleton composition, exact deduplication, hash-disjoint
+  train/dev compositions. No SMS corpus loader. Both verifier and scorer unsupported-ID gates;
+  E99 regression retained. Private Kaggle output will be published as a private training dataset.
+- Training plan: T4 NF4/double-quantized base, LoRA r=16 all-linear, masked completion loss,
+  max 3 epochs, early stopping by synthetic-dev verifier pass. Exact runtime compatibility
+  remains UNVERIFIED until the Kaggle run. No local model compute.
+- During development: touched tests only, `nice -n 19 taskset -c 0-3`, OMP/MKL threads 2;
+  check Tctl before each run, wait at >=80 C. Full suite once at finished milestone only.
+
+# Session log — 2026-11-01: B preparation (separate from review PR)
+
+- PR #2 at `2463245` is open for Maadhav; leave it unchanged. This isolated B branch is
+  rebased onto that milestone; its changes will get their own PR into main.
+- **Predeclared hypothesis:** existing deterministic targets plus verifier-filtered pinned
+  Llama paraphrases can teach the ELA contract without corpus test messages or assistant-written
+  targets. Go for the data path: traceable target provenance, every retained target passes the
+  verifier and raw unsupported-claim checks, train/dev evidence compositions disjoint. Kill
+  the path before training if any invariant fails. No training/performance claim yet.
+- Implemented `rakshak.llm.ela_training`: abstract evidence packages only, existing template-bank
+  strings, deterministic summaries, exact pinned Llama/Kaggle provenance for paraphrases.
+  Corpus text/URLs/phones and non-synthetic or test partitions are rejected. Same composition
+  across languages/order/risk variants shares one train/dev partition. Exact teacher copies
+  and template targets share IDs for deduplication. No data file is committed.
+- The unit gate exposed that `check_points` alone allows copied IDs such as E99; `score_advisory`
+  already marks those unsupported. Training requires both checks, plus no positive safe claim.
+  Production verifier behaviour is unchanged in this preparation.
+- Model-free tests under `nice -n 19`: **14 passed in 0.43 s**; changed-file ruff clean.
+  Tctl 70.1 C, below the 85 C cutoff. No local model generation/training/benchmark evaluation.
+- Primary method/API sources checked before implementation:
+  [QLoRA](https://arxiv.org/abs/2305.14314),
+  [PEFT quantization](https://huggingface.co/docs/peft/developer_guides/quantization), and
+  [Transformers bitsandbytes](https://huggingface.co/docs/transformers/quantization/bitsandbytes).
+  They establish frozen 4-bit base + LoRA, NF4/double quantization and preparation APIs;
+  they do not establish Rakshak results. Exact package pins/T4 runtime/Hinglish paraphrase
+  yield and ExecuTorch adapter export remain UNVERIFIED. No B Kaggle job launched yet.
+# Completed C-adversary gate — 2026-11-01
+
+- Saved-output audit v1/tree `f50b5a0c3bbd5b55d085b046d1ee1df0d7a21516ca6bae98facf45e3a5ae21a1`, **ok**,60.3s; one wait/fetch. Recorded decision **go**: ScamShield mean F1 0.733961→0.749275, paired delta0.015314 [0.013591,0.017423], p0.000999; other-source guards pass.
+- Campaign ERM→adversary .974774→.975553; lang_shift .369773→.396633; Mishra .937259→.945886; UCI .882857→.891299; temporal .871039→.866594. All seeds/absolute CIs/paired tests/external failures in `SOURCE_ADVERSARY_RESULTS.md`. No prior ERM substitution, seed selection or held-out improvement claim.
+- Keep the intervention for further validation; no checkpoint deployment. Independent Indian validation OPEN. The newly requested fused false-alarm audit takes precedence over further source-method experiments.
+
+# C next experiment predeclaration — 2026-11-01
+
+- Static provenance check while jobs are pending: corrected the datacard's IMC25 synthetic=True typo to match the existing loader's `synthetic=False`. This documents the source flag, not independent authenticity. No data, split, model code or running bundle changed.
+
+- Launched **sms_source_adversary-c-adv-20261101 v1**, dirty base56892e7, tree `a09fb20ed34903e9605e7f7e48c26aed055a4da18ae4a41a0d7c8588214b9573`. Exact planned args/attachments/T4/internet above; original single wait_event subscriber opened. Together with B this is two GPU kernels. Startup Torch checks and all model results pending; no runtime/quality pass claimed.
+
+- Prior C milestone is committed56892e7 and open as PR #3; both balancing/DRO arms killed.
+  This new isolated `ci/source-adversary-20261101` branch leaves that PR and PR #2 unchanged.
+- Hypothesis: conditional training-source adversarial regularization reduces learned source
+  shortcuts without aligning different label marginals. Fixed candidate: learned CNN features
+  only, per-training-label MLP64 source heads, CE1 with reversed encoder coefficient ramping
+  to.05 over3epochs, inverse label/source-cell weights. No test/external training rows.
+- Go: positive ScamShield paired campaign-bootstrap mean-F1 lower CI; no other source-fold loss
+  larger than ERM CI half-width. Otherwise kill. Seeds1/2/3, same six frozen splits and
+  train-only KD, max15/patience3 cal PR-AUC, AdamW.002/wd.0001, batch128, alpha.7/T2.
+  Cal-only thresholds; all external operating points reported without tuning. Detailed primary
+  sources and limits: `docs/SOURCE_ADVERSARY.md`; adaptation, not exact DANN/CDAN, benefit UNVERIFIED.
+- Focused metadata/gate/dependency checks: **10 passed,1 skipped in0.18 s**, pre-test Tctl37.5 C,
+  changed-file ruff clean. Torch absent locally; synthetic gradient/RNG/zero-weight checks are
+  mandatory on Kaggle before corpus access. No full-suite rerun before next finished milestone.
+- Planned private T4 job `sms_source_adversary --run-name c-adv-20261101 --internet
+  --datasets maadhavvh/rakshak-data maadhavvh/rakshak-teacher-logits
+  --job-args="--seeds 1 2 3 --epochs 15 --n-boot 1000 --teacher-seed 0"`.
+  One completion subscription/fetch only after launch; B remains on its original event waiter.
+  No new experiment result or deployment claim yet.
+
 # Completed C experiment — 2026-11-01
 
 - **Final C milestone verification:** ONE complete unit-suite invocation exited0:
@@ -386,6 +585,76 @@ Uncommitted: NIDS module + teacher/Colab changes (next milestone commit).
 Kaggle for all compute; no Modal without Maadhav's explicit per-run OK; cloud-credit labelling parked; commit very rarely as vhmaadhav.
 - New --run-name tests (tests/test_kaggle_run_name.py) not yet run: CPU was 92–94 °C from a non-project process.
 
+# Run update — 2026-11-01: B training completed, evaluation recovery
+
+- Original event receipt: `ela_qlora-b-qlora-20261101` v1, tree `e17dfb992e8b`, **error**, 15,716.4s. One original waiter and one fetch; no polling. All three training epochs finished. Synthetic-dev verifier pass: base 4/48, epochs 43/48, 46/48, 45/48; epoch2 selected by the frozen dev-only criterion. These are **synthetic-dev**, not frozen evaluation results.
+- Failure occurred at FP16 `PeftModel.from_pretrained`, before evaluation: image torchao0.10.0 is below PEFT0.21.2's minimum0.16.0. Confirmed in official [PEFT source](https://github.com/huggingface/peft/blob/v0.21.2/src/peft/import_utils.py). No quality gate can yet be applied; no export.
+- Recovery predeclaration: run the same frozen evaluation on the exact selected adapter (SHA256 `1bdf548fd40ee245ae9a32693af04a89e13448bbe5a9224be7d0808403986e87`) and exact original training metadata (`1b9c15e3da6edec332ca5172c093a43f70b673d0925827b3f768a1d481ef5fa5`). Remove the unused optional torchao package from the new Kaggle environment, retain FP16 base+adapter and sample/injection manifest. **No retraining, target/model selection changes or gate changes.** Saved-output paired audit follows successful recovery.
+
+- Recovery launched `ela_resume_eval-b-recover-20261101` **v1**, tree `d8120f4e72e4`, frozen base+failed training kernel attachments, no job args. Focused recovery/provenance and bundle checks **5 passed in0.08s**, Tctl41.8C before; full ruff clean after line wrapping. One blocking wait_event opened; no fetch/poll yet. C-adversary passed its gate and is now open/unmerged in PR#4; PRs2/3 remain untouched. New priority after B's recorded decision is the full frozen fused-system false-alarm audit.
+
+# B recovered frozen evaluation — 2026-11-01
+
+- `ela_resume_eval-b-recover-20261101` **v1**, tree`d8120f4e72e43bb1b11ef28af26e782d3f71df0b1e8eac60df3264fb0dac3de6`, **ok2744.6s**; one original wait/fetch, exact adapter/training hashes retained, no retraining. Completion summary EN point-pass96.77%, raw full-contract13.33%, slot harmful flips0/150, eligible-rank0/39, exploratory freeform36/150. These are preliminary summary fields, not a final go decision; low overall raw full-contract pass is retained, not hidden by point-pass improvement.
+- Final predeclared saved-output `ela_paired_audit-b-paired-20261101` **v1**, tree`1c08f453b8b9`, attached exact base plus successful recovery. Args `--tuned-tree d8120f4e72e43bb1b11ef28af26e782d3f71df0b1e8eac60df3264fb0dac3de6`. One wait_event opened. Computes frozen campaign/paired intervals, raw/rendered unsupported/reassuring rows and all five-family safety comparisons; packages exact adapter with licence. Gates unchanged. No export before its final decision.
+
+# B final QLoRA gate — 2026-11-01
+
+- Final saved-output `ela_paired_audit-b-paired-20261101` **v1**, tree`1c08f453b8b906cb67faaea2979259f79fa1391ba1ec27d8c976892d6f1c797b`, **ok79.0s**, one wait/fetch. **Recorded decision GO** under unchanged gates: EN60/62=96.774% campaignCI[91.227%,100%], HL24/37=64.865% [43.463%,80.956%], overlapping baseHL CI. Unsupported advisory rows0, positive reassurance rows0; slot no new flips,0/150 base and tuned, all five families0/30. Eligible rank0/39 both (111 empty excluded), no generated rank tokens. Ordinary IID Wilson references retained separately.
+- Paired EN gain+70.968pp CI[55.088,85.250]pp,p0.000999; HL+2.703pp CI[−23.077,30.303]pp,p0.8711. Frozen sample is **in-sample for rule/contract design and repeated benchmark comparison**, not independent held-out improvement.
+- Freeform exploratory harms35/150→36/150,28new/27removed,McNemar/Fisher1.0,pairedCI[−8.667,+10.000]pp. Some attack families worsen; report every family, no freeform safety claim. Raw full-contract pass13.33% remains a limitation despite high point pass; deterministic verifier/fallback is still necessary.
+- Exact selected adapter hash preserved and private licence/NOTICE/Built with Llama packaging verified. GO permits only the already predeclared ExecuTorch8da4w export/quality check: merge selected adapter, no prebuilt/base substitution; paired language lower differences>=−5pp plus original absolute/safety gates. No export success or quality retention claimed before an actual run.
+
+# Conditional B export preparation — 2026-11-01 (after final GO)
+
+- New `ela_export` uses final audit tree/hash plus exact FP16 inference/adapter hashes; refuses non-GO/changed weights. Safe-merge selected LoRA into pinned FP16 Llama in a fresh subprocess, convert/check Meta shapes, then install existing ExecuTorch1.5.1/Torch2.14/pytorch-tokenizers1.5 recipe and export8da4w XNNPACK GS32/embedding4,32 in another process. No base/prebuilt PTE substitution or quantisation tuning on test data. Licence/NOTICE/Built with Llama retained.
+- Same600 slot/Hinglish rows (300ENclean+150ENinjection+150HLclean), exact sample IDs and evidence denominators; runner reset per message, greedy, stop at first complete JSON, token counts from runtime statistics. Rank/freeform are explicitly unmeasured on PTE, not zero-risk results. Quality retention uses the predeclared paired−5pp language margin plus original absolute/unsupported/reassurance/injection gates. Kaggle x86 CPU latency is not Pi/Android performance.
+- Focused runtime/comparison checks **13 passed in0.91s**; export input/stop/reset/non-inferiority/bundle checks **5 passed in0.66s**, pre-test Tctl39.4C, ruff clean after wrapping. No real local model loaded/trained/evaluated. No export success claim before Kaggle outcome.
+
+- Conditional export launched `ela_export-b-export-20261101` **v1**, dirty base2463245/tree`5490836c7692`, T4/internet/private data + final GO-audit/recovery kernels. No job args. Single event subscription opened. Exact predeclared recipe/margins above; no new quality result. P1 reporting audit is complete; only B export remains active at this moment.
+
+# B export infrastructure correction — 2026-11-01
+
+- `ela_export-b-export-20261101` **v1**, tree`5490836c7692ee1af47d0fc1bdbb35ae86eb229802a0957cc67eb98c50ae3683`, **error140.7s**, one wait/fetch. Safe-merge reached parameter conversion; `model.config.to_dict()` from Transformers5 omits the converter's top-level`rope_theta`, causing KeyError. No quantisation/export/PTE inference occurred; quality retention remains unmeasured.
+- Correct the integration to read the **original pinned snapshot config.json**, exactly as existing `llama_export._convert_to_meta` does, and preserve that source config in the artifact. Same selected weights, architecture, 8da4w recipe, sample and margins. This is a format-compatibility retry before any PTE quality outcome, not a test-driven quantisation change. Failed run remains logged; no false quality kill or success.
+
+- Compatibility retry launched privately `ela_export-b-export2-20261101` **v1**, dirty base2463245/tree`20c6e21feefa`, same inputs/no job args/model/recipe/margins. Source-config/export binding focused checks **20 passed in0.09s**, Tctl41.9C, ruff clean. One blocking wait_event opened, no fetch/poll. Only this export kernel is active; no new PTE quality outcome or safety claim.
+
+# B adapted export exists; runtime operators unresolved — 2026-11-01
+
+- `ela_export-b-export2-20261101` **v1**, tree`20c6e21feefa82e003b07b5cfe950a8e9bac64c4db0bae9887c3343f76b9719d`, **error805.5s**, one wait/fetch. Adapter merge/shape conversion and8da4w export succeeded:603.15s, peakRSS9,154,016KiB; actual PTE **860,959,104bytes**, SHA`af24472d931ee449a571368f5f1f70d61822c25398c6627b8cf26159a649e98c`. Export delegation-lines list empty; no acceleration claim. Runtime Torch2.14.0+cpu,ET1.5.1,torchao0.18.0,tokenizers1.5.0.
+- Load/generation failed before any scored row: missing`llama::custom_sdpa.out`, `llama::update_cache.out`, `quantized_decomposed::embedding_4bit.dtype_out` (49 unresolved instructions). `pte_generations.jsonl` has0rows. **Quality retention unmeasured**, not go or a measured quality kill. No Pi/Android result.
+- Primary-source research: pinned [runner CMake](https://github.com/pytorch/executorch/blob/v1.5.1/extension/llm/runner/CMakeLists.txt), [custom-op loader](https://github.com/pytorch/executorch/blob/v1.5.1/extension/llm/custom_ops/custom_ops.py), [custom-op CMake](https://github.com/pytorch/executorch/blob/v1.5.1/extension/llm/custom_ops/CMakeLists.txt), [wheel packaging](https://github.com/pytorch/executorch/blob/v1.5.1/setup.py), read through official GitHub API. They show separate AOT libraries and `torch.ops.load_library` registration; compatibility with this wheel/runner is **UNVERIFIED** until a new runtime-only job.
+- Runtime-recovery hypothesis: required AOT libraries exist but were not loaded into this fresh quality process. Experiment explicitly loads Llama+quantized AOT libraries, checks operator registry, then scores the **same hash-pinned PTE** against the same FP16 rows. Go remains original retention/absolute/safety gates on all600rows; missing libraries/operators/load failure keeps deployment blocked/unmeasured. **No re-export, new quantisation recipe, weights, test-based calibration or sample changes.**
+
+- Runtime-only recovery implementation: official wheel AOT libraries are discovered via package search paths (including namespace packages), loaded with `torch.ops.load_library`, and required operator-name fragments checked before constructing TextLLMRunner. Same PTE/source GO/FP16 hashes are enforced; no quantisation/export function is invoked. Missing libraries/registration aborts, never silently falls back. Synthetic runtime/source/bundle tests **6 passed** (timing in focused log), Tctl38.5C, ruff clean. A stub library loader is used locally; no actual native library/model loaded on this laptop.
+
+- Runtime-only `ela_pte_eval-b-runtime-20261101` **v1**, dirty base2463245/tree`23c75bd0aa88`, private data+GOaudit/FP16recovery/originalexport2 inputs, no job args. One event subscription opened, no polling/fetch yet. Focused tests6passed in0.76s; Tctl38.5C, ruff clean. No re-export or quality claim. Concurrent hard-negative job is the only other GPU kernel.
+
+- Formatted `ELA_QLORA_RESULTS.md` directly from saved remote aggregate statistics, without rescoring: per-language pooled point counts, campaign CIs + IID Wilson references, paired deltas, all five injection families for slot/rank/freeform including worsening families. Raw full-contract13.33%EN/10.00%HL and86.67%/89.33% fallback remain prominent. The advisory unsupported0 endpoint is explicitly scoped to gated slot/rank; exploratory freeform clean unsupported1.67% (5/300) is not hidden. Runtime-only PTE recovery is still pending; no quality-retention claim or new fetch.
+
+# Private B artifact publication preparation — 2026-11-01
+
+- Per Maadhav's HF404 clarification, publish final experiment adapter/PTE as a private Kaggle dataset after the existing runtime receipt. New `kaggle/publish_ela.py` verifies exact GO-audit, selected adapter, original adapted PTE and licence SHA256s plus the completed runtime bundle tree; allowlists models/tokenizers/licence/config/aggregate JSON only, excludes generation/message files. Create-only `public=False`, then metadata `is_private` verification. **HF publish pending**; no HF publish attempt or dependency.
+- Failed runtime may be archived as experimental/unmeasured with shipment_approved=false, never promoted into a quality-retention win. Same-PTE runtime job still pending; no quantisation changes or additional recovery attempt permitted this iteration if operators fail again. Synthetic allowlist/hash/failed-runtime archive check **1 passed in0.02s**, Tctl60.5C; ruff clean. Publisher has NOT run against actual models or uploaded anything yet. No actual local inference/training/benchmark scoring.
+
+# Final B same-PTE runtime quality — 2026-11-01
+
+- `ela_pte_eval-b-runtime-20261101` **v1**, full tree`23c75bd0aa885c0493e5b0d654c1603c65a56ff6c6b34392f44a6241f8ddbc67`, **ok5746.1s**, original ONE event and ONE fetch verified. Same PTE hash/860,959,104bytes; no re-export/model/recipe/sample change. Explicit Llama+quantized AOT libraries loaded; all three required operator fragments registered,600 frozen rows scored (slot450incl150injections+HL150). Metrics SHA`02a04cdaf542e744f42e6949db0b3e82b84d5544f3af25cd7b512b9ca3076809`.
+- **Export retention gate FAIL/KILL this deployment candidate.** EN52/62=83.87097%, campaignCI[68.55069,96.29630]%; FP16→PTE paired−12.90323pp CI[−28.95644,0.00000]pp,p.103896. HL22/37=59.45946%,CI[36.83772,82.76108]%; paired−5.40541pp CI[−28.89035,+17.85714]pp,p.745255. BOTH lower bounds fail the fixed−5pp margin. Non-significance is not non-inferiority; no claim that loss is proven/absent from these CIs. Original absolute advisory gates independently report GO, but cannot override retention failure.
+- Unsupported gated advisory rows0/reassuring0; slot harmful flips0/150 FP16/PTE, all5families0/30,new0,McNemar/Fisher1.0. IID Wilson reference per0/30 harm[0,11.35]% (zero observations do not certify zero population risk). Rank/freeform remain unmeasured on PTE. Kaggle x86 CPU only, no Pi5/Android quality/performance/4GB-fit claim.
+- Stop B export at this measured negative result, with NO new quantisation recipe/weights/runtime retry. Retain FP16 QLoRA GO as an experimental verifier-gated result (raw full-contract13.33%EN/10.00%HL/fallback limitation remains). Archive exact selected adapter/PTE privately with failure clearly recorded, verify Kaggle privacy; **HF publish pending**. Full milestone verification/one commit/new PR follows final publication/provenance checks; no merge.
+
+# B finished milestone verification — 2026-11-01
+
+- ONE complete unit-suite invocation: **861 passed,18 skipped,144 warnings in178.88s**, exit0. Required nice19/taskset0-3/OMP2/MKL2 plus50% CPU quota and85C stop guard; Tctl39.6C before/45.5C after, no thermal interruption. Local Torch absence is explicit in skips; actual training/inference/export/600-row quality all ran on Kaggle. Full `ruff check .`: **All checks passed!** No model/training/evaluation source changes after this verification. The later publication-only verification-endpoint fix has its own focused checks; full suite not repeated.
+- Ref fetch completed; B HEAD matches reviewed base2463245 exactly (0ahead/0behind before its milestone), origin/main remains ancestor. Repo-local identity verified **vhmaadhav <vhmaadhav@hotmail.com>**, no override. Private model upload is in progress with exact-hash/shipment=false/retention=false manifest; do not claim final privacy verification until the publication script completes. One milestone commit/new PR follows; never merge or force-push.
+
+
+# B private archive verified — 2026-11-01
+
+- Exact artifact upload/create request completed. Immediate GetDatasetMetadata verification returned403; this was a publication verification failure, not a model or privacy pass. No re-upload/version/recreation performed. A separate single owner GetDataset read succeeded: **maadhavvh/rakshak-ela-models-b20261101, isPrivate=true, version1, owner maadhavvh,940,569,686bytes**. Safe verification receipt retained locally; source model hashes unchanged, quality_retained=false,shipment_approved=false. **HF publish pending**.
+- Publication-only helper now verifies the owner GetDataset record (exact ref/owner/private/version), avoiding the failed metadata endpoint. Focused synthetic allowlist/privacy-owner checks **2 passed in0.02s**, Tctl40.1C; ruff clean after line wrapping. This small post-full-suite API fix changes no training/inference/scoring/export/gate. Full861-pass milestone suite above is not rerun; the new API branch is covered by these focused tests.
 # New top-priority fused audit — 2026-11-01
 
 - Hypothesis/experiment/go-kill frozen in `docs/FUSED_FPR_AUDIT.md` before benchmark compute: GroundLM SCAM<=1%, >=UNCERTAIN<=10%, SmishX SCAM recall>=student-only frozen cal1%-FPR. Report unconditional negative denominators separately from existing selective-library conditional FPR; campaign CIs and paired recall tests, no fitting on external.
@@ -515,3 +784,189 @@ Kaggle for all compute; no Modal without Maadhav's explicit per-run OK; cloud-cr
 - Copied diagnostic focused test1passed.04s, Tctl43.6C with the same user CPU/thread limits; ruffclean. Full suite was not repeated.
 
 - Owner headline correction: matched clean no-KD lang_shift F1≈0.41 versus historical teacher≈0.80; clean KD0.3520 KILL. HANDOFF replaces the contaminated≈0.81 headline; full KD experiment is a separate milestone.
+# New priority / local inbox tooling — 2026-11-01
+
+- User reprioritised full frozen fused-pipeline false alarms above further C methods and clean KD rerun above URL/NIDS. GroundLM student35.92% and SmishX30.31% at cal1%-FPR are not rules/evidence0.0883% and not fused metrics. Full shipped fusion state/threshold inventory is pending clarification; repo has fitting code but no saved state, and both private HF access paths return404. No newly fitted result will be called shipped.
+- Separate `ci/transactional-fpr-20261101` based56892e7 preserves main dirty docs and PRs2/3/4. Added code-only `tools/inbox_export`: local UTF8 XML/compatible JSON received-SMS parser, deterministic typed scrubber, five-label manual privacy-confirmation CLI, local owner-only Parquet outside Git. No real messages, network/upload, model labelling or collection. Independent Indian validation stays **OPEN**. Supported XML fields checked against official SyncTech docs; JSON is a conversion format, not a native-export claim.
+- Software acceptance and privacy limits (recorded after focused implementation checks, before full-suite verification): `docs/INBOX_EXPORT.md`; focused synthetic checks **5 passed in0.22s**, ruff clean, Tctl41.0C before. Arbitrary names/subdomains require human review; no automatic anonymisation claim.
+
+# Code-only inbox milestone verification — 2026-11-01
+
+- Latest focused checks **5 passed in0.25s**, Tctl40.2C before; full ruff clean. One milestone full-suite invocation: **835 passed,21 skipped,144 warnings in176.49s**, exit0. nice19/taskset0-3/OMP2/MKL2,50% CPU quota and85C stop guard; Tctl40.2C before/53.1C after, no interruption. No code changes after verification. Gate passes on synthetic fixtures only; no real-data anonymity/performance claim.
+# Run update — 2026-11-01: C-adversary complete; new priority order
+
+- `sms_source_adversary-c-adv-20261101` v1, dirty tree `a09fb20ed34903e9605e7f7e48c26aed055a4da18ae4a41a0d7c8588214b9573`, **ok**, 3,635.9s, six splits/36 fits, zero failed units. One original event subscription and one fetch. Args seeds1/2/3, epochs15, nboot1000, teacher-seed0 unchanged. Final acceptance is delegated to the predeclared saved-output gate job.
+- `sms_source_audit-c-adv-audit-20261101` v1, tree `f50b5a0c3bbd`, launched with `--source-tree a09fb20ed34903e9605e7f7e48c26aed055a4da18ae4a41a0d7c8588214b9573 --arms adversarial`; one wait_event subscription. No training/inference in this audit.
+- User's new priority after existing B/C decisions: **fused** Indian transactional false alarms, then clean train-only KD vs no-KD, then further B/C/E/F. Student-only GroundLM FPR 35.92% and SmishX 30.31% are distinct from the rule-layer 0.0883%; no fused result yet. GroundLM design exposure remains in-sample; independent Indian validation stays OPEN. PRs2/3 remain unmerged and unchanged.
+
+# Milestone verification — 2026-11-01: C-adversary
+
+- One full suite invocation for this finished milestone: **834 passed,22 skipped,144 warnings in178.88s**, exit0. Required nice19/taskset0-3/OMP2/MKL2 plus50% CPU quota and85C stop guard. Tctl43.5C before/50.1C after; no thermal interruption. Local Torch missing skips remain explicit; Kaggle synthetic Torch checks passed before training. Full `ruff check .`: **All checks passed!** No code changes after verification.
+## 2026-11-02 — E0 three-seed URL controls declared/implemented, no benchmark outcomes
+
+- URL_CONTROLS_CAL.md predeclares artifact-only phase before code/compute:3charcnn-wide seeds1/2/3, originalPhreshtrain/domain-groupedcal and frozenurl_domain, fullfitdata, original8epochs/batch512/AdamW.002/patience3/AMPfp16/200bytes. No teacher/KD/testprediction or benchmarkmetrics inthisphase. Teacherrecipe/eligibility mustbefixedbeforeteacherfit andbeforeany newtestoutcome.
+- Hypothesis: correctlyseeded, all-six savedcontrols/cal-onlylogits are needed for fairtrain-only KDeligibility. TechnicalGO only ifall6reloadexactly/finitecompleteoriginalcalIDs/no testscoring; no performance/shipmentGO. Found existingrun_unit seeds AFTER construction; wrapper seedsbeforeconstruction, leaves originalURLjobunchanged. Selectedweights/config/scaler/fit-cal-testIDhashes bindbeforelatermetrics. Originalsingle-classurl_temporal unmeasurable unchanged, nofakednegatives.
+- Focusedvalidation hypothesis:3synthetictests pass0skip/error/failure onprivateKaggle,no datasets/models. Two new tests enforceindependentpriorRNG/exactweights/cal-onlyscorecalls/cacheIDs andtest-IDoverlap rejectionbeforeconstruction; existingprivateattachmentbuilder regression. Genericremoteunitdriver sameasM, no laptopmodelwork. ScientificURLmetric gates forfutureteacher/KD mustbespecifiedseparately beforetheirfit; E0exposesnone.
+- Researchonly pinnedApache2ByT5smallcard/config; actualByT5source1198627927bytes/hash isrecordedinURL_TEACHER_RESEARCH.md. No localweightsdownloaded, downstreamURLbenefitUNVERIFIED. HF publish pending. No E0job launched before focusedtests pass. M3isotheractivekernel onoriginalsubscription.
+
+- Focusedjob firstnameurlcal-focus-20261102 wasrejectedbylocallauncher(length21), no remotejob/wait. Correctunit_validation-urlcal-unit-20261102v1/treeb187ea6c8477 emittedGO3tests/0skip/error/failure; originalONEsubscribercomplete, fetchingonce. Addedonlyinputparquet/splitfilehash metadata and changedurl_temporal note toexplicitlyhistorical/notnewlyscored; no model/training/gate changes. NewE0corpusjob stillrequiresverifiedfetchPASS beforelaunch.
+
+- Verifiedfocusedreceipt:unit_validation-urlcal-unit-20261102v1/treeb187ea6c8477498a615f666aa86ec9bfe76e9d65dec8cb0a369874806af9c60e ok92.9s,3passed0skip/error/failure,ONEevent/fetch;metricsSHA9bf4e308c36c7dfc4aad7617d5d07fb3e2b24a7f36a7096e6d76e682a5d88ec0. Ruffallclean. Nowlaunchcal-onlysixcontrols(no teacher/testoutcomes),originalpredeclunchanged.
+
+## 2026-11-02 — E0 cal-only URL controls launched
+
+- url_controls_cal-e0-20261102v1/treeebcc1bb75c6e9668a789928946c7247e66b560305d5e62e38598fe7d675f715b, nojobargs/overrides, privateT4/internet/rakshak-data only. ONEoriginaleventsubscription, no result. Sixfixedcontrols/cal-onlylogits/inputfile+partitionhashes, no testpredictions/protocolmetrics/teacher/KD. Originalartifact-onlyGOunchanged.
+- M3isotheractivekernel/originalwait;max2kernels. All earlierunits/familyjobsfinishedwithoriginaloneevent/fetch. PR12KILLmilestonecomplete/privatearchiveverified; PR11descriptionlinksPR12withoutbranchpush. No merges/mainpush/forcepush. HF publish pending.
+
+## 2026-11-02 — E0 complete, E1/E2 implemented before cal outcomes
+
+- url_controls_cal-e0-20261102v1/treeebcc1bb75c6e9668a789928946c7247e66b560305d5e62e38598fe7d675f715b ok1415.3s, ONEevent/fetch. Firstfetchfailed networkDNS afterpermissioncontextreset; restorednetwork grant, resumeddownloadonce, no statuspoll/relaunch. Six selected weights/cal-logit hashes verified; manifestSHA88b20cd71febccdc1ed81d8c2a9ec0f1b984b9eed9f44c389f357b5bfcc4ac7d. TechnicalartifactGOonly/no newtestoutcomes.
+- E1/E2predecl URL_TEACHER_PLAN.md existedbefore E0calresults read. FixedByT5encoder seed0/eachdataset, no testscoring; cal-onlyteachereligibility at weightedPhresh.0005/.001AP or naturalURLdomainAP, paired1000registered-domainresamples vsmean3E0seeds. GOeligibility only ifallrequiredCI lower>0and>=950validdraws. Freezeeligibility BEFOREoriginalfit-onlyteacher targets/KD3seeds. Actualscientificteacher/KDtestgates separately frozen, no benchmarkselectedretry. Onefixed11hdeadlineperdataset, incompleteaborts.
+- Implemented maskedmean+side128head/sourcehash/encoderkeys-shapes-dtypes-finiteness guards; AMP/gradientcheckpoint/weightedBCE/partial-update-normalization/skipcounts; alloriginalfit/cal/testIDs/sourcearchive binding and exactCPUweightserialization. No E1modelrun yet. No localpretrainedweights downloaded/executed.
+- FocusedpureAPtests2passed1.68s locally onsyntheticfixtures,Tctl53.2Cbefore firstrun (later41.4C), nice19/taskset0-3/OMP2/MKL2/OpenBLAS1. WeightedrankAP matchesofficialsklearnAP withties/zeroweights; fixedclassmass/bootstrap/eligibilityguards. No realURLscoring.
+- Predeclare focusedGPUvalidation4synthetictests GOiff4pass/0skip/error/failure: exactbyteprefix/EOS; tinyT5encoderload/mask/backprop; tinyCUDAteachertraining cal-only/finalpartialupdate/checkpointreload; actualbundledependenciesandeligibility-before-targetguard. No dataset/modelinputs. ExistingM3remains otheractivekernel/originalwait.
+
+### 2026-11-02 — URL teacher validation and fixed Phresh run
+
+- Focused private Kaggle `unit_validation-urlt-unit-20261102` v1, tree
+  `32438d3c6657373927ddb55ccea2c6047ca2792046d84cacd4a1937b69f39368`:
+  **4 passed / 0 skipped / 0 failed**, pytest23.25s, total159.1s. Two earlier
+  synthetic AP tests also passed locally under the prescribed CPU/thermal limits.
+- On continuation the original tool-session handles were missing and no local
+  completion receipt existed. One bounded cached-notification read recovered the
+  exact unit completion; one fetch verified job/git/tree/outcome. No duplicate
+  blocking unit wait or Kaggle status polling. The same bounded read found no M3
+  completion; its original process is missing. Replacement event-subscription
+  authorization requested; M3 continues to count against capacity, not relaunched.
+- After the four checks passed, launched private T4
+  `url_teacher_kd-p1-20261102` **v1**, tree
+  `84d35409ac4ac48138a2a38673bd14efd7682b40808d64a9b80762d3f7e5e64d`,
+  base246324575928 (dirty source snapshot), args
+  `--dataset phreshphish --controls-manifest-sha256 88b20cd71febccdc1ed81d8c2a9ec0f1b984b9eed9f44c389f357b5bfcc4ac7d`.
+  Inputs: private rakshak-data + completed E0 kernel; unique p1 run, one blocking
+  event wait, no result/fetch yet. At most two GPU kernels counting M3.
+- Hypothesis/recipe/unchanged gates are frozen in URL_TEACHER_PLAN.md. Cal-only
+  eligibility precedes original-fit-only KD targets; scientific test/benchmark
+  gates unmeasured. No expert substitution in fusionv1, no held-out/SOTA claim.
+  HF publish pending; independent Indian validation OPEN.
+
+### 2026-11-02 — Fixed URL teacher stops unmeasurable
+
+- `url_teacher_kd-p1-20261102` v1/tree84d35409ac4a completed **error112.8s**;
+  original single event + one verified fetch. Exact error:
+  `FloatingPointError: nonfinite FP32 teacher loss; stop fixed arm`.
+  No selected teacher checkpoint, eligibility JSON, train targets or KD model
+  produced. No completed epoch was logged; number of partial updates is unknown.
+- **Teacher/KD scientific comparison UNMEASURABLE.** Stop the fixed arm, no
+  precision/batch/hyperparameter switch, no secondary teacher run to rescue it.
+  Underlying numerical cause UNVERIFIED. Focused synthetic4PASS was necessary
+  implementation validation, not evidence of real pretrained numerical stability.
+- Continue the existing E0 three-seed control report with original frozen weights;
+  cal reconstruction<=1e-5 and all6thresholds freeze before test scoring, original
+  official975subset statistics/paired-domain draws retained. No new training.
+- New protocol optimization synthetic2PASS1.15s on local synthetic fixtures only,
+  nice19/taskset0-3/OMP2/MKL2/OpenBLAS1, pre-testTctl45.8C; ruff clean. Explicit
+  row-repeat/sklearn and shared-draw comparisons cover ties/zero multiplicities/
+  invalid subsets/three-seed means. No actual URL scores evaluated locally.
+
+### 2026-11-02 — frozen URL control evaluation launched
+
+- Focused `unit_validation-urle-unit-20261102`v1/tree
+  3a0060fa7bdd9763e141cee0ff04db2a903708cebb7783c82259e4a17d51da27:
+  **2PASS0skip**, total93.7s, one event/fetch. Synthetic checkpoint/cal-only
+  restoration/tamper guard and actual sibling-job bundle/threshold ordering pass.
+- `url_controls_eval-e0eval-20261102`v1 launched after those checks, same E0
+  manifest88b20cd71febccdc1ed81d8c2a9ec0f1b984b9eed9f44c389f357b5bfcc4ac7d,
+  private data+completed E0 kernel/T4/internet, one event subscription. Allsix
+  full-cal parity/threshold manifests precede test scoring; official subsets,
+  per-seed endpoints/domain CIs/fullbenchmark/fulltest and temporalNA diagnosis.
+  No teacher/KD model or new training. Results pending; M3 still counted active.
+
+- Private URL archive publisher prepared (not uploaded): exact E0 manifest/source,
+  evaluation tree and failed-teacher tree required; allowlist13files (six original
+  checkpoints, sourcezip, aggregate/manifests/failure JSON), never URL row parquets.
+  Synthetic privacy/hash/symlink2PASS.02s, required CPU/threads pre-testTctl44.4C.
+  Private create and owner/isPrivate/version verification required before claiming
+  publication; HF publish pending. Full milestone suite still NOT run.
+
+### 2026-11-02 — URL control report recovery from unchanged saved scores
+
+- Original `url_controls_eval-e0eval-20261102`v1/tree
+  4fdfe6994123ec28645a3383841f9e251bd27e5e2cacf91235aa3db2bb65a3ec:
+  error478.4s at FINAL temporal-file check, one event/fetch. Exact error:
+  `FileNotFoundError: no split files match ['url_temporal'] under .../splits`.
+  Allsix test-score files and pre-outcome threshold manifest survived. No aggregate
+  metrics.json was emitted. E0 input manifest already lists only url_domain and
+  url_phreshphish split files; the historical temporal narrative is not confirmation
+  that the currently attached frozen data still contains it. Do not create a split.
+- Cache-only recovery predeclared: exact parent tree/failure, manifestSHA
+  54e4fa8f9f1d6128ac31f6515b698d768fa8facf98931b00cb3acfd64bf91509,
+  allsix fixed score hashes, original ordered fit/cal/test IDs and original frozen
+  thresholds must verify. Same1000domain resamples/seed13/official subset report;
+  no model execution, no new targets/fitting/threshold selection. Temporal now
+  **UNMEASURABLE: file absent**, not a falsely reconfirmed single-class result.
+  Original teacher/KD gates stay UNMEASURABLE, unchanged. Any cache mismatch aborts.
+- New cache/source/order/hash/bundle guards synthetic2PASS.69s, CPU-limited with
+  pre-testTctl42.1C, ruff clean. Six score-file SHA values are pinned in the recovery
+  source; hashes only read locally, no URL prediction/metric computation locally.
+
+- First cache recovery `url_controls_recompute-e0stats-20261102`v1/tree
+  3fec836a5feffdd67eba4eef761604a81438acba54546077cb79b60c561052ef
+  error94.9s: adapter passed the top-level manifest where its `controls` mapping
+  was required (`KeyError: phreshphish`), before endpoint report generation.
+  Corrected the mapping; new realistic saved-manifest regression1PASS.68s,
+  nice19/taskset0-3/OMP2/MKL2/OpenBLAS1, Tctl48.9C, preserves allthree original
+  thresholded reports/counts. Scientific gates and scores unchanged.
+- Its ONEfetch downloaded the complete failure files but exited1 because the
+  generic CLI-output error detector matched filename `failed_eval_results.json`.
+  Receipt/job/git/tree/error outcome verified from downloaded JSON manually;
+  no repeat fetch. Recovery artifact renamed `original_eval_results.json` to
+  avoid that filename false positive; launcher/fetch scripts unchanged.
+
+### 2026-11-02 — six frozen URL controls reported; full milestone validation
+
+- Cache-only `url_controls_recompute-e0stats2-20261102`v1/tree
+  17576395e1c2fc76e32d4970c15ca5c180844da3527a40542680e07c6d34b7c2
+  ok435.9s, one event/fetch, allsix original score hashes and threshold bindings.
+  MetricsSHA0093e20c39a8d372f391d1ffaec05be89950f56bd00563f5bbc1141853d8f5ee.
+- Three-seed mean official Phresh AP .443457CI[.323937,.620641] at.05% and
+  .558907CI[.428609,.705899] at.1%; P@R90 .073388[.052072,.183454] and
+  .132927[.076425,.275599]. All975original subsets retained, all1000validdraws
+  at every rate. No stronger-teacher/KD claim: both remain UNMEASURABLE. Original
+  missing temporal remains UNMEASURABLE, never recreated; no new inference.
+- Full milestone validation now predeclared: one full privateKaggle invocation,
+  allcollected(min835), 0failure/error, max18inherited optional skips. No data/model
+  inputs. Include publisher's changed recovery binding and a new missing-temporal
+  regression; original inference job now explicitly reports missingfile status
+  rather than dropping completed metrics. No scoring/training change or rerun.
+
+- Formatted137line URL_THREE_SEED_RESULTS.md ONLY from precomputed aggregateJSON
+  (no local score/model evaluation), all975subsets/allrates/3seeds/fulltest/fullbench/
+  url_domain campaign CIs; all1000valid domain draws. Full-cal logit parity was
+  exactly0 on allsix controls. HANDOFF headline updated, prior historical single-
+  seed figures distinguished. No paired old/new gain claim. Stage15file private
+  archive validated successfully without upload; publication waits for fullsuite.
+
+- Full milestone `unit_validation-url-full-20261102`v1/tree
+  f028f748590f286f03112ac2f710f3e8c077eed42e6a0052f02a3edcc24186c3:
+  **858passed0skipped**,157warnings125.18s (total211.7s), one event/fetch.
+  Includes new publisher recovery-source binding and missing-temporal regression.
+  Ruffallclean. Parent pull/rebase checked unchanged; repo identity confirmed
+  vhmaadhav <vhmaadhav@hotmail.com>. No full suite or model work locally.
+
+- Private archive upload completed; immediate owner GetDataset returned403 during
+  processing, so owner/isPrivate/version verification is still pending. No repeat
+  upload; make one later owner-record read. No public publication requested.
+
+### 2026-11-02 — URL measurement milestone finalized
+
+- One later owner read verified maadhavvh/rakshak-url-e0-20261102 version1,
+  ownermaadhavvh/isPrivate=true,17083574bytes, archive_manifestSHA
+  ced9776473225eba4d48ef68d574d2f017f50b4bfeb1ed01cb66a1f5f3013234. Initial
+  processing403 retained; no re-upload. HF publish pending. Exact15file allowlist,
+  six checkpoints/source/aggregate/failure provenance, no raw URLs/row-score files.
+- Three-seed control measurements retained; stronger-teacher/KD/temporal remain
+  UNMEASURABLE. No external-selected rescue recipe, SOTA or fusedFPR claim.
+  Report/HANDOFF include all rates/seed CIs and limitations; independent Indian
+  validation OPEN. Full858PASS0skip/ruffclean, parent pull/rebase unchanged, identity
+  vhmaadhav confirmed. One milestone own-branch commit; merge order #2→URL, no merge.
