@@ -58,7 +58,7 @@ Not used: Nahapetyan et al. S&P 2024 (no data released to us, pending); Hindi IE
 Coverage is reported in section 3a of this card after each build.
 - **PhishTank, OpenPhish:** all label 1 (no benign side).
 
-`synthetic` is True only for ScamShield `Synthetic_Tier_C` (3,720 rows, all in train). It is False for ScamShield `real_*` IDs, which is the dataset's own naming and not independently verified. It is True for IMC25 user reports. It is unknown (null) for the other SMS sources.
+`synthetic` is True only for ScamShield `Synthetic_Tier_C` (3,720 rows, all in train). It is False for ScamShield `real_*` IDs, which is the dataset's own naming and not independently verified. The loader sets it to **False for IMC25 user reports** (`datasets/loaders.py`, `load_imc25`); the earlier True wording was a documentation error. This source flag reflects the user-report provenance description, not an independent authenticity audit. It is unknown (null) for the other SMS sources.
 
 `eval_ok` marks rows allowed in a test or cal set. It is False for duplicates, known-synthetic rows, augmentation-only sources (anmol, bolewara) and rows in label-conflicting text groups (13 rows). Duplicates are never in any partition.
 

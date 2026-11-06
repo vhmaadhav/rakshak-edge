@@ -7,6 +7,15 @@ GroundLM urgency and ScamShield widening numbers are **in-sample: these rows inf
 design**. Read the design-set register in `docs/GROUNDLM_FPR.md` before making a safety claim.
 Independent Indian held-out validation remains OPEN; SmishX is independent, non-Indian-specific.
 
+C-adversary (`ci/source-adversary-20261101`, train-only, three seeds) passes its recorded gate:
+ScamShield mean F1 **0.7340 → 0.7493**, paired campaign gain **+0.0153 [0.0136, 0.0174]**;
+both other source folds pass the no-regression guard. These are **in-sample for rule-feature
+design**, not independent held-out improvements; no checkpoint is shipped by this harness.
+Every split/seed and external FPR/recall: `docs/SOURCE_ADVERSARY_RESULTS.md`.
+Priority now: frozen **fused** transactional false-alarm audit, then clean train-only KD vs no-KD.
+The student-only 35.92% GroundLM FPR is distinct from the rules/evidence 0.0883%; fused FPR
+is not yet measured. Independent Indian validation remains OPEN.
+
 ## 1. Goal and constraints
 
 - **Project:** offline SMS and URL scam detector on Arm devices, for **Bharat AI-SoC Challenge 2026-27, Problem Statement 3** (on-device cyber safety). Name in the code: Rakshak-Edge.
