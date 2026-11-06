@@ -970,3 +970,50 @@ Kaggle for all compute; no Modal without Maadhav's explicit per-run OK; cloud-cr
   Report/HANDOFF include all rates/seed CIs and limitations; independent Indian
   validation OPEN. Full858PASS0skip/ruffclean, parent pull/rebase unchanged, identity
   vhmaadhav confirmed. One milestone own-branch commit; merge order #2→URL, no merge.
+# Clean KD matched-control preparation — 2026-11-01
+
+- Separate `ci/clean-kd-20261101` based6d4669f, protocol `CLEAN_KD.md` before implementation/compute. Historical0.80–0.82 KD claim remains withdrawn; prior C train-only arms all used KD and cannot stand in for a no-KD comparison. New fixed dual/base hard-label-only control vs train-ID-only KD, all6folds/3seeds, same cal-only stopping/thresholds. Go requires lang_shift KD lower mean-F1 CI above no-KD point mean, with no other frozen-fold loss beyond control CI half-width; paired clustered tests reported everywhere.
+- Existing per-fold seed0 teacher targets are in-sample teacher outputs, explicitly not OOF. No naive cross-fold ensemble (other teachers may have seen this fold's test rows). Optional inner-fold teacher fitting deferred behind minimal clean control and higher-priority P1/current kernels. No new KD training launched; max2 remains B-runtime+hardneg originals.
+
+- Clean KD implementation preserves original train-only membership checks. Only the explicit KD experiment changes teacher routing: control gets no teacher/full BCE, KD requires complete finite teacher coverage; source sampler is ERM for both. Actual history teacher-row counts are asserted (0 vs original train n), saved selected checkpoints include run/arm/seed/bundle/git/teacher-enabled metadata and SHA256. GPU startup synthetic invariant checks missing-teacher loss equals full class-weighted BCE before corpus fitting. Shared source-balanced/DRO default behavior is retained.
+- First focused gate/bundle/train-only membership tests **19 passed,3 skipped in0.66s**, Tctl59.6C; skips are local Torch absence, not a GPU invariant pass. Ruff clean. Added checkpoint-hash recording and finite-CI validation subsequently; final focused rerun follows. No local training/inference and no new GPU launch.
+
+# Clean KD matched-control launch — 2026-11-01
+
+- After the separate parity diagnostic completed, launched **sms_clean_kd-kd1-20261101 v1**, dirty base6d4669f/tree`4d8d927781cd`, T4/internet/private data+teacherlogits. Exact args `--seeds 1 2 3 --epochs 15 --n-boot 1000 --teacher-seed 0`; predeclared hard-label-only no-KD control versus original-train-ID KD, all6folds/3seeds, finite teacher coverage and startup full-BCE invariants required. ONE original blocking event subscription opened; no polling/fetch yet. B same-PTE runtime recovery is the only other active kernel.
+- Final focused rerun **19 passed,3 skipped in0.80s**, pre-test Tctl51.1C, ruff clean. Three local skips are Torch absence, not runtime-invariant success. No teacher ensemble/OOF claim; no historical contaminated Hinglish number reinstated. Gates unchanged, model checkpoints/teacher-enabled provenance saved privately. HF publish pending. No headline update until actual completed comparison.
+
+## 2026-11-01 — clean KD versus no-KD completed: KILL
+
+- Hypothesis/protocol predeclared in CLEAN_KD.md; no gate/epoch/threshold changed.
+  `sms_clean_kd-kd1-20261101`v1,args `--seeds 1 2 3 --epochs 15 --n-boot 1000 --teacher-seed 0`,
+  T4/private data+teacher logits,36fits,ok3108.8s. Original ONE event subscriber
+  and one provenance-matched fetch complete. Dirty snapshot
+  `4d8d927781cdfc90d92b1aad05413ba91b2676160e640e3b1f9b42b648052cb7`
+  on git6d4669f68c194cafdd9d7827e86d0264d34ba9d3. MetricsSHA256
+  `708b0fdc6e7b1646717c0bc572a56105100884c1eaaab6e44b47e8693cc8dcde`.
+- KILL: noKD lang_shift meanF1.405842 CI[.369672,.441243], cleanKD.351977
+  [.318139,.384016], paired delta-.053865 CI[-.069574,-.038291],p.000999.
+  Lower-CI-above-control and no-loss-beyond-CIhalf both fail; other5fold guards pass.
+  ScamShield benefits .715195→.753329,delta+.038134 CI[.035297,.040816], but
+  cannot override the lang gate. All6folds/3seeds/thresholds/externalbothlabel
+  endpoints/checkpoint hashes in CLEAN_KD_RESULTS.md (formatting saved aggregate
+  JSON only, no local inference/resampling). External values are student-only
+  diagnostics, not fused/deployed FPR. Rule design/intervention selection in-sample.
+- Train-only original IDs; no inherited extras; KD complete cached single-teacher
+  targets, not OOF/ensemble. NoKD fullBCE; GPU startup proved loss/gradient and actual
+  history teacher rows0 vs fulltrain forKD. Both matched arms retained privately.
+- Current headline **clean noKD student≈0.41 versus teacher≈0.80**, not contaminated
+  ≈0.81; old claim stays WITHDRAWN. HANDOFF updated. Next user-requested research
+  arm is multilingualbyteCNN+small pretrained multilingual embedding distilled
+  frommmBERT on train-only targets; not implemented/launched yet.
+- Private checkpoint archive uploaded `maadhavvh/rakshak-clean-kd-20261101` with
+  public=False,36hash-listed.pt+modelmanifest/results/aggregate metrics ONLY.
+  Immediate owner GetDataset403 during processing: privacy NOT YET VERIFIED; no
+  reupload. One later owner verification planned. HF publish pending.
+- Publication privacy fixture+gate focused4passed.06s,Tctl46.2C, usernice/affinity/
+  thread limits; Ruffclean. Full suite once at this finished milestone follows.
+
+- Later one owner GetDataset read verified archive `maadhavvh/rakshak-clean-kd-20261101`v1, ownermaadhavvh, **isPrivate=true**,14567242bytes, receiptwork/clean-kd-kaggle-privacy-verification.json; no reupload. HF publish pending.
+
+- Finished milestone full unit suite ONCE: **845passed21skipped144warnings191.10s**; nice19/taskset0-3/OMP2/MKL2/50%CPUquota/85Cstop, Tctl49.5→57.8C. Torch-dependent checks skip locally, actual loss/coverage invariants ran on Kaggle. Ruff all clean; no code changes after the full invocation. No local real model work.
