@@ -1,3 +1,146 @@
+# Completed C experiment — 2026-11-01
+
+- **Final C milestone verification:** ONE complete unit-suite invocation exited0:
+  **830 passed,21 skipped,144 warnings in1376.39 s (0:22:56)**. Required nice19,
+  taskset0-3, OMP2/MKL2; temporary CPU quota15% then25%, thermal guard85 C.
+  Pre-run Tctl38.2 C, final38.4 C; no thermal interrupt. Torch is absent locally;
+  source-gradient/KD invariants and54 actual fits succeeded on Kaggle. Full `ruff check .`:
+  **All checks passed!** No further source-code changes after these checks.
+  Git fetch completed; base2463245 matches the reviewed branch (0ahead/0behind).
+  Repo-local identity checked as `vhmaadhav <vhmaadhav@hotmail.com>`; no override.
+  Prepare one C guard/report milestone commit and a separate PR into main; no merge.
+
+- Milestone full unit suite remains on its single invocation. Started with15% temporary CPU quota; after sustained38 C and confirmed near-continuous CFS throttling, raised only that scope to25% (same nice/affinity/thread limits and85 C guard). The monitor's printed15% label denotes its initial configuration; final verification records both actual quotas. No restart or new test run.
+
+- `sms_source_balance-c-clean-20261101` **v1**, tree
+  `62a788d27aa9db20b84964f00b8208d3025c3be8f5128352d5c76c53b5ae589e`, base2463245 dirty:
+  **ok in5,316.6 s**, six frozen splits,54 successful fit units. Args `--seeds 1 2 3
+  --epochs 15 --n-boot 1000 --teacher-seed 0`; private data + teacher-logit attachments,
+  T4/internet. Original ONE event waiter completed and ONE fetch verified. No skipped folds.
+- `sms_source_audit-c-audit-20261101` **v1**, tree
+  `e83b49d3e41ca29a849b1c0247bfe95ed9b140e918f565a6f9fa3c8bd5166239`: **ok in74.1 s**,
+  args `--source-tree 62a788d27aa9db20b84964f00b8208d3025c3be8f5128352d5c76c53b5ae589e`.
+  Private data + corrected kernel attachment. ONE event/fetch; both decisions **kill**.
+  Source metrics SHA256 `db3811b2ede62d577e3dad40684276d0ec0580d231d0505cafe3d5d54fb46538`.
+- ScamShield mean F1: ERM0.750254; balanced0.743732, paired delta−0.006522
+  CI[−0.007940,−0.005173]; DRO0.739853, delta−0.010402 CI[−0.012204,−0.008830].
+  Both primary gates fail; other source-fold loss guards pass. Do not cherry-pick temporal gains.
+  Complete per-split/per-seed/threshold/external results: `docs/SOURCE_BALANCE_RESULTS.md`.
+- Membership audit **confirms** inherited KD contamination: campaign4,147 exact test-copy
+  extras; ScamShield2,122 exact test copies,11,137 test-campaign extras,9,707 held-source rows.
+  Counts overlap; all original train/test campaign checks zero except temporal3 (unchanged).
+  Historical ~0.80 Hinglish KD claim withdrawn as clean evidence; fresh train-only ERM mean0.4000.
+- Implemented default train-only KD plus rejection of `--kd-unlabeled`; programmatic
+  `build_training_pool` also refuses extras. Legacy broad builder retained for membership audits.
+  Guard/membership tests **14 passed in0.82 s**, pre-test Tctl41.0 C; changed-file ruff clean.
+  No new training/eval needed: corrected remote experiment already used exactly this train-only pool.
+- GroundLM model FPR is poor: ERM seed1 at cal-1%-FPR threshold407/1,133=35.92%,
+  cluster CI[21.80%,48.54%]; SmishX fraud267/881=30.31% [25.81%,34.67%]. All seeds reported,
+  no external threshold tuning. GroundLM/rule-feature design is **in-sample**; SmishX is
+  **independent, non-Indian-specific** for corrected models. No clean held-out improvement claim.
+  Independent Indian validation remains OPEN; PhreshPhish is not applicable to SMS-only changes.
+
+# Current C checkpoint — 2026-11-01
+
+- Initial broad-pool run cancelled by user, server acknowledged, single listener retired;
+  partial artifacts quarantined without inspecting model outcomes.
+- Corrected train-only `sms_source_balance-c-clean-20261101` v1/tree `62a788d27aa9` completed
+  ok; saved-output audit also ok. Both interventions **kill**. Train-only KD guard and complete
+  negative results are prepared for their own milestone PR; full suite830passed/21skipped and ruff clean.
+
+# Run updates — 2026-11-01: C (chronological)
+
+- Acceptance completeness check now requires exactly all three frozen source folds (UCI, Mishra–Soni, ScamShield), whose canonical names were checked in `datasets/splits.py`/`loaders.py`. Missing-fold fixture included: **2 passed in 0.01 s**, Tctl36.2 C, ruff clean. Final locally prepared audit tree `e83b49d3e41c`; still not launched, no inference/gate changes.
+
+- Static frozen-split review caught a pre-launch acceptance-helper naming mismatch: partitions are `source_holdout:holdout_scamshield` (and corresponding `holdout_*` sources), not the abbreviated name. Corrected helper/fixtures, **2 passed in 0.01 s**, Tctl36.2 C; ruff/diff clean. Rebuilt saved-output audit locally only (tree `6c165e1fdc0e`), not launched. Running corrected C training bundle/thresholds unchanged.
+
+- Before outcomes: added a saved-output `sms_source_audit` acceptance check. It requires a successful exact source tree, all seeds1/2/3 for every run, both paired arms, positive ScamShield lower CI and the predeclared other-fold CI-half-width limit. No training/inference or gate changes. Synthetic boundary/missing-result checks **2 passed in 0.01 s**, pre-test Tctl36.0 C; changed-file ruff clean. Run only after corrected C finishes; retain the original subscription.
+
+- C development checks: **2 passed, 3 skipped** (local torch absent; synthetic torch gradient/KD
+  invariants run at job start on Kaggle before training). Changed-file ruff clean. Tctl 42.1 C.
+  Campaign-fitted models also report external GroundLM/SmishX FPR/recall at cal-frozen thresholds;
+  GroundLM/rules design exposure remains in-sample, SmishX independent non-Indian-specific.
+  PhreshPhish is a URL protocol and is not an endpoint for this SMS-only intervention.
+- Launched privately: `sms_source_balance-c-src-20261101` **version 1**, base `2463245`
+  dirty tree `8a3a0189e52a`. Single completion subscriber open, no polling; results pending.
+- Additional synthetic statistical check distinguishes mean F1 over the three seeds from F1
+  of a majority vote: **3 passed, 3 skipped in 0.08 s** total focused checks, Tctl 40.6 C.
+  The three torch-dependent checks remain skipped locally; runtime invariants are in the Kaggle job.
+- User confirmed cancellation; **one** cancellation-verification API/CLI read returned
+  `KernelWorkerStatus.CANCEL_ACKNOWLEDGED` (no polling loop). C's original single waiter is
+  retired; the cancelled container cannot send its callback. One fetch attempt archives or
+  reports missing partial outputs; those model outcomes are quarantined and not used.
+  Aggregate pool-audit fixtures: **2 passed in 0.08 s**, Tctl 39.1 C, ruff clean.
+- Corrected run planned: `sms_source_balance --run-name c-clean-20261101 --gpu t4 --internet
+  --datasets maadhavvh/rakshak-data maadhavvh/rakshak-teacher-logits
+  --job-args="--seeds 1 2 3 --epochs 15 --n-boot 1000 --teacher-seed 0"`.
+  Frozen train IDs only for all arms, no unlabeled extras; data/model hyperparameters otherwise
+  fixed. Campaign, source_holdout, lang_shift, temporal and external endpoints unchanged.
+- Cancellation archive: fetch succeeded once, with partial `results.json` status `running`
+  from the last checkpoint (2,274.3 s), **not** a successful completion. Tree
+  `8a3a0189e52afaa87a922f829eeec3734c72f2ef38fa2dc7fd678eff7612d866`; server cancellation was
+  separately acknowledged. Partial predictions/metrics remain private and uninspected/quarantined.
+  Exactly one local old-run waiter was terminated; B's listener was preserved.
+- Replacement launched: `sms_source_balance-c-clean-20261101` **version 1**, dirty base
+  `2463245`, tree `62a788d27aa9`. Same declared seeds/hyperparameters/attachments; train-only
+  pool correction + pre-training membership audit. One `wait_event --timeout 43200` opened.
+  B + this replacement are the only active GPU kernels. No model results yet.
+- The quarantined run's log was queried only for the exact startup test marker:
+  `source objective synthetic torch invariants passed`. It confirms the remote source-loss
+  gradient and KD mean-equivalence checks passed before training. No model outcome was read.
+
+
+# Session log — 2026-11-01: C protocol correction before inspecting model outcomes
+
+- Code review found that inherited `sms_teacher.dump_transfer` scores **every corpus row outside
+  test IDs**; `build_pool(... include_unlabeled=True)` adds all those extra rows to KD training.
+  Because `sms.parquet` retains raw duplicates and campaign-excluded rows, ID-only exclusion
+  can reintroduce test copies/campaign neighbours and external-overlap removals. Actual counts
+  are UNVERIFIED until Kaggle membership audit; no model outcomes were inspected for this decision.
+- First C run `sms_source_balance-c-src-20261101` v1/tree `8a3a0189e52a` is **protocol-invalid
+  for the source-generalization go gate**. Cancellation requested, not yet achieved: browser
+  controls are disabled; installed CLI exposes no cancel command/session-ID resolution. The
+  official SDK supports cancellation only with a known true session ID; no ID is guessed.
+  Its single event waiter remains open. User asked asynchronously to cancel or let it finish.
+- **Corrected predeclaration:** all three ERM/balanced/DRO arms use exactly each run's original
+  training IDs with their matched teacher logits (`include_unlabeled=False`); split files and
+  external sets unchanged. Historical ~.75 is a reference, not an assumed reproduction; the
+  paired control is fresh train-only ERM. Same three seeds, hyperparameters and go/kill gates.
+- New job audits inherited extra-row membership (exact test/cal copies, test campaigns, external
+  exact overlap, held-out source) on Kaggle before training and writes only aggregate counts.
+  Go for protocol: train positions equal frozen train positions, no extra KD rows. Kill any
+  source-generalization claim if this invariant fails. No outcome-driven sampling/threshold tune.
+  Replacement run will use a new name only after one GPU slot is confirmed free.
+
+# Session log — 2026-11-01: C scope clarification before results
+
+- Source_holdout is the frozen split name, not an end-to-end independence guarantee:
+  **in-sample for rule-feature design**, because ScamShield test rows informed those rules.
+  Concurrent ERM controls use the identical frozen features. Report paired split changes
+  with that caveat; no clean independent held-out improvement claim. No test/cal labels
+  enter training pools, and cal-only selection/thresholds remain unchanged.
+
+# Session log — 2026-11-01: C source-intervention predeclaration
+
+- Isolated branch `ci/source-balance-20261101` from `2463245`; PR #2/main untouched.
+- Hypothesis: equal training-source sampling, and a second balanced+group-DRO arm, lift
+  dual-base KD student ScamShield-holdout F1 (~0.75; teacher ~0.87) without harming other folds.
+- **Go:** paired campaign-clustered 95% CI for ScamShield mean F1 improvement excludes zero;
+  no other source-holdout fold loses more than its ERM CI half-width. Otherwise withhold
+  an improvement claim/kill deployment. Three fixed seeds 1/2/3 per arm; report all folds and
+  campaign/lang_shift/temporal. Campaign CI is conditional on those three training seeds.
+- Controls: ERM, balanced replacement sampling at identical update count, and balanced+group-DRO
+  (exponentiated group weights eta=0.01). Same dual-base, KD alpha .7 / T=2, AdamW lr .002 /
+  weight decay .0001, max 15 epochs, patience 3 by cal PR-AUC. Cal-only thresholds; no test tuning.
+  Group labels are training sources, not held-out-source outcomes. Teacher files matched to each
+  run, hash/membership checked; unlabeled soft targets retain masked labels.
+- Primary research: [Sagawa et al., group DRO](https://arxiv.org/abs/1911.08731), which explicitly
+  warns that regularization/early stopping matters; no gain is assumed. This is a source-group
+  adaptation of the method, not an exact reproduction. Runtime/result UNVERIFIED before Kaggle.
+- Planned private job `sms_source_balance --run-name c-src-20261101 --gpu t4 --internet
+  --datasets maadhavvh/rakshak-data maadhavvh/rakshak-teacher-logits
+  --job-args="--seeds 1 2 3 --epochs 15 --n-boot 1000 --teacher-seed 0"`.
+
 # Session log — 2026-11-01: review findings A
 
 - Branch scope: reviewed commits are on `sachin/handoff-tasks-1-2`; `main` is `20ea2b0`.

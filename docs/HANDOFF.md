@@ -98,6 +98,35 @@ Caveat: the shipped checkpoint in HF is the scamshield-holdout run (last kept by
 
 | Model | Campaign F1 | lang_shift F1 | temporal F1 |
 |---|---|---|---|
+| no-KD dual-base, seed 1 | 0.975 | **0.356** (fails Hinglish) | 0.903 |
+| Historical KD dual-base, seed 1 (artifact exists; contaminated protocol) | 0.977 | 0.795 (seeds 2, 3: 0.816, 0.804) | 0.909 |
+
+**Withdraw the claim that KD fixes Hinglish generalization.** The inherited unlabeled transfer
+pool reintroduced excluded rows: campaign had 4,147 exact test copies; the ScamShield fold had
+2,122 exact test copies and 9,707 held-out-source rows. Historical KD numbers cannot establish
+disjoint generalization or independent external validation. Do not promote that artifact from
+these metrics. The historical export selected the campaign run's seed1 by cal PR-AUC.
+
+Corrected train-only KD, three seeds1/2/3 (mean F1; full campaign CIs, every source fold and
+per-seed external FPR/recall in [SOURCE_BALANCE_RESULTS.md](SOURCE_BALANCE_RESULTS.md)):
+
+| Arm | Campaign F1 | lang_shift F1 | temporal F1 | ScamShield source_holdout F1 |
+|---|---:|---:|---:|---:|
+| ERM control | 0.9753 | **0.4000** | 0.8513 | 0.7503 |
+| Source-balanced (kill) | 0.9735 | 0.3367 | 0.8875 | 0.7437 |
+| Balanced + group-DRO (kill) | 0.9727 | 0.4214 | 0.8946 | 0.7399 |
+
+Both interventions fail the predeclared ScamShield improvement gate (paired delta CIs wholly
+negative). Keep the train-only guard, not an intervention or a new deployment artifact.
+These comparisons are **in-sample for rule-feature design**. Temporal retains three original
+train/test campaign overlaps and only 77 positives; its split is unchanged. Language tagging
+still misses Hinglish (about 51% agreement on ScamShield Hinglish rows).
+
+At the cal-1%-FPR threshold, corrected ERM seed1 has GroundLM FPR 407/1,133 =35.92%
+[21.80%,48.54%], recall69/91 =75.82% [61.02%,87.40%] (**in-sample for rule-feature design**).
+SmishX fraud FPR267/881 =30.31% [25.81%,34.67%], recall119/226 =52.65%
+[43.71%,62.72%] (**independent, non-Indian-specific**). All seeds/arms/thresholds are in the
+report; these are negative external results, not a low-FPR deployment claim.
 | Clean no-KD dual-base, mean seeds1/2/3 | 0.9744 | **0.4058** [0.3697,0.4412] | 0.8656 |
 | Clean KD dual-base, mean seeds1/2/3 (KILL) | 0.9748 | **0.3520** [0.3181,0.3840] | 0.8696 |
 
@@ -169,6 +198,15 @@ reference FPR gate at both thresholds; rules-only recall is weak. Widening adds 
 SmishX fraud warning (paired +0.4425 pp, CI [0, 1.4360] pp, p=0.5485); no independent gain
 claim. Model-side GroundLM FPR and independent Indian held-out validation remain OPEN.
 
+**Not completed:** GroundLM FPR for all retained/teacher models (corrected train-only student
+measured above, fails the reference gate); verified `llama_export` output; Pi 5 benchmarks;
+Android app; independent Indian validation.
+
+## 6. What failed and why
+
+- **Hinglish generalization remains unresolved.** Train-only KD ERM mean F1 is0.4000;
+  the historical ~0.80 improvement used a contaminated unlabeled pool. Source-balanced/DRO
+  do not meet the primary ScamShield gate. Never add raw transfer extras to training.
 **Not completed:** model-side GroundLM FPR; verified `llama_export` output; Pi 5 benchmarks; Android app.
 
 ## 6. What failed and why

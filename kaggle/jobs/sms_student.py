@@ -41,8 +41,8 @@ Flags go through ``kaggle/launch.sh sms_student --job-args="..."``:
                              the run's test ids must not appear in it.
   --teacher-seed INT         teacher seed of the transfer files to use (default 0)
   --kd-unlabeled / --no-kd-unlabeled
-                             add the transfer file's unlabeled rows to training, with the KD term
-                             only (default on; needs --teacher-logits-dir)
+                             deprecated unsafe pool option; default off, --kd-unlabeled is refused.
+                             KD uses only frozen train IDs (see docs/SOURCE_BALANCE.md).
   --kd-alpha FLOAT           distillation weight alpha (default 0.7): labelled rows get
                              (1-alpha) BCE + alpha T^2 KL(teacher || student)
   --kd-temp FLOAT            distillation temperature T (default 2.0)
@@ -84,7 +84,7 @@ from rakshak.eval.protocol import evaluate_scores, headline
 from rakshak.eval.robustness import ATTACK_SEEDS, robustness_report
 from rakshak.models.charcnn import CONFIGS
 from rakshak.models.distill import (
-    build_pool,
+    build_training_pool,
     find_transfer_file,
     load_transfer,
     resolve_teacher_dir,
@@ -129,7 +129,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--adv-aug", type=float, default=0.0)
     p.add_argument("--teacher-logits-dir", default=None)
     p.add_argument("--teacher-seed", type=int, default=0)
-    p.add_argument("--kd-unlabeled", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--kd-unlabeled", action=argparse.BooleanOptionalAction, default=False)
     p.add_argument("--kd-alpha", type=float, default=0.7)
     p.add_argument("--kd-temp", type=float, default=2.0)
     p.add_argument("--no-rules", action="store_true")
@@ -143,6 +143,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--max-robust-pos", type=int, default=None)
     p.add_argument("--latency-n", type=int, default=1000)
     args = p.parse_args(argv or [])
+    if args.kd_unlabeled:
+        p.error("--kd-unlabeled is disabled: the broad transfer pool reintroduces excluded rows; "
+                "KD training uses frozen train IDs only")
     if not 0.0 <= args.adv_aug <= 1.0:
         p.error("--adv-aug must be in [0, 1]")
     if not 0.0 <= args.kd_alpha <= 1.0:
@@ -240,8 +243,8 @@ def _checkpoint(ctx, root, splits: dict, student: dict) -> None:
 def _build_run(run_, sms_texts: list[str], full: Featurized, labels, ids, sms,
                teacher_dir, args, cluster_col: str | None) -> RunData:
     """One run's data. Without a teacher folder the training pool is the run's train rows. With
-    one, the pool is the labelled train rows (with teacher logits from this run's own transfer
-    file) plus, when --kd-unlabeled, that file's unlabeled rows (KD term only)."""
+    one, only the labelled frozen train rows receive teacher logits. The inherited extra-row
+    pool is disabled because ID exclusion alone did not prevent evaluation contamination."""
     te = run_.test
     if teacher_dir is None:
         train_pos, y_train, teacher, pool_info = (run_.train,
@@ -250,8 +253,8 @@ def _build_run(run_, sms_texts: list[str], full: Featurized, labels, ids, sms,
     else:
         tfile = find_transfer_file(teacher_dir, run_.name, args.teacher_seed)
         entry = verify_manifest(teacher_dir, run_.name, tfile)
-        pool = build_pool(run_, ids, labels, load_transfer(tfile),
-                          include_unlabeled=args.kd_unlabeled)
+        pool = build_training_pool(run_, ids, labels, load_transfer(tfile),
+                                   include_unlabeled=args.kd_unlabeled)
         train_pos, y_train, teacher = pool.positions, pool.labels, pool.teacher
         pool_info = {"file": tfile.name, "manifest_sha256": (entry or {}).get("sha256"),
                      **pool.stats()}
