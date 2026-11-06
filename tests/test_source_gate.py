@@ -41,3 +41,16 @@ def test_incomplete_or_nonfinite_result_cannot_receive_a_decision():
     data["comparisons"]["source_holdout:holdout_scamshield"]["dro"]["delta_ci95"][0] = None
     with pytest.raises(ValueError, match="finite paired intervals"):
         source_gate(data)
+
+
+def test_one_predeclared_intervention_uses_the_same_frozen_gates():
+    data = fixture()
+    for name in data["runs"]:
+        block = data["runs"][name]["arms"]
+        block["adversarial"] = block.pop("balanced")
+        del block["dro"]
+        comps = data["comparisons"][name]
+        data["comparisons"][name] = {"adversarial": comps["balanced"]}
+    assert source_gate(data, arms=("adversarial",))["arms"]["adversarial"]["decision"] == "go"
+    with pytest.raises(ValueError, match="non-control"):
+        source_gate(data, arms=("erm",))

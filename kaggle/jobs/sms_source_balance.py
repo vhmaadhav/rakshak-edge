@@ -33,7 +33,7 @@ from rakshak.models.student import ModelSpec, TrainConfig, predict_scores, train
 ARMS = ("erm", "balanced", "dro")
 
 
-def run(ctx):
+def run(ctx, *, arms=ARMS, method_reference=None):
     import torch
 
     p = argparse.ArgumentParser()
@@ -96,13 +96,13 @@ def run(ctx):
     external_keys = {" ".join(D.canon_text(t).lower().split())
                      for frame, _ in external.values() for t in frame.text}
     units, results, comparisons, skipped = Units(ctx), {}, {}, {}
-    config = {"args": vars(args), "model": asdict(spec), "env": env_report(),
+    config = {"args": vars(args), "arms": list(arms), "model": asdict(spec), "env": env_report(),
               "criterion": ("positive ScamShield paired mean-F1 CI; other folds lose "
                             "<= baseline CI half-width"),
               "source_groups": "frozen train IDs only; no additional unlabeled transfer rows",
               "label_endpoint": "legacy spam-inclusive label_binary",
               "selection": "early-stop cal PR-AUC; thresholds cal only; no test selection",
-              "reference": "https://arxiv.org/abs/1911.08731"}
+              "reference": method_reference or "https://arxiv.org/abs/1911.08731"}
 
     def fit(run_, train, y, teacher, sources, arm, seed):
         cfg = TrainConfig(seed=seed, epochs=args.epochs, source_strategy=arm)
@@ -173,7 +173,7 @@ def run(ctx):
             "teacher_sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "arms": {},
         }
         preds = {}
-        for arm in ARMS:
+        for arm in arms:
             preds[arm] = []
             results[run_.name]["arms"][arm] = {}
             for seed in args.seeds:
@@ -186,7 +186,7 @@ def run(ctx):
                 write_metrics("metrics.json", {"config": config, "runs": results,
                                                 "comparisons": comparisons, "skipped": skipped})
         comparisons[run_.name] = {}
-        for arm in ARMS[1:]:
+        for arm in arms[1:]:
             if len(preds[arm]) == len(preds["erm"]) == 3:
                 comparisons[run_.name][arm] = paired_seed_f1(
                     labels[run_.test], preds[arm], preds["erm"],

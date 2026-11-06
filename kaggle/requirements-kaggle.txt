@@ -28,3 +28,6 @@ protobuf==7.36.2
 # (2026-10-09). fasttext is not pinned: no cp313 wheel exists (see sms_student.py).
 onnx==1.23.2
 onnxruntime==1.31.0
+
+# Focused synthetic remote validation.
+pytest==9.2.0

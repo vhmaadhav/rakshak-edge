@@ -62,6 +62,7 @@ TOPIC_FILE = CONFIG_DIR / 'ntfy_topic'
 PINS_FILE = KAGGLE / 'requirements-kaggle.txt'
 PACKAGE_DIR = 'src/rakshak'
 SHARED_FILE = 'kaggle/jobs/_common.py'
+JOB_DEPENDENCIES = {'sms_source_adversary': ('kaggle/jobs/sms_source_balance.py',)}
 JOB_RE = re.compile(r'[a-z][a-z0-9_-]*')
 DATASET_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*')
 TOPIC_RE = re.compile(r'[A-Za-z0-9_-]{8,64}')
@@ -408,8 +409,24 @@ def bundle_names(job: str) -> list[str]:
     job_rel = f'kaggle/jobs/{job}.py'
     if not (REPO / job_rel).is_file():
         sys.exit(f'build: {job_rel} does not exist; write the job file first. Nothing was written.')
+    sibling_jobs = {'url_controls_recompute': ['kaggle/jobs/url_student.py',
+                         'kaggle/jobs/url_controls_cal.py', 'kaggle/jobs/url_controls_eval.py',
+                         'kaggle/jobs/url_teacher_kd.py'],
+                    'url_controls_cal': ['kaggle/jobs/url_student.py'],
+                    'url_controls_eval': ['kaggle/jobs/url_student.py',
+                                          'kaggle/jobs/url_controls_cal.py',
+                                          'kaggle/jobs/url_teacher_kd.py'],
+                    'url_teacher_kd': ['kaggle/jobs/url_student.py',
+                                       'kaggle/jobs/url_controls_cal.py']}
+    validation_paths = (['tests', 'kaggle/jobs', 'kaggle/build_kernel.py',
+                         'kaggle/requirements-kaggle.txt', 'kaggle/test_selection.json',
+                         'kaggle/publish_url_e0.py',
+                         'kaggle/wait_event.py', 'kaggle/launch.sh', 'kaggle/wait_event.sh',
+                         'kaggle/fetch.sh', 'colab', 'pyproject.toml']
+                        if job == 'unit_validation' else [])
     listed = git('ls-files', '-z', '--cached', '--others', '--exclude-standard', '--',
-                 PACKAGE_DIR, SHARED_FILE, job_rel)
+                 PACKAGE_DIR, SHARED_FILE, job_rel, *JOB_DEPENDENCIES.get(job, ()),
+                 *sibling_jobs.get(job, []), *validation_paths)
     names = set()
     for rel in listed.split('\0'):
         if not rel or SKIP_PARTS & set(Path(rel).parts) or rel.endswith('.pyc'):
@@ -528,7 +545,7 @@ def main(argv: list[str] | None = None) -> None:
     job_argv = shlex.split(args.job_args)
     names = bundle_names(job)
     dirty = git('status', '--porcelain', '--untracked-files=normal', '--', PACKAGE_DIR, SHARED_FILE,
-                f'kaggle/jobs/{job}.py').strip()
+                f'kaggle/jobs/{job}.py', *JOB_DEPENDENCIES.get(job, ())).strip()
     if dirty and args.require_clean:
         sys.exit('build: the bundled paths have uncommitted or untracked changes '
                  '(--require-clean):\n' + dirty)
