@@ -155,6 +155,13 @@ def _risk(evidence: list[Evidence], scam_state: str) -> Risk:
         return Risk.HIGH
     if top >= 0.6:
         return Risk.MEDIUM
+    # ``urgency`` is the only generic, context-free type: it fires on "I am leaving early", "बहुत
+    # जल्दी", "pay your bill now". It is deliberately weak (weight 0.4) and must not on its own
+    # escalate a message the fusion layer has not called suspicious. This rule was designed
+    # using GroundLM outcomes; its historical FPR is in-sample. Denominator-specific counts
+    # and the frozen-rule audit are in docs/GROUNDLM_FPR.md, not duplicated in production code.
+    if evidence and all(e.type == "urgency" for e in evidence):
+        return Risk.UNCERTAIN if scam_state == "scam" else Risk.LOW
     if scam_state == "scam" and evidence:
         return Risk.MEDIUM
     if scam_state == "uncertain":

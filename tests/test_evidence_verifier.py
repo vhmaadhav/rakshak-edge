@@ -44,6 +44,32 @@ def test_uncertain_without_evidence_stays_uncertain():
     assert Action.VERIFY_INDEPENDENTLY in pkg.allowed_actions
 
 
+def test_bare_urgency_does_not_escalate_a_legitimate_message():
+    """``urgency`` is generic and fires on ordinary conversation ("I am leaving early", "बहुत
+    जल्दी"). On its own it must not set a verdict, or legitimate Indian transactional SMS get
+    flagged. GroundLM informed this rule's design, so these examples are regression fixtures,
+    not independent safety evidence (docs/GROUNDLM_FPR.md)."""
+    pkg = package_for("I am leaving early for home, very jaldi today", state="benign")
+    assert [e.type for e in pkg.evidence] == ["urgency"]
+    assert pkg.risk is Risk.LOW
+
+
+def test_bare_urgency_with_fusion_scam_state_still_warns():
+    """The downgrade must not override fusion: if fusion says scam, bare urgency is UNCERTAIN."""
+    pkg = package_for("I am leaving early for home, very jaldi today", state="scam")
+    assert [e.type for e in pkg.evidence] == ["urgency"]
+    assert pkg.risk is Risk.UNCERTAIN
+
+
+def test_urgency_alongside_a_real_type_still_escalates():
+    """Only *bare* urgency is downgraded. Urgency next to a specific type keeps that type's risk."""
+    pkg = package_for("Turant KYC verify karo warna account block ho jayega", state="uncertain")
+    types = {e.type for e in pkg.evidence}
+    assert "urgency" in types
+    assert types - {"urgency"}, "expected at least one specific evidence type"
+    assert pkg.risk in {Risk.MEDIUM, Risk.HIGH}
+
+
 def test_invalid_scam_state_rejected():
     with pytest.raises(ValueError):
         build_package(canonicalize(LOW_TEXT), [], "maybe")
@@ -175,6 +201,27 @@ def test_template_explanation_passes_verifier(text, state, lang):
     res = verify(json.dumps(out, ensure_ascii=False), pkg)
     assert res.ok, (out, res.reasons)
     assert len(out["summary"]) <= 280
+
+
+@pytest.mark.parametrize("lang", ["en", "hinglish"])
+def test_low_risk_summary_does_not_reassure_the_user(lang):
+    """LOW means "the rules found nothing", not "the message is safe".
+
+    On the campaign test split 83.8% of labelled scams produce no evidence at all, and this
+    string is what a user is shown for every one of them (docs/E2E_DETECTION.md). Asserting on
+    the wording is deliberate: a reassurance here is the worst failure mode a scam detector can
+    have, so it must not be reintroduced as a "friendlier" edit.
+    """
+    pkg = package_for(LOW_TEXT, state="benign")
+    assert pkg.risk is Risk.LOW
+    summary = template_explanation(pkg, lang=lang)["summary"].lower()
+    # It must say the check was limited...
+    assert "no known scam pattern" in summary or "jaana-pehchana scam pattern" in summary
+    # ...and it must not claim the message is fine.
+    for reassurance in ("no scam signals", "koi scam sanket nahi", "is safe", "safe hai"):
+        assert reassurance not in summary, (reassurance, summary)
+    # The caution stays.
+    assert "otp" in summary
 
 
 # --- prompts -------------------------------------------------------------------

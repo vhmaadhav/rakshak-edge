@@ -24,6 +24,11 @@ from typing import Any
 from rakshak.evidence import Action, EvidencePackage, Risk, choose_action
 from rakshak.nids.evidence import NETWORK_DOMAIN, NetAction
 
+# Deliberately looser than the prompt tells the model. The prompt asks for "at most 200
+# characters" (rakshak.prompts, POINTS_SYSTEM) while this accepts 280, and MAX_POINT is 160 in both.
+# Instructing conservatively and verifying generously avoids throwing away a sound explanation for
+# a length overrun the user would not notice; the limit exists to stop a rambling output, not to
+# enforce the exact number in the instructions. Do not "fix" the mismatch by tightening this.
 MAX_SUMMARY = 280
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
@@ -235,7 +240,16 @@ _SAFE_TEXT = {
             "Could not confirm this. "
             "Verify through the official app or the number on your card."
         ),
-        "low": "No scam signals were found by the rules. Stay cautious with unexpected requests.",
+        # LOW means the rules found nothing, NOT that the message is safe: on the campaign test
+        # split 83.8% of labelled scams produce no evidence at all, and this string is what the
+        # user sees for every one of them. The old wording ("No scam signals were found by the
+        # rules") was accurate about the mechanism but read as a clean bill of health, which is
+        # the worst failure mode a scam detector can have. It now states the limit of what was
+        # checked and keeps the caution. Do not weaken this back into a reassurance.
+        "low": (
+            "These checks found no known scam pattern, which does not make the message safe. "
+            "Never share an OTP, PIN or password, and verify unexpected requests yourself."
+        ),
     },
     "hinglish": {
         "high": (
@@ -244,7 +258,12 @@ _SAFE_TEXT = {
         ),
         "medium": "Action lene se pehle ise khud verify karein. OTP ya PIN share na karein.",
         "uncertain": "Ise confirm nahi kar paye. Official app ya card ke number se verify karein.",
-        "low": "Rules ne koi scam sanket nahi paaya. Anjaan requests par dhyan rakhein.",
+        # Same reasoning as the English LOW string above.
+        "low": (
+            "In jaanch mein koi jaana-pehchana scam pattern nahi mila, lekin isse message safe "
+            "nahi hota. OTP, PIN ya password kabhi share na karein, aur anjaan requests khud "
+            "verify karein."
+        ),
     },
 }
 

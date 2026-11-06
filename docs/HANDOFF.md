@@ -1,6 +1,11 @@
 # Handoff: Rakshak-Edge (for Sachin)
 
-Last updated 2026-10-31. Owner until now: Maadhav (`vhmaadhav`). Start here, then `docs/STATUS.md` (session log) and `docs/CONTEXT.md` (decisions).
+Last updated 2026-11-01. Owner until now: Maadhav (`vhmaadhav`). Start here, then `docs/STATUS.md` (session log) and `docs/CONTEXT.md` (decisions).
+
+Review fixes are on `sachin/handoff-tasks-1-2`, prepared for one PR into main. Do not push main.
+GroundLM urgency and ScamShield widening numbers are **in-sample: these rows informed rule
+design**. Read the design-set register in `docs/GROUNDLM_FPR.md` before making a safety claim.
+Independent Indian held-out validation remains OPEN; SmishX is independent, non-Indian-specific.
 
 ## 1. Goal and constraints
 
@@ -114,11 +119,34 @@ KD fixes the Hinglish collapse (lang_shift F1 0.36 to 0.80) with no campaign los
 
 **ELA v2 (`llama_ela_eval`, unsloth Llama-3.2-1B-Instruct fp16, 300 items)**
 
-- Prompt injection (150 paired): free-form generation 35/150 harmful action flips; slot arm 0/150; rank arm 0/150.
-- Slot arm: JSON parse 0.93; verifier pass 0.91; unsupported-claim rate 0; per-point lexicon pass 28% English, 60% Hinglish. The English result is weak.
-- **Suspicious:** rank arm has p50 latency 0 s and 0 generated tokens. It is almost certainly not scoring as intended. It must be audited before any claim.
+- Corrected prompt injection (2026-11-01, same 150 attacks): freeform **35/150**, slot **0/150**;
+  rank **0/39 eligible pairs**, **111 excluded**. Rank Wilson [0%, 8.97%], matched freeform 11/39.
+- Slot arm: JSON parse 0.9167; verifier pass 0.9033; unsupported-claim rate 0; per-point lexicon
+  pass **25.81% [13.04%, 40.82%]** English overall. Matched 150 packages: **21.62%
+  [8.00%, 40.00%] English / 62.16% [40.61%, 79.59%] Hinglish** (clustered intervals).
+  These are lexical checks, not entailment scores; English remains weak.
+- Rank telemetry: **0 generated tokens**, **2,992 scored continuation tokens**, **248 candidate
+  strings**, **86% zero-work clean rows**. Worked T4 p50/p95 **0.3110 / 1.0782 s**. The old
+  character-based count and 0/150 rank injection denominator are withdrawn. Summary/action and
+  the candidate bank are fixed; this is an architecture restriction, not learned robustness.
+  Full provenance, per-family bounds and paired tests: `docs/RANK_ARM_AUDIT.md`.
 
-**Not run yet:** GroundLM FPR test (target FPR <= 1% on 1,294 policy-negatives); `llama_export` (no output); Pi 5 benchmarks; Android app.
+**Frozen rules audit (Kaggle, 2026-11-01; `docs/REVIEW_AUDIT.md`)**
+
+| Population / threshold | FPR | Fraud recall | Scope |
+|---|---|---|---|
+| GroundLM negatives, warning above LOW | 1/1,133 = 0.0883% [0%, 0.2971%] | — | **in-sample: these rows informed rule design** |
+| SmishX, warning above LOW | 53/881 = 6.0159% [3.6571%, 8.8725%] | 39/226 = 17.2566% [10.6118%, 26.0009%] | **independent, non-Indian-specific** |
+| SmishX, HIGH/SCAM | 10/881 = 1.1351% [0.5344%, 1.8782%] | 5/226 = 2.2124% [0.3774%, 5.1282%] | **independent, non-Indian-specific** |
+
+Intervals are campaign-clustered; external campaigns are approximate template/domain groups.
+GroundLM has 12 evidence-hit negatives, 11 urgency-only; evidence remains present after risk
+downgrading. The old “13 total / 12 urgency-only” narrative is withdrawn. SmishX fails the 1%
+reference FPR gate at both thresholds; rules-only recall is weak. Widening adds only one
+SmishX fraud warning (paired +0.4425 pp, CI [0, 1.4360] pp, p=0.5485); no independent gain
+claim. Model-side GroundLM FPR and independent Indian held-out validation remain OPEN.
+
+**Not completed:** model-side GroundLM FPR; verified `llama_export` output; Pi 5 benchmarks; Android app.
 
 ## 6. What failed and why
 

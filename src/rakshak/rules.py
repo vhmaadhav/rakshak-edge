@@ -75,6 +75,100 @@ def _pattern_rule(
 
 
 # ---------------------------------------------------------------------------
+# Sentence-scoped pairing
+#
+# A flat ``.{0,50}`` window misses the commonest real phrasing, where the subject and the demand
+# sit in the same sentence but further apart than 50 characters:
+#
+#     "Your parcel ... due to an unpaid shipping fee ... visit http://postoffice-tracking"
+#
+# Widening the flat window would pair a parcel mention with an unrelated amount in a *different*
+# sentence, so the pairing is scoped to one sentence instead. A pair only counts when both the
+# subject and the trigger occur inside the same sentence, no ``guard`` phrase is present, and the
+# two are at most ``gap`` characters apart.
+# ---------------------------------------------------------------------------
+
+_SENTENCE_END = regex.compile(r"(?<![0-9])[.!?;|](?=\s|$)|\n|\r|।")
+_SENTENCE_MAX = 400
+
+
+def _sentence_spans(text: str) -> Iterator[tuple[int, int]]:
+    """Spans of the sentences in ``text`` (terminators kept out of the span)."""
+    start = 0
+    for m in _SENTENCE_END.finditer(text):
+        if m.start() > start:
+            yield start, m.start()
+        start = m.end()
+    if start < len(text):
+        yield start, len(text)
+
+
+def _sentence_pairs(
+    text: str,
+    subject: regex.Pattern[str],
+    trigger: regex.Pattern[str],
+    *,
+    guard: regex.Pattern[str] | None = None,
+    gap: int = 120,
+) -> Iterator[tuple[tuple[int, int], str]]:
+    """Yield ``(span, matched_text)`` once per sentence holding a subject/trigger pair."""
+    for start, end in _sentence_spans(text):
+        if end - start > _SENTENCE_MAX:
+            continue
+        sentence = text[start:end]
+        if guard is not None and guard.search(sentence):
+            continue
+        subjects = list(subject.finditer(sentence))
+        triggers = list(trigger.finditer(sentence))
+        if not subjects or not triggers:
+            continue
+        for sub in subjects:
+            for trig in triggers:
+                if abs(trig.start() - sub.start()) > gap:
+                    continue
+                lo = min(sub.start(), trig.start())
+                hi = max(sub.end(), trig.end())
+                yield (start + lo, start + hi), sentence[lo:hi]
+                break
+            else:
+                continue
+            break
+
+
+def _overlaps(a: tuple[int, int], b: tuple[int, int]) -> bool:
+    return a[0] < b[1] and b[0] < a[1]
+
+
+def _paired_rule(
+    etype: str,
+    pattern: str,
+    weight: float,
+    *,
+    subject: str,
+    trigger: str,
+    guard: str | None = None,
+    gap: int = 120,
+) -> RuleFn:
+    """Flat ``pattern`` hits plus sentence-scoped subject/trigger pairs the flat window misses."""
+    rx = regex.compile(pattern, _FLAGS)
+    subj = regex.compile(subject, _FLAGS)
+    trig = regex.compile(trigger, _FLAGS)
+    grd = regex.compile(guard, _FLAGS) if guard else None
+
+    def _rule(canon: Canon) -> Iterator[RawHit]:
+        text = canon.normalized
+        flat = [m.span() for m in rx.finditer(text)]
+        for span in flat:
+            yield etype, span, text[span[0] : span[1]], weight
+        for span, matched in _sentence_pairs(text, subj, trig, guard=grd, gap=gap):
+            if any(_overlaps(span, seen) for seen in flat):
+                continue
+            yield etype, span, matched, weight
+
+    return _rule
+
+
+# ---------------------------------------------------------------------------
 # Credential request (needs negation handling so "Do not share your OTP" does not fire)
 # ---------------------------------------------------------------------------
 
@@ -175,7 +269,9 @@ _RULES: list[RuleFn] = [
         "prize_lottery",
         r"(?:\blottery\b|\blucky draw\b|\bjackpot\b|\byou (?:have )?won\b|\bwinner\b|"
         r"\bcongratulations?\b.{0,40}\b(?:prize|won|reward|gift|cash)\b|"
-        r"\bprize\b|\b(?:kbc|kaun banega)\b|\binam\b|\binaam\b|\bjeet\w*\b|\bjeeta\b|"
+        r"\bprizes?\b|\b(?:kbc|kaun banega)\b|\binam\b|\binaam\b|\bjeet\w*\b|\bjeeta\b|"
+        # "win exciting prizes", "win gold vouchers": a win verb plus a prize noun, same sentence.
+        r"\bwin\w*\b[^.!?\n]{0,25}\b(?:priz\w*|gold|vouchers?|jackpot)\b|"
         r"लॉटरी|इनाम|जीते|जीता|जीती|जीतें|जीतिए|जीतेंगे|पुरस्कार|बधाई.{0,20}जीत)",
         0.8,
     ),
@@ -203,7 +299,7 @@ _RULES: list[RuleFn] = [
         r"कनेक्शन.{0,40}(?:काट|कट|बंद|डिस्कनेक्ट))",
         0.8,
     ),
-    _pattern_rule(
+    _paired_rule(
         "parcel_customs",
         r"(?:\b(?:parcel|package|courier|shipment|consignment|customs|duty|saman)\b.{0,50}"
         r"\b(?:pay\w*|fee|charges?|customs|held|hold|pending|clear\w*|release|re-?deliver\w*|"
@@ -214,8 +310,17 @@ _RULES: list[RuleFn] = [
         r"पार्सल.{0,40}(?:शुल्क|पेमेंट|रोक|रुका|रुक|कस्टम)|"
         r"(?:शुल्क|कस्टम).{0,40}(?:जमा|पेमेंट|भुगतान))",
         0.7,
+        # Sentence-scoped pairing: "parcel ... due to an unpaid shipping fee" is one sentence but
+        # far wider than the flat 50-char window. ``guard`` keeps ordinary paid-order wording out.
+        subject=r"\b(?:parcel|package|courier|shipment|consignment|redelivery|"
+        r"post office|customs|dhl|fedex|bluedart|blue dart|aramex|shadowfax|usps|"
+        r"royal ?mail|an ?post|deutsche ?post)\b",
+        trigger=r"\b(?:unpaid|outstanding|overdue|on hold|held|fee|fees|charges?|duty|duties|"
+        r"shipping (?:cost|fee|charges?)|clearance|redeliver\w*|reschedul\w*)\b",
+        guard=r"\b(?:amount payable|amount due|total payable|cash on delivery|cod|"
+        r"payment (?:successful|received|confirmed))\b",
     ),
-    _pattern_rule(
+    _paired_rule(
         "job_task_scam",
         r"(?:\bpart[- ]?time\b.{0,30}\b(?:job|work|income|earn\w*)\b|"
         r"\bwork from home\b.{0,40}\b(?:earn\w*|income|salary|per day|daily)\b|"
@@ -230,6 +335,13 @@ _RULES: list[RuleFn] = [
         r"\bonline (?:kaam|job|task)\b|"
         r"घर बैठे.{0,30}(?:कमाए|कमाई|कमाएं)|पार्ट.?टाइम.{0,20}(?:नौकरी|काम))",
         0.8,
+        # "Part-time daily salary of 3,000 rupee no time limit no fee, contact wa.me/..." -
+        # recruitment and the salary promise in one clause. Sentence scope is deliberate: a job ad
+        # and a later salary line in a different sentence must not pair up.
+        subject=r"\b(?:job|jobs|vacanc\w*|hiring|hire|recruit\w*|part[- ]?time|work from home|"
+        r"wfh|internship|fresher)\b",
+        trigger=r"\b(?:earn|earns|earning|salary|income|kamai|kamayi|kamao|kamayein)\b",
+        gap=80,
     ),
     _pattern_rule(
         "investment_returns",
