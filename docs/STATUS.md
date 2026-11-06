@@ -1541,3 +1541,222 @@ and original source snapshot remain unchanged; no model result is known.
 - Full877PASS0skip/ruffclean, all80archived scientific files byte-identical current.
   Parent pull/rebase unchanged and repo-local identity confirmed. One milestone
   commit on own branch; review dependency #2→#3→#6→#9→thismilestone, no merges.
+
+# Ported Codex notes: frozen fusion v1 history (2026-11-01, earlier entries)
+
+# Frozen fusion v1 preparation — 2026-11-01
+
+- Maadhav confirmed no prior shipped/frozen fusion state exists and authorized a newly fitted cal-only v1, with private manifest + models. Isolated `ci/fusion-v1-20261101` based6d4669f; PR#6 remains unchanged. Protocol `FUSION_V1.md` predeclares seed1/campaign original train-only ERM recipe, portable expert export, cal-only fusion, exact expert/source hashes, before-external manifest freeze and separate artifact/safety gates.
+- Earlier score-only controls did not save student weights, so cannot be promoted to a complete deployable manifest. A fresh fixed-recipe baseline is required; no claim that regenerated weights equal an unsaved historical model. Original external safety gates remain unchanged and can fail even when the reference bundle is reproducible. No new job launched: hardneg training + same-PTE runtime recovery occupy both subscriptions.
+
+- v1 implementation: bounded-batch ONNX parity over all campaign cal rows (<=1e-5 logit difference), fit on portable ONNX probabilities, save student checkpoint/ONNX, pinned URL ONNX/scaler and deterministic source-only archive. JSON saves full stacker/Platt state/thresholds/.01/.05 and exact git/bundle/kernel/version/artifact hashes; exclusive creation and post-score hash checks reject mutation. Portable feed/private-publication/tamper checks **3 passed in0.72s**, Tctl43.1C; ruff clean. No real model loaded or benchmark scored locally.
+- Private publisher is create-only (no version-overwrite), explicit `public=False`, allowlists model files/manifest/JSON receipts, excludes SMS score/message parquet files, validates completed receipt+actual push version+manifest/artifact hashes, then verifies metadata `is_private`. Publication is not yet attempted; no artifact or safety pass claimed. Full benchmark fitting/scoring remains on Kaggle once a slot frees. Safety failures will remain in the frozen reference metrics with `shipment_approved=false`.
+
+- V1 companion update verification: **4 passed in0.74s**, Tctl50.2C before, full ruff clean; synthetic ordering fixture verifies all6 seed1 manifests freeze before any test score or external file read. An initial fixture omitted description; corrected the stub. Child context now explicitly preserves its logger. All real weights/ONNX fits remain Kaggle-only. Rebuilt private bundle `be5d799906f7` (80files), **build only, NOT launched** while two existing kernels occupy capacity. Previous single-campaign build6391072a6e5d is superseded locally, never pushed. No gate/model/threshold tuning on outcomes; HF publish pending.
+
+- Before launch, ROC boundary serialization corrected: +infinity (valid no-positive decision boundary) is stored as nextafter(1,+infinity), identical decisions for probability outputs, finite JSON. Synthetic equality/tamper/portable-feed/fold-order suite **5 passed in0.81s**, Tctl53.8C before, ruff clean. No external outcome or threshold selection influenced this representation fix. Bundle be5d799906f7 now superseded locally; rebuild before actual launch. No v1 job pushed yet; existing B/runtime and hardneg originals remain the two active kernels.
+
+# Frozen fusion v1 launch — 2026-11-01
+
+- Hard-negative training's original event completed ok, freeing one GPU kernel. Launched **fusion_v1-freeze-20261101 v1**, dirty base6d4669f/tree`79e16fe8bdaf`, private T4/internet/data+teacherlogits+exact URL kernel. Args `--kernel maadhavvh/rakshak-fusion-v1-freeze-20261101 --kernel-version 1 --n-boot 1000`. Actual push confirmed version1; ONE blocking event subscription opened. B same-PTE runtime recovery is the only other active kernel. No v1 fitted state/result/publish claim yet.
+- Seed1 six fixed fold-validation companions/campaign primary use the protocol above, original train-only matched teacher targets with finite coverage required; all manifests freeze before outcomes. Actual ONNX/ONNXRuntime/Torch/NumPy versions will be included. No changes to safety gates; false-alarm failures remain failures even if artifact completeness passes. **HF publish pending**; later private Kaggle publication must verify privacy.
+
+- Publication-only completeness check extended to require all five validation companions and their exact artifact hashes in addition to campaign primary. Synthetic staging suite **3 passed in0.84s**, Tctl52.2C before, ruff clean; fixture verifies six model manifests are included and SMS parquet remains excluded. This changes only the local publication helper/tests, not the running v1 job. Frozen job tree remains79e16fe8bdaf. No private upload attempted yet; HF publish pending.
+
+# V1 first artifact attempt failed parity — 2026-11-01
+
+- `fusion_v1-freeze-20261101` **v1**, full tree`79e16fe8bdaf722ecd7b202198b9a555201ded44bd90fba13b43161b90ea13f3`, **error546.9s**, original ONE event and ONE fetch verified. Failed `cal-only ONNX logit parity gate failed` on ScamShield companion, before any test/external scoring. Earlier lang_shift fullcal maxlogit7.62939453125e-6 (8454rows),Mishra9.5367431640625e-6 (10876rows) passed. ScamShield numeric magnitude was not saved: **UNVERIFIED**, do not infer a value. Campaign primary/complete v1 not frozen or published.
+- Keep <=1e-5 criterion exactly. Predeclared calibration-only exact-ONNX-weight reconstruction/backend diagnostic in FUSION_V1.md. Compare fixed Torch MKLDNN/ORT optimization pairs, no fitting/weights/threshold/external changes; gate only a single pair passing every available companion's full cal. Any later baseline retry must repeat all6same checks; no relaxed gate or silently dropped fold. Primary sources: https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html (all optimizations enabled by default; basic/disabled modes documented), https://docs.pytorch.org/docs/2.11/notes/numerical_accuracy.html (backend arithmetic limits). Causal backend explanation remains UNVERIFIED until Kaggle diagnostic. B exact-PTE recipe remains untouched; no additional quantisation attempt.
+
+- Diagnostic implementation strictly binds the three available ONNX files by SHA256 and reconstructs every expected parameter from its exact named initializer, shape and dtype; missing/duplicated/nonfinite parameters abort instead of randomly initializing missing weights. Synthetic reconstruction guard **1 passed in0.04s**, Tctl42.4C, ruff clean. Runtime comparisons are cal-only and must retain the same <=1e-5 maximum logit gate across all three available companions. No model inference or training locally. Pending launch confirmation before opening its one event subscription; B remains on its existing subscriber.
+
+- Private diagnostic launch confirmed **onnx_parity_audit-p1-20261101 v1**, tree`5895a880af89`, dirty base6d4669f; T4/internet/private data + failed-v1 artifact kernel, no args. Actual push version1 confirmed; ONE blocking event subscription opened. No training, external data, new threshold, quantisation or gate relaxation. B exact-PTE runtime recovery is the only other kernel. No v1 publication or downstream fused/policy go claim before this diagnostic and all original artifact checks pass.
+
+# Exact-weight ONNX diagnostic negative result — 2026-11-01
+
+- `onnx_parity_audit-p1-20261101` **v1**, full tree`5895a880af8957eb891ddad4f1fda45905e72463e9f456b3db8bd377354c2cba`, **ok274.5s**, one original wait/fetch verified. Metrics SHA`2a6611fe8a37b81c2a34dfc79fbd3db2474fd58c56f1a6540ec490562700a68c`. Strict named-parameter reconstruction succeeded; every variant evaluated full cal only, zero training/external access. **Recorded artifact decision KILL**: no common runtime satisfies unchanged <=1e-5 logit parity on all three available companions.
+- Lang_shift maxlogit7.62939453125e-6 for all variants; Mishra9.5367431640625e-6 for MKLDNN-on variants/7.62939453125e-6 off. ScamShield MKLDNN-on(all/basic/disabled)2.288818359375e-5, MKLDNN-off/ORTdisabled1.52587890625e-5. Corresponding maxprobability errors on ScamShield7.748603820800781e-7/on and8.642673492431641e-7/off. Small sigmoid differences do **not** override the declared logit gate. No v1 publication, no relaxed tolerance or external safety result.
+- Asked optional format preference for a **new** baseline artifact attempt: exact PyTorch checkpoint as explicitly measurement-only reference (same numerical round-trip tolerance/scientific gates, Arm portability unverified) versus continued ONNX export work. Existing ONNX attempt remains killed either way. No alternate format adopted or new v1 model fitted yet; no inference/training locally. B same-PTE recipe remains unchanged.
+
+# Ported Codex notes: policy annotation (2026-11-03)
+
+## 2026-11-03 — D open-model policy scope inventory (before compute)
+
+- Own ci/policy-labels-20261103 atd2afc05, parent fetched; PR13 untouched.
+  Hypothesis: separate promotions/transactional messages from fraud in null-policy
+  TRAIN rows; no classifier/FPR improvement claimed. Open Apache-2.0 Qwen1.5B
+  revision989aa7980e4cf806f80c7fef2b1adb7bc71aa306 is a candidate, not yet loaded.
+- Predeclared inventory/data gate: all6 original per-fold train bindings, rawcal/test/
+  external/synthetic/duplicate exclusions, existing labels unchanged, apply-time
+  fold membership guard. No global rewrite when an ID has another role elsewhere.
+  Accepted future outputs require schema+verbatim-span checks; no inferred truth.
+- Extend existing chunk exporter with explicit JobSpec naming the actual open
+  model, reusing ledger/schema/brief. One initial test failed unknown brief-kind;
+  corrected to existing relabel kind, no real data/model involved.
+  Focused34PASS0.78s (newguards+existingchunk regressions), Ruffclean, Tctl36.6C,
+  nice19/taskset0-3/OMP2/MKL2. No full suite before milestone.
+- First Kaggle job is INVENTORY ONLY: no inference, labels or training. Freeze input/
+  split/eligible-ID hashes, report6fold counts, prepare blinded200human sample with
+  empty manual labels; approved_for_training=false until genuine human review.
+  Full predeclaration in POLICY_ANNOTATION_PLAN.md; BUDGET historical paid/cloud
+  allocation marked inactive under current hard rules. HF publication pending.
+- Confirmed private CPU inventory `policy_inventory-d-scope-20261103` v1/tree
+  5e51464453b9a12c9e1aad62451999cc0acd06cb7c6a34150b34ab0c6890e474,
+  based2afc055f2ed dirty; no args, private rakshak-data only, no model source/weights.
+  is_private=true verified. ONE wait_event43200 opened, then ONE fetch only.
+  No inference or label changes; scope counts/human sample pending.
+- Inventory completed ok84.6s; ONE event66750/fetch49070 DONE, full source/result/
+  scope/audit hashes verified. Eligible null-policy union74,700 IDs (training in at
+  least one fold); campaign51,189/lang41,612/temporal34,725; source holdouts
+  Mishra66,070/ScamShield4,137/UCI61,643. This counts missing policy categories,
+  not just unknown fraud labels; the historical ~24k shorthand is not this count.
+- Exact200 blinded audit rows prepared privately, manual labels empty and
+  approved_for_training=false. Zero model inferences or existing/eval label changes.
+  Per-fold subset/disjoint checks verified on saved scope; roles never globally
+  relabelled. ReceiptSHA0590db679de7843983d341f0860800c235cba303bfd572c91df85c3f6e6a383f;
+  scopeSHA08b21ff533e5227e071a7345b1bda662209abac3a87d0fcfb0e86bf425041076.
+- HF public pinned source metadata/card/LICENSE read, no weights downloaded locally.
+  Qwen1.5B safetensorsSHA dd924a11b4c220f385b51ffa522daea7c9f3d850e31b162bb5661df483c6d3ee,
+  Apache LICENSESHA832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e.
+  Full source manifest saved in task work area for next frozen inference recipe.
+  No active jobs or subscriptions now; F recovery-fetch exception still pending.
+
+# Ported Codex notes: NIDS provenance (2026-11-02 to 2026-11-03)
+
+## 2026-11-02 — F research: historical clustering and baseline contamination audit
+
+- Own isolated ci/nids-source-coral-20261102 at2463245, no model job/data download.
+  Aggregate historical nids_baselines results.json/tree dea7270125e726d5e70c4ddf139673062be2870309a81b8cec9b15a175a337ec
+  confirms ALL4inputshost_columns=false and T5K5000 CIs iid_stratified, not host-
+  clustered. Historical target baseline attack shares .2374/.1886/.9820/.7798;
+  these slices do not establish a mostly-benign-home result. No local inference.
+- Read primary DeepCORAL sections3.1–3.2, Cantone arXiv record and UQ dataset
+  project. Derived source-only benign covariance alignment is a research candidate,
+  benefit UNVERIFIED; no new model predeclared/launched. Need original host/campaign
+  provenance for unchanged rows before clustered go claims. Details/links and
+  unresolved schema/row-join checks: NIDS_NEXT_RESEARCH.md.
+
+## 2026-11-03 — Hugging Face connection and resource-card review
+
+- User-requested MCP check: identity/public repository lookup works as vhmaadhav,
+  highestintheroom membership visible; dataset search still UNAVAILABLE and private
+  rakshak-data lookup not found. No write-repos scope: HF publish pending.
+- Read revision-pinned model/dataset cards via free public HF metadata fallback.
+  Qwen2.5-1.5B is Apache-2.0; 3B is qwen-research (earlier uncertainty resolved).
+  Synthetic Indian SMS is not real independent validation and has closed-model
+  generation/Claude-assisted labels, so it is excluded from advisory targets.
+  NF-ToN mirror has no documented host provenance; no frozen split substitution.
+- Qwen1.5B/Qwen3-0.6B, E5-small, SCARF/VIME/SwitchTab shortlisted as research
+  candidates, benefit UNVERIFIED. No job, model result, data-row download or new
+  gate. Revisions, sources, exclusions and next provenance audit are recorded in
+  HF_RESOURCE_RESEARCH.md. No headline table changed; no finished model milestone.
+
+## 2026-11-03 — F stage-1 provenance audit prepared (before launch)
+
+- Hypothesis/go: recover unambiguous original host provenance for EVERY frozen row,
+  with unchanged membership and no label-assisted join; otherwise clustered result
+  UNMEASURABLE. Stage1 metadata/header prerequisites are not that full mapping go.
+- Official UQ public metadata confirms all4 OPEN/downloadable academically with
+  commercial restriction; signed HEAD403, original version metadata404. No archive
+  bytes/flows read locally; no unauthorized endpoint retries or source replacement.
+- New bounded range/ZIP-header audit + Kaggle job, metadata only/no model or scoring.
+  Current parquet hashes are recorded, original byte identity stays UNVERIFIED
+  because original file hashes were not saved. Complete recipe in NIDS_NEXT_RESEARCH.
+- Focused10synthetic tests PASS0.60s, Tctl38.2C, prescribed CPU/thread limits.
+  Full suite reserved for milestone; no claim of a new model or clustered IDS score.
+- Launched private CPU `nids_provenance-f-meta-20261103` v1 on2026-11-03,
+  tree5b1ec9875e54b40d7c53d73795088254d0f49debecf1c0d8cf28f04ff78a3ffc,
+  base246324575928 dirty. Args: none; internet, original four dhoogla inputs plus
+  private rakshak-data attached; no GPU. is_private=true verified in kernel metadata.
+  One blocking wait_event43200 opened after confirmed push, then one fetch only.
+  Metadata outcome pending; no host-mapping/model result or artifact publication.
+- First stage1 job completed partial116.4s; ONE event/fetch verified. All4 current
+  input row counts match history and file hashes are saved. All4 archive-header
+  checks failed the invented uppercase-only name vocabulary; no mapping/models.
+  Range reads themselves succeeded. Raw reason remains unrecognized-header-name,
+  exact cause UNVERIFIED (index/auxiliary columns are hypotheses, not findings).
+- Technical inspection correction before retry: recognize a flow header by IN_BYTES
+  plus OUT_BYTES or a host-column anchor; permit auxiliary index/header fields.
+  Non-flow CSV members get only a name/hash/count, never a data line; at least one
+  flow header required, all recognized flow CSVs must have both hosts to advance.
+  No full mapping gate, dataset, sampling, label or model change. Added regression
+  for auxiliary index/feature-dictionary CSV; focused11PASS0.24s/Tctl36.9C,
+  ruffAllchecksPASS. Retry will use a distinct run name/one wait/one fetch.
+- Confirmed private CPU retry `nids_provenance-f-meta2-20261103` v1/tree
+  519f56771a4e9b9a2c98eaf99b7d7c4bb89b2dd04e1d2d703eae45d1574216c0,
+  same original inputs/no job args; ONE event subscription opened, no fetch yet.
+  Static original kernel metadata request with the SDK's version-in-slug encoding
+  returned403; stopped that read path, input version identity remains UNVERIFIED.
+- Public Kaggle dataset version-history GETs succeeded: all4 inputs currentv2,
+  last updatesJan2023, returned historiesv1/v2 only. Provider history supports
+  inferredv2 at historicalOct30 launch; no direct historical attachment receipt
+  or original byte hash, so do not upgrade the byte-identity claim.
+- Corrected stage1 completed ok94.9s; ONE original event/fetch verified tree519f...
+  and receiptSHA7480f3a36c65985dcb8274d27bf736e93d154ff9f8a7984104547ab38ba0e36a.
+  All4 original flow CSVs have both host fields; first failure was the companion
+  NetFlow_v2_Features.csv dictionary, now distinguished without emitting its rows.
+  Bounded responses: UNSW5840bytes, CSE5852, BoT5904, ToN5836. No host mapping yet.
+
+## 2026-11-03 — F UNSW host-mapping pilot predeclared (before compute)
+
+- Order: smallest official archive UNSW first; stop further mapping work if any
+  frozen row is unmapped or has multiple host-pair candidates. Full4-source mapping
+  remains unmeasurable unless all4 eventually pass; no model starts on a partial map.
+- Exactly original seed0/max200000/stratified sampling/33-feature first-dedupe,
+  preserving full41 non-label numeric raw fields and source row positions. Compare
+  replayed X/y exactly against the byte-pinned historical sampler and historical
+  retained rowcount17227. No new split files replace frozen inputs.
+- Join ALL41 numeric fields, never Label/Attack/IP; cast original CSV to pinned
+  parquet numeric precision, canonicalize signedzero, SHA256 rows; reject nonfinite,
+  integer overflow/fractions/>2^53 loss. No imputation/nearest matches/label tiebreak.
+  Scan entire original CSV with original Label/Attack explicitly excluded; retain
+  all matching candidate host pairs, count duplicates, mark distinct pairs ambiguous.
+- Gate: EVERY frozen row exactly one host pair. Zero/multiple => UNMEASURABLE and
+  stop; never drop a frozen row or choose the first host pair to make it pass.
+  Original archive ETag/size/member CRC pinned to stage1, full archive SHA recorded;
+  frozen parquet SHA must match. Source archive temporary onKaggle only, removed.
+- If complete, save position/group/split-index provenance only, no IPs/flow values;
+  disclose component-vs-source fallback and largest group. No model/scoring/thresholds
+  or inference claim. Historical byte identity remains explicitly UNVERIFIED;
+  currentv2 supported by provider history but missing direct historical input hash.
+- New focused matcher/map/builder checks10PASS1.37s, Tctl38.6C; prior metadata11PASS.
+  Raw CSV label inversion/ambiguous second host-pair regression passes, no tie-break.
+  Ruff pending final check; full suite only at eventual finished milestone.
+- Launched confirmed private CPU pilot `nids_provenance_map-f-unsw-20261103` v1,
+  tree6831963fe8a0e56489c981cf571c3095cb5a3528d6c0667d1cb8b7d62731ab13,
+  base246324575928 dirty; args --dataset unsw_nb15; pinned stage1 kernel attached
+  plus original UNSW/private data. Historical sampler present in bundle, its pinned
+  source hash checked at runtime. ONE wait_event43200 open; no fetch yet.
+- UNSW pilot's ONE completion event reports ok / host mapping UNMEASURABLE.
+  Original wait75445 completed; ONE fetch returned no files (CLI exit0/warningonly,
+  no results.json), so exact unmapped/ambiguous counts, runtime and result-file
+  provenance are PENDING, not inferred. No further mapping/IDS models launched.
+  Requested explicit one-recovery-fetch exception to user's one-fetch rule;
+  no restart, replacement subscription, status poll or second download attempted.
+- Preparing the one milestone full synthetic suite on privateKaggle T4, no datasets
+  or model inputs, collection-derived inventory>=852,0errors/failures/max18inherited
+  optional skips. Existing reviewed94-line validation driver reused; no CI workflow
+  project resumed. Code stays frozen while outcome/download review is pending.
+- Validation launch correction: I passed the wrong selection hash to first
+  unit_validation-f-full-20261103. Actual selection SHA is
+  6000bb6939da93c30dec1e974d785c8a2b9da245c4d5273c27397b5ab0ba4c34;
+  launched arg51ca0807... differs. The driver checks this before git setup,
+  collection or pytest, so wait/fetch the guarded failure before a distinct
+  corrected validation run. No suite pass or actual test invocation claimed.
+- First milestone validation fetched once: error66.8s, exact error selection hash
+  mismatch; no collection/pytest occurred. Corrected f-full2-20261103 uses the
+  actual file-derived SHA6000bb6939da93c30dec1e974d785c8a2b9da245c4d5273c27397b5ab0ba4c34,
+  same source tree1be81d36300b5415e2696a4c8b8936af3673193307562c1fa884ab6554033e7c.
+  No suite result yet. Hash is read directly rather than manually retyped.
+- Primary publisher cleaning notebook now read, v1/code-onlySHA5134ed33...:
+  documented IP removal/shrink/NaN removal/first-dedupe/reset gives a possible
+  ordered publication-replay provenance lead. It includes label columns in its
+  duplicate key, so it cannot rescue the declared label-free join by relabelling
+  the failed gate. No new replay/mapping/model launched; details in NIDS_NEXT_RESEARCH.
+
+- Corrected full milestone validation completed ok206.4s; ONE event83562/fetch62567
+  DONE, full receipt verified. All857 collected tests PASS,0skip/0fail/errors;
+  source tree1be81d36300b5415e2696a4c8b8936af3673193307562c1fa884ab6554033e7c.
+  All139 archived source/test/config files byte-identical current after validation.
+  No active GPU kernels or pending subscriptions now. Strict pilot exact counts
+  remain pending the single recovery-fetch exception; no repeat download made.

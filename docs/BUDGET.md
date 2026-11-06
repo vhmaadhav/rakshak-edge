@@ -1,5 +1,11 @@
 # Budget and compute plan
 
+> Current execution policy, 2026-11-03: Kaggle or short Colab only; no Modal,
+> paid services/APIs, or Claude cloud labelling. The allocation below is historical
+> and inactive. Task D uses a pinned open model on Kaggle, per-fold train-only
+> scopes and a blinded 200-item human audit; see POLICY_ANNOTATION_PLAN.md.
+> No model-produced evaluation labels or advisory targets from closed models.
+
 ## Constraints
 
 - **Anthropic: $100 Claude Code cloud-session credit.** This is cloud-session credit, not API

@@ -398,3 +398,11 @@ Android app; independent Indian validation.
 - **Anthropic:** $100 Claude Code cloud-session credit. Labelling runs stop at 50% and 75% of it (`docs/BUDGET.md`).
 - **Colab:** free tier, unreliable for long runs.
 - **Modal:** no runs without explicit approval.
+
+## Provenance note (2026-11-02, ported from Codex NIDS worktree)
+
+Historical IDS CIs are **IID-stratified**, not host-clustered: allfour source
+copies lacked host columns, so T4 was unavailable. K5000 target baseline attack
+shares .2374/.1886/.982/.7798 do not establish mostly-benign-home operation.
+Provenance recovery and any future source-only covariance candidate remain OPEN;
+see docs/NIDS_NEXT_RESEARCH.md. No new model or split is introduced here.

@@ -38,6 +38,19 @@ def export_job(
 ) -> list[Path]:
     """Write tasks/chunk_XXXX.jsonl and BRIEF.md for one job, and log each chunk as exported."""
     spec = jobs.get_job(job)
+    return export_spec(spec, root, frame, parts, chunk_size)
+
+
+def export_spec(
+    spec: jobs.JobSpec,
+    root: Path,
+    frame: pd.DataFrame,
+    parts: jobs.Partitions,
+    chunk_size: int = CHUNK_SIZE,
+) -> list[Path]:
+    """Use the same chunk/ledger contract with an explicit open-model job spec."""
+    if chunk_size <= 0:
+        raise ValueError("chunk size must be positive")
     ids = spec.select(frame, parts)
     if len(set(ids)) != len(ids):
         raise ValueError(f"job {spec.name}: selected ids are not unique")

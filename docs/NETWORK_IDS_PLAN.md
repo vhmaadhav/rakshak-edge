@@ -143,7 +143,7 @@ Notes:
 | Scapy vs Pyshark vs Pypcap on Raspberry Pi 3 Model B | Pi 3B | Pypcap+dpkt outperformed Pyshark and Scapy in the paper's experiments (SEARCH) | https://sol.sbc.org.br/index.php/wperformance/article/view/36283 | Numbers not confirmed. Pi 3B, not Pi 5 |
 | INT8 MLP on UNSW-NB15/CIC-IDS2017 on STM32 NPU, Raspberry Pi 3B+ inference 27 ms | Pi 3B+ | 27 ms (SEARCH, no URL retrieved) | UNVERIFIED | Excluded from targets |
 
-**Gap:** no published result was found that reports accuracy, latency, model size and INT8/ONNX together on a Pi 4 or 5 with CICIDS2017 or UNSW-NB15 (SEARCH, one search only). Our Pi numbers will be the first.
+**Gap:** no published result was found that reports accuracy, latency, model size and INT8/ONNX together on a Pi 4 or 5 with CICIDS2017 or UNSW-NB15 (SEARCH, one search only). This limited search does not establish a first; Pi measurements remain OPEN.
 
 ### 3.4 "Target to beat" (proposed; the literature values above are floors, not ceilings)
 
@@ -356,3 +356,17 @@ Phase 1 is due 23 Nov 2026 (`docs/CONTEXT.md`). The network module is a coverage
 - Quantum-assisted TinyML IDS (Pi 4 INT8 numbers): https://arxiv.org/pdf/2609.06814 (search)
 - NTNU ToN_IoT Pi 4 study: https://www.ntnu.no/ojs/index.php/nikt/article/view/6513/5844 (search)
 - Kaggle CLI results (all slugs in §1.2): run in this session with `kaggle datasets list|files|metadata`
+
+# Ported Codex notes: NIDS historical-run audit
+
+## 2026-11-02 — audit of the actual historical run
+
+The generic planned host-cluster protocol is not evidence that host columns were
+present. Saved nids_baselines results (tree dea7270125e726d5e70c4ddf139673062be2870309a81b8cec9b15a175a337ec)
+show allfour input copies lacked host columns; T5K5000 intervals used
+`iid_stratified`, NOThost/campaign clusters. T4 was unavailable. Keep this scope
+when citing those intervals. K5000 target attack fractions were .2374/.1886/.982/
+.7798, so this was not generally a mostly-benign-home calibration demonstration.
+Original target labels were only diagnostic, never used to clean the slices.
+No new clustering, split, labels or data download is introduced by this audit.
+Next provenance/research checks and primary links: NIDS_NEXT_RESEARCH.md.
