@@ -54,6 +54,18 @@ Priority now: frozen **fused** transactional false-alarm audit, then clean train
 The student-only 35.92% GroundLM FPR is distinct from the rules/evidence 0.0883%; fused FPR
 is not yet measured. Independent Indian validation remains OPEN.
 
+Hardnegative arm(a) completed **KILL** (all3seeds): GroundLM SCAM FPR fell from
+34.86/36.63/36.89% to7.33/18.36/12.53%, but all still fail the1%SCAM/10%alert caps;
+SmishX SCAM recall23/30/23of226 is below matched controlstudent129/85/148of226.
+Seven internal fold/label recall guards also fail. UCI fraudNA, legacy guard retained.
+In-sample intervention selection; no held-out improvement or deployment claim.
+Allseeds/6folds/bothlabels/coverage/pairedCIs: TRANSACTIONAL_HARDNEG_FUSED_RESULTS.md.
+These are named experimental arm(a) states, with the unchanged frozen v1 parent
+manifestc310d3ccbc1c1e50ce9436f217c66ee9934f778985bfef487a034cc3070b79fa;
+v1 itself is artifactGO/safetyKILL, newly fitted (not previously shipped), PR#8.
+The killed augmentation's original job did not save student weights. Private
+synthetic/aggregate archive receipt in STATUS.md, humanreview200 pending; HFpublishpending.
+
 ## 1. Goal and constraints
 
 - **Project:** offline SMS and URL scam detector on Arm devices, for **Bharat AI-SoC Challenge 2026-27, Problem Statement 3** (on-device cyber safety). Name in the code: Rakshak-Edge.
@@ -158,9 +170,6 @@ external student-only diagnostics belong to the separate clean-KD milestone
 
 | no-KD dual-base, seed 1 | 0.975 | **0.356** (fails Hinglish) | 0.903 |
 | Historical KD dual-base, seed 1 (artifact exists; contaminated protocol) | 0.977 | 0.795 (seeds 2, 3: 0.816, 0.804) | 0.909 |
-
-external student-only diagnostics: `docs/CLEAN_KD_RESULTS.md` (separate clean-KD
-milestone; see issue1). No fused/deployed-FPR claim from this comparison.
 
 **Withdraw the claim that KD fixes Hinglish generalization.** The inherited unlabeled transfer
 pool reintroduced excluded rows: campaign had 4,147 exact test copies; the ScamShield fold had
@@ -296,8 +305,8 @@ Android app; independent Indian validation.
 
 ## 6. What failed and why
 
-- **Hinglish generalization remains unresolved.** Matched clean no-KD mean F1 is0.4058 versus teacher≈0.80; clean KD is0.3520 and KILL;
-  the historical ~0.80 improvement used a contaminated unlabeled pool. Source-balanced/DRO
+- **Hinglish generalization remains unresolved.** Matched clean noKD mean F1 is0.4058 versus teacher≈0.80; cleanKD0.3520 isKILL;
+  the historical contaminated≈0.81 improvement is WITHDRAWN. Source-balanced/DRO
   do not meet the primary ScamShield gate. Never add raw transfer extras to training.
 **Not completed:** model-side GroundLM FPR; verified `llama_export` output; Pi 5 benchmarks; Android app.
 

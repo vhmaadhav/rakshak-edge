@@ -60,8 +60,8 @@ def endpoints(frame, scores, threshold, student_pred, n_boot):
     return result
 
 
-def compare_recalls(frame, pred_a, pred_b, *, n_boot):
-    y = frame.label_scam.fillna(-1).to_numpy(dtype=int)
+def compare_recalls(frame, pred_a, pred_b, *, n_boot, label='label_scam'):
+    y = frame[label].fillna(-1).to_numpy(dtype=int)
     pos = y == 1
     return paired_rate_test(pred_a[pos].astype(int), pred_b[pos].astype(int),
                             frame.campaign_id[pos].astype(str).tolist(), n_boot=n_boot)
@@ -98,11 +98,15 @@ def candidate_decision(internal, external, states):
             'scope': 'all three seeds must pass; no independent held-out improvement claim'}
 
 
-def run(ctx):
+def run(ctx, *, source_info=None, model_arms=None, feature_roles=None, gate=None):
     p = argparse.ArgumentParser()
     p.add_argument('--n-boot', type=int, default=1000)
     args = p.parse_args(ctx.argv)
-    source = source_folder(ctx.input_root)
+    source = source_folder(ctx.input_root) if source_info is None else source_info['folder']
+    models = model_arms or {'baseline': 'erm', 'transactional': 'erm'}
+    schemas = feature_roles or {'baseline': False, 'transactional': True}
+    if set(models) != set(ARMS) or set(schemas) != set(ARMS):
+        raise ValueError('both fixed comparison roles are required')
     metadata = json.loads((source / 'metrics.json').read_text())
     expert = FrozenURLExpert(frozen_url_folder(ctx.input_root))
     root = D.resolve_data_root()
@@ -124,55 +128,66 @@ def run(ctx):
         y_cal = sms.label_scam.iloc[cal_pos].to_numpy(dtype=int)
         states[run_.name], aligned[run_.name] = {}, {}
         for seed in (1, 2, 3):
-            name = run_.name.replace(':', '_') + f'_erm_s{seed}'
-            path = source / f'scores_{name}.parquet'
-            scores = aligned_scores(path, frame)
-            saved = pd.read_parquet(path).set_index('id')
-            if (set(saved.reindex(sms.id.iloc[run_.cal])['split']) != {'cal'}
-                    or set(saved.reindex(sms.id.iloc[run_.test])['split']) != {'test'}):
-                raise ValueError('saved score split roles disagree with frozen IDs')
-            aligned[run_.name][str(seed)] = (positions, scores)
+            aligned[run_.name][str(seed)] = {}
             states[run_.name][str(seed)] = {}
             for arm in ARMS:
-                x = features[arm][cal_pos].copy()
+                name = run_.name.replace(':', '_') + f'_{models[arm]}_s{seed}'
+                path = source / f'scores_{name}.parquet'
+                scores = aligned_scores(path, frame)
+                saved = pd.read_parquet(path).set_index('id')
+                if (set(saved.reindex(sms.id.iloc[run_.cal])['split']) != {'cal'}
+                        or set(saved.reindex(sms.id.iloc[run_.test])['split']) != {'test'}):
+                    raise ValueError('saved score split roles disagree with frozen IDs')
+                aligned[run_.name][str(seed)][arm] = (positions, scores)
+                schema = 'transactional' if schemas[arm] else 'baseline'
+                x = features[schema][cal_pos].copy()
                 x[:, 0] = scores[cal_mask]
                 with threadpool_limits(limits=1):
                     state = fit_cal_only(x, y_cal, sms.id.iloc[cal_pos].to_numpy(),
                                          sms.campaign_id.iloc[cal_pos].astype(str).to_numpy(),
                                          train_ids=sms.id.iloc[run_.train].tolist(),
                                          test_ids=sms.id.iloc[run_.test_all].tolist(),
-                                         transactional=arm == 'transactional')
+                                         transactional=schemas[arm])
                 states[run_.name][str(seed)][arm] = state
     frozen_path = write_metrics('frozen_fusion_states.json', sanitize(states))
     frozen_hash = hashlib.sha256(frozen_path.read_bytes()).hexdigest()
-    internal, external, paired, external_paired = {}, {}, {}, {}
+    internal, external, paired, external_paired, paired_all = {}, {}, {}, {}, {}
     for run_ in runs:
-        internal[run_.name], paired[run_.name] = {}, {}
+        internal[run_.name], paired[run_.name], paired_all[run_.name] = {}, {}, {}
         test = sms.iloc[run_.test]
         for seed in (1, 2, 3):
             key = str(seed)
-            positions, message = aligned[run_.name][key]
-            student_thr = metadata['runs'][run_.name]['arms']['erm'][key][
+            positions, control = aligned[run_.name][key]['baseline']
+            student_thr = metadata['runs'][run_.name]['arms'][models['baseline']][key][
                 'metrics']['thresholds']['fpr_1pct']['threshold']
-            message = pd.Series(message, index=positions).reindex(run_.test).to_numpy()
+            control = pd.Series(control, index=positions).reindex(run_.test).to_numpy()
             predictions = {}
             internal[run_.name][key] = {}
             for arm in ARMS:
                 state = states[run_.name][key][arm]
                 if state['status'] != 'ok':
                     continue
-                x = features[arm][run_.test].copy()
+                positions, message = aligned[run_.name][key][arm]
+                message = pd.Series(message, index=positions).reindex(run_.test).to_numpy()
+                schema = 'transactional' if schemas[arm] else 'baseline'
+                x = features[schema][run_.test].copy()
                 x[:, 0] = message
                 prob = predict_frozen(state, x)
                 threshold = SelectiveThresholds.from_dict(state['thresholds'])
                 internal[run_.name][key][arm] = endpoints(
-                    test, prob, threshold, message >= student_thr, args.n_boot)
+                    test, prob, threshold, control >= student_thr, args.n_boot)
                 predictions[arm] = threshold.transform(prob) == 'SCAM'
                 pd.DataFrame({'id': test.id, 'prob': prob, 'scam': predictions[arm]}).to_parquet(
                     ctx.work / f"fused_{run_.name.replace(':', '_')}_{arm}_s{seed}.parquet")
             if set(predictions) == set(ARMS):
                 paired[run_.name][key] = compare_recalls(
                     test, predictions['transactional'], predictions['baseline'], n_boot=args.n_boot)
+                paired_all[run_.name][key] = {
+                    label: compare_recalls(
+                        test, predictions['transactional'], predictions['baseline'],
+                        n_boot=args.n_boot, label=label)
+                    for label in ('label_scam', 'label_binary') if label in test}
+
     # External labels/decisions are used for reporting only after the artifacts are saved.
     from rakshak.canonicalize import canonicalize
 
@@ -186,21 +201,25 @@ def run(ctx):
         external[name], external_paired[name] = {}, {}
         for seed in (1, 2, 3):
             key = str(seed)
-            message = aligned_scores(source / f'external_{name}_erm_s{seed}.parquet', frame)
-            student_thr = metadata['runs']['campaign']['arms']['erm'][key][
+            control = aligned_scores(
+                source / f"external_{name}_{models['baseline']}_s{seed}.parquet", frame)
+            student_thr = metadata['runs']['campaign']['arms'][models['baseline']][key][
                 'metrics']['thresholds']['fpr_1pct']['threshold']
             external[name][key], decisions = {}, {}
             for arm in ARMS:
                 state = states['campaign'][key][arm]
                 if state['status'] != 'ok':
                     continue
-                x = matrices_[arm].copy()
+                message = aligned_scores(
+                    source / f'external_{name}_{models[arm]}_s{seed}.parquet', frame)
+                schema = 'transactional' if schemas[arm] else 'baseline'
+                x = matrices_[schema].copy()
                 x[:, 0] = message
                 prob = predict_frozen(state, x)
                 threshold = SelectiveThresholds.from_dict(state['thresholds'])
                 decisions[arm] = threshold.transform(prob)
                 external[name][key][arm] = endpoints(
-                    frame, prob, threshold, message >= student_thr, args.n_boot)
+                    frame, prob, threshold, control >= student_thr, args.n_boot)
                 pd.DataFrame({'id': frame.id, 'prob': prob,
                               'state': threshold.transform(prob)}).to_parquet(
                     ctx.work / f'fused_external_{name}_{arm}_s{seed}.parquet')
@@ -223,10 +242,16 @@ def run(ctx):
                       'GroundLM/SmishX feedback in-sample for intervention selection',
               'internal': internal, 'external': external, 'paired_recall': paired,
               'external_paired': external_paired,
-              'decision': candidate_decision(internal, external, states),
-              'frozen_states_sha256': frozen_hash, 'source_tree': SOURCE_TREE,
-              'source_metrics_sha256': METRICS_HASH, 'url_tree': URL_TREE,
+              'decision': (gate or candidate_decision)(internal, external, states),
+              'model_roles': models, 'transactional_feature_roles': schemas,
+              'paired_recall_by_label': paired_all,
+              'frozen_states_sha256': frozen_hash,
+              'source_tree': SOURCE_TREE if source_info is None else source_info['tree'],
+              'source_metrics_sha256': (METRICS_HASH if source_info is None
+                                        else source_info['metrics_sha256']), 'url_tree': URL_TREE,
               'url_sha256': URL_HASH, 'url_scaler_sha256': SCALER_HASH,
+              'frozen_v1_reference': (None if source_info is None
+                                       else source_info.get('frozen_v1_reference')),
               'n_boot': args.n_boot, 'fitted_objects_frozen_before_external_outcomes': True}
     write_metrics('metrics.json', sanitize(report))
     ctx.results['summary'] = str(report['decision'])

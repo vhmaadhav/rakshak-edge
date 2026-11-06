@@ -68,6 +68,8 @@ JOB_DEPENDENCIES = {
     'ela_resume_eval': ('kaggle/jobs/llama_ela_eval.py',),
     'ela_qlora': ('kaggle/jobs/llama_ela_eval.py', 'kaggle/jobs/ela_recompute.py'),
     'sms_source_adversary': ('kaggle/jobs/sms_source_balance.py',),
+    'fusion_hardneg': ('kaggle/jobs/fusion_transactional.py',),
+    'sms_transactional_hardneg': ('kaggle/jobs/sms_source_balance.py',),
 }
 JOB_RE = re.compile(r'[a-z][a-z0-9_-]*')
 DATASET_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*')

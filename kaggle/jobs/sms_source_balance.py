@@ -1,6 +1,6 @@
 """Three-seed paired ERM / source-balanced / balanced+group-DRO control on frozen splits.
 
-Kaggle only. No test-driven choices. Same dual-base student, epoch cap and optimiser
+Kaggle only. No test-driven choices. Same dual-base KD student, epoch cap and optimiser
 settings in all arms.
 """
 
@@ -34,7 +34,8 @@ from rakshak.models.student import ModelSpec, TrainConfig, predict_scores, train
 ARMS = ("erm", "balanced", "dro")
 
 
-def run(ctx, *, arms=ARMS, method_reference=None, teacher_arms=None, criterion=None):
+def run(ctx, *, arms=ARMS, method_reference=None, teacher_arms=None, criterion=None,
+                  training_transform=None):
     import torch
 
     if teacher_arms is not None and (set(teacher_arms) != set(arms)
@@ -111,17 +112,29 @@ def run(ctx, *, arms=ARMS, method_reference=None, teacher_arms=None, criterion=N
     units, results, comparisons, skipped = Units(ctx), {}, {}, {}
     config = {"args": vars(args), "arms": list(arms), "teacher_arms": teacher_arms,
               "model": asdict(spec), "env": env_report(),
-              "criterion": criterion or ("positive ScamShield paired mean-F1 CI; other folds lose "
-                                         "<= baseline CI half-width"),
-              "source_groups": "frozen train IDs only; no additional unlabeled transfer rows",
+              "criterion": criterion or (
+                  "decision deferred to predeclared full fused hard-negative audit"
+                  if training_transform else
+                  "positive ScamShield paired mean-F1 CI; other folds lose "
+                  "<= baseline CI half-width"),
+              "source_groups": ("frozen original train IDs plus explicit training-only "
+                                "synthetic negatives"
+                                if training_transform else
+                                "frozen train IDs only; no additional unlabeled transfer rows"),
               "label_endpoint": "legacy spam-inclusive label_binary",
               "selection": "early-stop cal PR-AUC; thresholds cal only; no test selection",
-              "reference": method_reference or ("https://arxiv.org/abs/1503.02531" if teacher_arms is not None
-                            else "https://arxiv.org/abs/1911.08731")}
+              "reference": method_reference or (
+                  "https://arxiv.org/abs/1503.02531" if teacher_arms is not None
+                  else "https://arxiv.org/abs/1911.08731")}
 
     def fit(run_, train, y, teacher, sources, arm, seed):
         cfg = TrainConfig(seed=seed, epochs=args.epochs,
-                          source_strategy="erm" if teacher_arms is not None else arm)
+                          source_strategy="erm" if (teacher_arms is not None
+                                                    or training_transform is not None) else arm)
+        augmentation = None
+        if training_transform is not None:
+            train, y, teacher, sources, augmentation = training_transform(
+                run_, train, y, teacher, sources, arm, seed)
         enabled = teacher_arms is None or teacher_arms[arm]
         if enabled and teacher_arms is not None and not np.isfinite(teacher).all():
             raise ValueError("clean KD requires complete original-train teacher coverage")
@@ -181,7 +194,7 @@ def run(ctx, *, arms=ARMS, method_reference=None, teacher_arms=None, criterion=N
         torch.cuda.empty_cache()
         return {"metrics": metrics, "training": history, "config": asdict(cfg),
                 "external": ext_metrics, "teacher_enabled": enabled,
-                "checkpoint": checkpoint_info}, st >= thr
+                "checkpoint": checkpoint_info, "training_augmentation": augmentation}, st >= thr
 
     pool_audits = {}
     for run_ in runs:

@@ -1017,3 +1017,99 @@ Kaggle for all compute; no Modal without Maadhav's explicit per-run OK; cloud-cr
 - Later one owner GetDataset read verified archive `maadhavvh/rakshak-clean-kd-20261101`v1, ownermaadhavvh, **isPrivate=true**,14567242bytes, receiptwork/clean-kd-kaggle-privacy-verification.json; no reupload. HF publish pending.
 
 - Finished milestone full unit suite ONCE: **845passed21skipped144warnings191.10s**; nice19/taskset0-3/OMP2/MKL2/50%CPUquota/85Cstop, Tctl49.5→57.8C. Torch-dependent checks skip locally, actual loss/coverage invariants ran on Kaggle. Ruff all clean; no code changes after the full invocation. No local real model work.
+
+# P1 arm(a) predeclaration — 2026-11-01
+
+- Separate `ci/transactional-hardneg-20261101`, based6d4669f/PR#6; no changes to reviewed branches. Hypothesis/experiment/ratios/seeds/endpoints/go-kill/source register frozen in `docs/TRANSACTIONAL_HARDNEG.md` before implementation/compute. Two fresh ERM/augmented arms, original train IDs only + independently generated tagged synthetic negatives, no synthetic cal/test/external rows or teacher labels. Same student/KD hyperparameters; synthetic rows full BCE/no teacher. Up to25% original binary-negative count, capped12000/fold, fixed generator seed20261101, six families/EN+Hinglish.
+- Go every seed: absolute fused GroundLM1%/10%, SmishX recall>=control student, no GroundLM FPR increase, every frozen-fold recall guard. Legacy spam endpoint guards on every fold plus known fraud-positive endpoint guards; UCI fraud recall stays NA, not relabelled. This applicability is declared **before(a) training**, not a retroactive change to(b)'s original incomplete gate. Four cal-only fusion stages, unchanged baseline schema, fixed URL expert, all endpoints/CIs/coverage. No benchmark rows used to author templates; public guidance provenance/retrieval limits explicit. No training launched yet.
+
+# P1 arm(a) implementation/launch readiness — 2026-11-01
+
+- Corpus-independent generator:24 original literal templates/six families/EN+Hinglish, seed20261101, tagged synthetic training-only records with invented values/synthetic header shapes. No URLs or action requests in these benign notifications. No message is copied from any corpus/model. `append_training` preserves original labels/teacher targets, adds full-BCE negative rows with NaN teacher targets, rejects bad tags and exact-normalised collisions against all original/external text keys. Frozen split IDs are not changed.
+- Shared guarded controls runner accepts an explicit training transformation only for this job; default path is unchanged. Original pool is asserted to equal frozen train IDs before augmentation. Fresh ERM/hardneg arms use identical epoch cap/optimizer/KD settings; augmentation changes batches/class weight, recorded per arm rather than falsely claiming identical update counts. Generated samples/provenance +200-item human-review sample are private outputs; **human review not completed** is explicit, no human-authenticity claim.
+- Focused generator/isolation checks **2 passed in0.10s**, Tctl38.6C. Combined generator/bundle/train-only KD guards **21 passed in0.76s**, Tctl38.8C, ruff clean. No local training/inference. Kaggle must verify full-BCE/no-teacher finite-gradient invariants before corpus access, then existing source-control invariants before fitting. Generator reads no corpus; independent collision audit aborts on an exact match, without rewriting from that row.
+
+- Training **launch attempt rejected by Kaggle SaveKernel HTTP400**: `sms_transactional_hardneg-p1-hardneg-20261101`, local dirty bundle base6d4669f/tree`923dff425b3a`; no successful version/run confirmed, no wait/fetch opened. Requested T4/internet/private data+teacher logits, args `--seeds 1 2 3 --epochs 15 --n-boot 1000 --teacher-seed 0`. No scientific outcome yet. The launch snapshot contains one overlong documentation line introduced after the focused checks; wrapped locally and ruff is now clean. No model/data/template/hyperparameter/gate change; rejected snapshot retained for provenance. No fit/cancellation occurred.
+
+- SaveKernel rejected the53-character full kernel slug with HTTP400; exact server validation reason is **UNVERIFIED** (CLI gave no body). No successful kernel version/run or event subscription exists for that attempt. Retry with shorter run identifier`a1-20261101`, unchanged model/data/hyperparameters/gates, now ruff clean. Local style-only wrapping changes bundle hash, not scientific behavior.
+
+- Successful shorter-name launch: `sms_transactional_hardneg-a1-20261101` **version1**, dirty base6d4669f/tree`1eb58925b36e`, same seeds/epochs/bootstrap/teacher-seed and private inputs. One event subscriber opened, no polling. The preceding HTTP400 attempt did not start a confirmed job. No result or synthetic-data gate pass claimed yet; training run must pass its invariants/collision guards. Only this training kernel is currently active; B export2 has completed with a runtime-loading failure and is under research.
+
+- Post-training fusion comparison preparation (no new job yet): common cal-only runner now binds each comparison role to its own fresh ERM/hardneg saved scores, while both arms use the unchanged baseline schema (candidate(b) features disabled). Synthetic full-run test verifies an informative control and constant-score candidate cannot silently share the same expert. Focused role/gate/bundle checks **4 passed in1.17s**, Tctl46.1C; ruff clean. First fixture attempt lacked external clustering columns; corrected the isolated stub, not the benchmark algorithm. No arm(a) outcome has been read; no gate/model/template change.
+
+- Source validation and fused-comparison packaging checked on synthetic receipts: reject partial runs, changed metric hashes and teacher-labelled synthetic rows; require all6folds/3seeds and the generator fingerprint before fused evaluation. Combined source/bundle/model-role/gate checks **6 passed in1.28s**, Tctl41.2C; ruff clean. These are code checks only, not a data/model result. Training remains on its original subscriber, no partial fetch. Frozen v1 preparation is now separate following Maadhav's clarification; all future deployment/external FPR claims must identify its immutable manifest, while experimental paired controls retain their own frozen cal-state provenance.
+
+# Hard-negative training completed; fused gate pending — 2026-11-01
+
+- `sms_transactional_hardneg-a1-20261101` **v1**, tree`1eb58925b36edc0f543d555c4007bc04289f1181a326e2ec7330a48fd315584f`, **ok3341.3s**,36 successful fits/all6folds/3seeds. Original ONE event and ONE fetch completed/receipt verified. Metrics SHA`0982ed2815454351417ccb9b91ae725bf24340d8b32a1858255f185f1d3738a7`. No frozen full-fusion go/kill conclusion yet; v1 freeze is running and its exact private reference is required by the prepared fused audit.
+- Added synthetic train rows by fold: campaign9387,lang_shift6801,Mishra11898,ScamShield896,UCI10914,temporal8681; teacher-labelled synthetic rows0. Original train labels/teacher coverage preserved; no unlabeled transfer rows trained. Private provenance says human-review sample200 exists but **human review not completed**. No synthetic row in evaluation/external sets.
+- Student-only diagnostics (not v1/deployed FPR): three-seed legacy F1 campaign.973808→.974239; lang_shift.456273→.397868 (pairedCI delta[−.075205,−.040703]); ScamShield.738077→.720384 (deltaCI[−.019871,−.015719]); UCI.889637→.878847; Mishra.940888→.939122; temporal.889514→.883224. These are detector diagnostics, not a substitute for predeclared fused recall/FPR gates. All seeds/external student endpoints retained for the final report; no model/template/threshold changes after these outcomes.
+- Continue to the frozen-v1-bound fused arm(a) audit with unchanged paired fresh control and exact gates. Training success is not a safety go. GroundLM/SmishX design-feedback exposure remains explicit; independent Indian validation OPEN, HF publish pending. Max2 kernels now B runtime recovery + v1, clean KD/policy not launched.
+
+## 2026-11-01 — hard-negative fused audit launched (unchanged gates)
+
+- Training source sms_transactional_hardneg-a1-20261101v1 (36fits) is complete.
+  Fused audit `fusion_hardneg-a-audit-20261101`v1, T4/private data + hardneg source +
+  frozen checkpoint-v1 + fixed URL kernel; args source-tree1eb58925b36edc0f543d555c4007bc04289f1181a326e2ec7330a48fd315584f,
+  metrics0982ed2815454351417ccb9b91ae725bf24340d8b32a1858255f185f1d3738a7,
+  v1-manifestc310d3ccbc1c1e50ce9436f217c66ee9934f778985bfef487a034cc3070b79fa,
+  v1-metricsaada644fd94eeaea681ef3ec3f53928c78d029f496e0319966377c192857377f, n-boot1000.
+  Tree prefix99c63db6d311 (full hash in bundle receipt), base6d4669f dirty snapshot.
+- Original one wait_event subscription opened. No polling/fetch/outcome yet.
+  Exact all3seeds/6folds gates in TRANSACTIONAL_HARDNEG.md unchanged, including
+  no GroundLM FPR increase, recall loss<=control CIhalf, UCI fraudNA+legacy guard.
+  Reference v1 artifactGO/safetyKILL is a measurement anchor, not a shipment claim.
+
+## 2026-11-01 — hard-negative fused audit completed: KILL
+
+- `fusion_hardneg-a-audit-20261101`v1, args/source/parent hashes recorded at launch,
+  ok367.3s; tree99c63db6d3110d23c9638e2dc9a36321303d944e65dd0e34bc787dd342d923f3
+  on base6d4669f dirty snapshot. OriginalONEwait+ONEfetch provenance verified.
+  MetricsSHA1c32e23643f594e722f5b15066c78d18962ff971d75ffc57be49c60a2b57109e;
+  calstatesSHA77949234736a99401eb8507d7b7dab45788e41e87cfa288e23a49d55d0ae78af.
+- KILL16observed failures/no unavailable results: all3 absoluteGroundSCAM1%/alert10%
+  and SmishSCAMrecall>=controlstudent fail;7internal fold/label recall guards fail.
+  UCI fraud recall explicitlyNA for3seeds, legacy guards retained. No gate changes.
+- GroundSCAM control395/415/418→aug83/208/142 of1133 (34.86/36.63/36.89%→
+  7.33/18.36/12.53%); alert424/479/436→135/232/205. All paired Ground no-increase
+  checks pass, but these gains cannot override failed absolute and recall gates.
+  SmishSCAMaug23/30/23of226 vs matched controlstudent129/85/148 failsall3.
+  Fullallseeds/6folds/bothlabel endpoints/coverage/pairedCIs/p-values in
+  TRANSACTIONAL_HARDNEG_FUSED_RESULTS.md. Saved aggregateJSON formatting only, no
+  local inference/resampling. Student-only report remains separately labelled.
+- Experimental arm(a) cal states use its own fresh controls/weights, not immutablev1;
+  unchangedv1refc310d3ccbc1c1e50ce9436f217c66ee9934f778985bfef487a034cc3070b79fa
+  is included. In-sample rule/intervention selection, no held-out improvement.
+- Artifact limitation: original training job did NOT save student checkpoints.
+  No reloadable/deployable model claim; do not rerun a killed arm just to save weights.
+  Synthetic12000/review200 retained; human reviewNOTcompleted. Native real-Indian
+  authenticity/data-gap explanation UNVERIFIED; independent Indian validation OPEN.
+- Private allowlist archive includes generated training rows+provenance/aggregate
+  train/fused JSON and cal states, excludes original message/score parquets. First
+  SDK invocation failed local title-length validation before any upload; shortened
+  title then first actual private upload started, privacy verification pending.
+  HF publish pending. No weights/rawdata committed.
+
+## 2026-11-02 — hard-negative archive publication verified
+
+- Resumed from existing completion receipts; no duplicate wait/fetch. Later one
+  owner GetDataset read verifies `maadhavvh/rakshak-transactional-hardneg-20261101`
+  ownermaadhavvh, **isPrivate=true**, version1,23311763bytes. Receipt
+  work/hardneg-kaggle-privacy-verification.json; manifestSHA
+  633a6e6fbb406d1819d2a86519a83996f9c5423212d51da1c82c4342b559e496.
+  Archive includes only synthetic training parquet/provenance + aggregate train/
+  fused JSON/cal states. Original message/score parquet excluded. No weights saved
+  by the original training job; human review remains pending. HF publish pending.
+
+## 2026-11-02 — hard-negative milestone validation
+
+- Pulled/rebased isolated branch on originci/fused-audit-20261101 before verification:
+  alreadyup-to-date; all17staged code/report hashes unchanged across pull. Repo-local
+  identityvhmaadhav<vhmaadhav@hotmail.com> verified, never overridden.
+- Full unit suite ONCE: **850passed21skipped144warnings227.51s**, nice19/taskset0-3/
+  OMP2/MKL2/50%CPUquota/85Cstop. Tctl45.4Cstart/58.9Cend, no thermal interruption.
+  Ruffallclean/diffcheckclean. Torch-dependent local tests skip; actual loss/gradient
+  checks ran on Kaggle before training. No code changes after this full invocation.
+- One finished negative-result milestone commit/PR next, no data/weights/secrets
+  staged, no merge/mainpush/forcepush. Frozenv1 reference remains unchanged;
+  original augmentation weights unavailable/human reviewpending explicitly retained.
