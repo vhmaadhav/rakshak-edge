@@ -78,6 +78,18 @@ failure retained. In-sample policyselection, independentIndianvalidationOPEN.
 Full endpoints/pairedCIs/coverage/risk–coverage: EVIDENCE_REQUIRED_ALERT_RESULTS.md.
 Next lastP1arm(c)per-familycalibration is separately predeclared; no thresholdfishing.
 
+Last P1 arm(c), template-cal-c1 (2026-11-02): **KILL**,9external gate failures.
+All90family fits were sparse under fixed cal minimums and used exactglobalfallback;
+no intervention/map was fitted. GroundSCAMFPR38.83/29.83/30.71%,alert40.86/32.39/31.42%
+across clean noKDseeds1/2/3; SmishSCAMrecall20/29/106of226 belowstudent118/116/122.
+Allinternal retention guards pass by identicaloutputs; UCIknownfraudNA/legacyretained.
+These are a named newcohort, not a replacement for immutablev1; **in-sample
+intervention selection**, no independentIndian/heldout gain. No more P1threshold
+arms or wiring from this result. Fullfolds/seeds/CIs/pairedtests/calcounts:
+`docs/TEMPLATE_CALIBRATION_RESULTS.md`. IndependentIndianinboxvalidation OPEN.
+Current clean studentlangF1≈.41 versus teacher≈.80, contaminated≈.81 WITHDRAWN;
+next multilingualrepresentation experiment is separate and has no measured result yet.
+
 ## 1. Goal and constraints
 
 - **Project:** offline SMS and URL scam detector on Arm devices, for **Bharat AI-SoC Challenge 2026-27, Problem Statement 3** (on-device cyber safety). Name in the code: Rakshak-Edge.

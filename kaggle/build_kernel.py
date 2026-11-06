@@ -428,12 +428,14 @@ def bundle_names(job: str) -> list[str]:
                     'url_teacher_kd': ['kaggle/jobs/url_student.py',
                                        'kaggle/jobs/url_controls_cal.py'],
                     'sms_clean_kd': ['kaggle/jobs/sms_source_balance.py'],
-                    'evidence_required_alert': ['kaggle/jobs/evidence_escalation.py']}
+                    'evidence_required_alert': ['kaggle/jobs/evidence_escalation.py'],
+                    'family_calibration': ['kaggle/jobs/fusion_v1.py']}
     validation_paths = (['tests', 'kaggle/jobs', 'kaggle/build_kernel.py',
                          'kaggle/requirements-kaggle.txt', 'kaggle/test_selection.json',
                          'kaggle/publish_url_e0.py',
                          'kaggle/wait_event.py', 'kaggle/launch.sh', 'kaggle/wait_event.sh',
-                         'kaggle/fetch.sh', 'colab', 'pyproject.toml']
+                         'kaggle/fetch.sh', 'colab', 'pyproject.toml',
+                         'kaggle/publish_family_cal.py', 'kaggle/publish_fusion_v1.py']
                         if job == 'unit_validation' else [])
     listed = git('ls-files', '-z', '--cached', '--others', '--exclude-standard', '--',
                  PACKAGE_DIR, SHARED_FILE, job_rel, *JOB_DEPENDENCIES.get(job, ()),

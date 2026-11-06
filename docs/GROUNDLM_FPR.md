@@ -289,3 +289,9 @@ Outputs are private: `metrics.json` (counts, rates, intervals, input hashes),
 `audit_manifest.json` (IDs/groups only), and `rule_predictions.parquet` (IDs and frozen
 decisions, no raw text). The PR must report failures and tradeoffs without a held-out
 improvement claim. Model-side and PhreshPhish metrics are outside this rules-only run.
+
+## Design register addition — 2026-11-02 family-calibration arm(c)
+
+The complete GroundLM/ScamShield sets informed historical rule design; aggregate GroundLM/SmishX/frozen-fold outcomes from earlier P1arms motivated template-cal-c1. Existingtask regex families were reused without reading new benchmark examples. All maps/thresholds fit originalcal campaigns only, never external/test rows; all90familyfits fell back for fixedsparsity. These new outcomes are **in-sample intervention selection**, not an independent Indian held-out improvement. No set/row exposure is reset by freezing a manifest. Source/models/calID hashes and allendpoint results: TEMPLATE_CALIBRATION_RESULTS.md.
+
+IndependentIndianheldoutvalidation remains OPEN: consented, privacy-scrubbed real Indian SMS (bank/UPI/OTP/delivery +receivedscams), collected after rule/policy freeze and never used fortuning. Inboxexportcode is PR#5; no realmessages in git.
