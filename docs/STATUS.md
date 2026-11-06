@@ -1113,3 +1113,210 @@ Kaggle for all compute; no Modal without Maadhav's explicit per-run OK; cloud-cr
 - One finished negative-result milestone commit/PR next, no data/weights/secrets
   staged, no merge/mainpush/forcepush. Frozenv1 reference remains unchanged;
   original augmentation weights unavailable/human reviewpending explicitly retained.
+
+# Evidence-gated escalation predeclaration — 2026-11-01
+
+- New isolated `ci/evidence-escalation-20261101`, based6d4669f. `EVIDENCE_ESCALATION.md` records exact evidence families/weight exceptions/link condition, cal-only URL1%-FPR threshold, v1 manifest binding, all6fold seed1 validation companions, before-outcomes policy freeze, original requested go gates1%SCAM/15%alert/Smish alert recall>=studentSCAM/allfold alert-recall guard. This is in-sample policy selection motivated by GroundLM/SmishX feedback. No policy computation/model fitting/eval locally or new GPU launch.
+- Demotion-only SCAM→UNCERTAIN does not reduce >=UNCERTAIN FPR; the conservative low-score/corroboration UNCERTAIN rule can only increase alerts. Must apply both external FPR gates, not claim success from low SCAM FPR alone. Independent Indian validation remains OPEN. Publish privately on Kaggle after verified privacy; HF publish pending. Conditional v2/app/ELA integration only after GO; no gate changes or quantisation retries for B.
+
+- Code-only policy checks **2 passed in0.64s** (Tctl62.4C); reporting/gate checks **4 passed in0.78s** (Tctl53.9C) verify SCAM demotion retains alert FPR, explicit abstention coverage/uncertain-share, descriptive risk–coverage curves, UCI legacy guard and missing-fold blocking. No real benchmark inference/scoring locally.
+- Prepared `evidence_escalation` job: strict v1+companion artifact/source/hash verification, cal-only URL expert thresholds, immutable candidate-policy JSON before all saved test/external decisions, both endpoints/paired alert changes/conditional decided error/risk–coverage per fold. Existing v1 saved scores are ID-bound and their states must match frozen thresholds; no classifier/stacker refit. Await v1 freeze and existing two subscriptions; **not launched**, no quality/go claim.
+- Housekeeping: fetched main20ea2b0 remains ancestor of all open PRs. Descriptions#2–#6 now state merge dependencies (#2→#3→siblings#4/#5/#6) and in-sample/independence scope. No branch rewriting/push/merge. Corrected PR#2's stale local-only/pending-rank/held-out wording to its completed private review audit. Any future required rebase after merges uses a new branch/PR, never shared force-push. Main dirty files untouched. HF publish pending.
+
+- Final policy input/gate/report synthetic checks **5 passed in0.75s**, Tctl50.8C before, ruff clean. Exact-ID alignment, probability bounds, unchanged parent threshold decisions, UCI legacy guard, alert FPR denominator and missing-fold blocking verified without loading a model. All real policy computation remains queued behind v1/current jobs. Copied v1 manifest helper is identical for source-verification; new policy source has its own hash. No v2 candidate approval or integration yet.
+
+- New synthetic full-run ordering fixture verifies all6 calibration-only URL thresholds and the immutable candidate policy JSON exist before any saved test/external decision file is read. Policy/input/report/gate checks **6 passed in1.45s**, Tctl39.8C before, ruff clean. No real policy benchmark run, threshold choice or v2 adoption. Frozen reference format remains pending; B and clean KD occupy the two original subscriptions.
+
+## 2026-11-01 — evidence-gated escalation audit launched
+
+- Hypothesis/gates fixed in EVIDENCE_ESCALATION.md before code/compute; this decision
+  policy fits no new model/stacker and uses URL thresholds from cal only. GroundLM/SmishX
+  feedback motivated it: **in-sample policy selection**, not held-out improvement.
+- `evidence_escalation-gate-20261101`v1 T4/private data + exact v1 output + fixed URL
+  kernel; args `--v1-tree 0cf9f00c86d115f31a92ad61a4376d501bd36cbed5a396b29fad1857374fe205 --v1-manifest-sha256 c310d3ccbc1c1e50ce9436f217c66ee9934f778985bfef487a034cc3070b79fa --n-boot 1000`.
+  Dirty bundle prefix75c513686c8d, base6d4669f. Frozen-source byte comparison found0
+  mismatches after copying the exact checkpoint-format readers from v1.
+- Focused policy tests6passed1.36s, Tctl39.2C, nice19/taskset0-3/OMP2/MKL2; ruffclean.
+  An earlier focused invocation used nonexistent test filenames and ran zero tests
+  (exit4); corrected filenames above. No scientific results were produced locally.
+- Original ONE event subscriber opened; no fetch/outcome yet. Max2GPU total: this
+  audit and hardneg fused audit; cleanKD completed on its existing subscription.
+  Unchanged GO: GroundSCAM<=1%/alert<=15%, Smishalertrecall>=studentSCAM, all frozen
+  fold alert-recall guards; UCI fraudNA+legacy guard. Only GO authorizes v2/wiring.
+
+## 2026-11-01 — first policy audit UNMEASURABLE; new variant predeclared
+
+- `evidence_escalation-gate-20261101`v1 failed111.8s with exact error
+  `ValueError: required URL cal threshold unmeasurable; never fit externally`.
+  Tree75c513686c8d1fe2f73f949c9ccc3d4c541b8149ebf3e7c7c1532eb25afc5e22;
+  original ONEevent subscription and ONEfetch complete. No policy manifest,
+  test/external decisions or quality outcomes were emitted. Scientific gate is
+  UNMEASURABLE, not measuredKILL, never GO. Preserve this failure/gate unchanged.
+- Before reading that result, owner-requested distinct evidence-required-alert arm
+  was declared in EVIDENCE_REQUIRED_ALERT.md. No qualifying evidence always SAFE;
+  qualifying+highfused SCAM, qualifying+lower UNCERTAIN. Ground1%SCAM/15%alert;
+  rules-only recall guard (not old student-recall gate), student also reported.
+- After this pre-outcome calibration failure, owner explicitly authorizes this new
+  arm's URL threshold only on URL expert's original frozen native URL cal split,
+  with exact splitID/hash/threshold frozen before SMS/external scoring. Never URL
+  test/Phreshbenchmark/SMS/external calibration. Both classes mandatory; no further
+  fallback. Original arm is not rewritten/re-scored under this change.
+
+## 2026-11-01 — evidence-required-alert native-cal variant launched
+
+- Owner-approved native-URL calibration resolution predeclared before compute in
+  EVIDENCE_REQUIRED_ALERT.md; first escalation audit stays UNMEASURABLE unchanged.
+  New gate Ground1%SCAM/15%alert and rules-only recall CIhalf guard, student comparison
+  only. No evidence SAFE in every metric, no hidden info alerts.
+- Original URL kernel generated argv verified `--kd --budget-h 9`: default seed0,
+  fraction.05, max_trainNone, selected charcnn-wide/s0. Original bundled
+  phreshphish.py exactly matches current source SHA256
+  839fa8fda0a9b0135c87299e67f39c9170ecbde9f0da833b38902dd35536210c;
+  original URL metrics SHA70b34a58853d1ac2d29ed7a1dadaf506b871c8999a8ba712d1021a7ff4ddec7f.
+  New loader filters official trainIDs before reading URL/label columns, reconstructs
+  exact native grouped cal membership; never URL test/benchmark/SMS/external calibration.
+  Cal splitID/orderedIDs/hash/threshold freezes before even loading the SMS corpus.
+- Focused7passed.73s,Tctl43.1C,nice19/taskset0-3/OMP2/MKL2; Ruffallclean. Synthetic
+  fixture confirms exact original carve membership and excludes testURL rows, freeze
+  ordering, no-evidence high-riskSAFE and rules-only guard. Archived v1 source0mismatches.
+- `evidence_required_alert-native-20261101`v1,args `--v1-tree 0cf9f00c86d115f31a92ad61a4376d501bd36cbed5a396b29fad1857374fe205 --v1-manifest-sha256 c310d3ccbc1c1e50ce9436f217c66ee9934f778985bfef487a034cc3070b79fa --n-boot 1000`,T4/private data+v1output+originalURLkernel.
+  Dirty tree prefix38eae8cefefb, base6d4669f; one original wait_event subscriber
+  opened, no fetch/outcome yet. This is the only active GPU kernel after both prior
+  audits completed. In-sample policy selection; independent Indian validation OPEN.
+
+## 2026-11-02 — native-URL adapter recovery before outcomes
+
+- Original evidence-required attempt `evidence_required_alert-native-20261101`v1
+  failed278.5s; tree38eae8cefefb8be11a3cf9d08285ee653d30427d06cb6ddfda0033004f7aba7f.
+  Exact error `ValueError: native URL calibration must score every original cal URL`.
+  Original ONEevent receipt and ONEfetch complete. No policy/threshold manifest or
+  SMS/test/external outcomes emitted; no scientific go/kill result yet.
+- Root cause from adapter contracts: FrozenURLExpert.score expects SMS text and
+  supplies NaN when no URL is extracted. Native URL cal records must instead be
+  passed directly to the URL model, as the original URL training/eval job did.
+  Missing extracted rows are established by the returned-present guard; the exact
+  real-row URL format mix remains UNVERIFIED (no row examples printed/used).
+- Technical recovery hypothesis: direct original byte/side URL-core scoring yields
+  one finite score per unchanged native cal URL. Require exact row count/finite
+  outputs before selecting any threshold. Same model/scaler/IDs/group carve, native
+  labels only, no omitted calibration rows, no scientific gate/policy change.
+  Selected threshold/IDs/hash still freeze before SMS loading/scoring. No evidence
+  family, precision, model weight or external-cal change. New run name required.
+
+- Native adapter recovery focused8passed1.72s,Tctl44.8C, requirednice/affinity/threads;
+  Ruffallclean. Includes synthetic bare/native URL direct-core score regression,
+  same original cal membership and before-SMS manifest-order tests.
+- Recovery `evidence_required_alert-native2-20261102`v1 launched T4/private data +
+  frozenv1 output + original URL kernel, args identical to first native attempt,
+  tree prefixa8cda16cb65a,base6d4669f dirty snapshot. ONEwait_event subscriber
+  opened; no fetch/outcome yet. Only active GPU kernel. Original failed attempts
+  remain failed/unmeasurable, not retroactively passed.
+
+## 2026-11-02 — evidence-required result: KILL, saved-curve report predeclaration
+
+- Native recovery evidence_required_alert-native2-20261102v1 ok443.5s, original
+  ONEevent+ONEfetch complete; treea8cda16cb65a7a166a8ff318cf98b381bbba199f1272fec2587a9e0fd1b96134,
+  metricsSHA19130ec61d123af96e739054a36b827ab7451bb4b5ccbf552e7ea32be3291a93,
+  policySHAc51d8f55102637a67da2786d90b9a7abfc053546a0e8ff18cd771890dd35635a.
+- KILL10internal recall checks; GroundSCAM0/1133,alert4/1133=.353% pass caps,
+  but GroundSCAMrecall0/91 andalert25/91=27.47% must also remain visible.
+  Smishalert175/226=77.43% vs rules39/226=17.26%,student113/226=50% passes
+  its rules guard, but internalcampaign/lang/Mishraboth,Scamfraud,UCIlegacy,
+  temporalboth fail. SmishfraudFPR SCAM155/881=17.59%,alert306/881=34.73%.
+  No v2/deployment wiring; independent Indian validation OPEN, in-sample policyselection.
+  Ground0events clusteredCI[0,0] is degenerate, not proof of zero population risk;
+  savedIIDWilson upper.34% is a separate independence reference, not clusterbound.
+- Nativecal18087rows(11347neg/6740pos),seed0fraction.05;threshold.6308487409530461
+  fromoriginalURLcalONLY, calFPR.00995857936. OrderedcalIDsSHA
+  a93713954509cacb8ea7046982ed37fad42eee4b4a8886441eb721c6b6399be2;
+  originalpartitionSHA58d8c8c81866491db4f54b1db9a46c70b059b5f261e78be4518d3c5e05640bc5.
+  AllIDs/threshold/6parenthashes froze before SMS loading. Original auditUNMEASURABLE
+  and firstnativeadaptererror retained separately, no gate rewriting.
+- Formatting-only job predeclared: policy_curves will render4eight-population figures
+  from saved risk/coverage arrays (bothlabel endpoints; auto-decided conditional and
+  fullalert endpoint). No inference/model/data load/resampling/threshold or gate change.
+  ArtifactGO requires exactsource/metrics/policyhash and4nonemptyplot outputs; source
+  mismatch kills formatting. ScientificKILL cannot change. Matplotlib3.10.8 verified
+  officialPyPIrelease2025-12-10, remote install/renderonly. Sourceguard focused1pass.01s
+  Tctl49.9C, requiredCPUlimits; Ruffclean after doclinewrap. No localplot/modelcompute.
+
+## 2026-11-02 — policy review base refreshed before milestone verification
+
+- Pull/rebase own unpublished branch onto originci/fusion-v1-torch-20261101
+  fast-forwarded6d4669f→2684909. Autostashdfa4ce7 produced conflicts only in
+  appendedSTATUS and builder's sibling-dependency map; retained both histories and
+  both dependency entries. Every previously staged policy/inference/helper/report
+  file byte unchanged (verified pre-pull hashes), no scientific/code gate changes.
+  Main dirty work untouched. Autostash backup retained until final verification.
+- Owner-requested currentstudent≈.41/teacher≈.80 headline now inherited fromPR#8;
+  contaminated≈.81 stays withdrawn. New policyKILL headline added, no v2 claim.
+
+## 2026-11-02 — policy milestone thermal interruption, no false full-pass claim
+
+- One full unit invocation started atTctl68.4C with nice19/taskset0-3/OMP2/MKL2
+  and50%CPUquota. Monitor stopped it onTctl86.2C (>=85), exit130. Summary
+  **567passed11skipped28warnings79.00s**, KeyboardInterrupt in NumPy while the
+  synthetic NIDS end-to-end test ran. This is INCOMPLETE, not full-suite success.
+  Heavy local work stopped; no training/model work ran locally.
+- Machine cooled to53.4C before collection-only at10%CPUquota;886unique testnodes
+  collected, no tests run by collection. Progress stream567dots+11skips proves578
+  completed nodes in collection order. Resume only remaining308nodes, starting
+  test_nids.py::test_end_to_end_calibrated_lodo_and_hybrid_on_synthetic_data.
+  Completed nodes are NOT rerun. Source/tests unchanged between chunks.
+- Continuation uses10%CPUquota,nice19/taskset0-3/OMP2/MKL2,OpenBLAS1/NumExpr1,
+ 1second thermal monitoring and earlier80Cstop. No second full-suite invocation.
+  Combined validation remains pending until every remaining node completes.
+- Risk–coverage formatting job policy_curves-rcc-20261102v1 ok123.1s, originalONE
+  event/fetch complete; tree0b3f15f131d0b80cd2e04d5956378bef11617caffbec19bb8c94f53cdc37e7d7,
+ 4hash-verified figures produced from savedcurves only, scientificKILL unchanged.
+  Private publication allowlist(manifests/aggregateJSON/figures, no decision rows)
+  uploaded/inprogress; HFpublishpending. One plot visually inspected, readable.
+
+## 2026-11-02 — unfinished tests moved to Kaggle after second thermal stop
+
+- Local remaining-node continuation at10%CPUquota also stopped onTctl85.4C,
+  despite1secondmonitor/80Cstop; first unfinished syntheticNIDS integration test
+  had not completed. Exit130,16warnings514.51s, KeyboardInterrupt inLightGBM.
+  No additional pass count. Original completed567passed/11skipped remain578nodes;
+  all308remaining still need validation. No third local heavy attempt.
+- Correction to overly broad wording above: synthetic model fits are unit fixtures;
+  no actual-corpus training or benchmark evaluation ran locally. Both local stops
+  are failures to complete validation, not scientific policy outcomes or test passes.
+- Environment became read-only on interruption; explicit tool permission now grants
+  turn-only writes to isolatedwork/outputs/gitmetadata plusnetwork. Main working
+  files remain excluded and untouched. No automatic-review rejection pending.
+- Unit continuation hypothesis: run unchanged308node IDs on private Kaggle T4
+  with synthetic test fixtures only, no datasets/models/kernel inputs, samepytest9.2.0
+  verified against officialPyPI and localrelease. All source/jobs/tests/config files
+  are bundled (no rawdata/artifacts), scratchgitindexonly for bundlerunit checks,
+  no commit/identity override/remote. OMP2/MKL2/OpenBLAS1/NumExpr1,nice19/taskset0-3.
+- ArtifactGO requires pytestexit0,308reportedJUnitcases,0errors/0failures and<=10
+  skips (localTorchabsence previously caused10remaining skips; KagglehasTorch,
+  report actualcounts/env separately). Source-selectionSHA
+  ba2df7ed1e9cdef9a3a5f968588b4dc4a230123e8eda15d1bdba52900e74e9b1.
+  No completedlocalnode rerun; no secondfullsuite. Scientific policyKILL unchanged.
+- Policy archive now verified `maadhavvh/rakshak-policy-audits-20261102`v1,
+  ownermaadhavvh,isPrivateTRUE,2229318bytes, manifestSHA
+  394cbd8aec8a859b8e288312aa6abe49df8e2567f0ad521efd3659e821e9808a;
+  initialprocessing-time403 followed by one successfulownerread, no reupload.
+  Allowlist excludes allrowparquets/messages. HFpublishpending.
+
+## 2026-11-02 — policy validation complete across local partial + remote remainder
+
+- unit_validation-pol-rest-20261102v1 ok190.3s; originalONEevent/ONEfetch verified,
+  treeaa60925f5be06374c2deee1ab865bae4967f2d60ad572215cf880bd38194aff0.
+  MetricsSHAc52a5b2eb282995cb3424900c310dc5b2a5bfb45da72328400e7e7d6211b076b.
+- Kaggle pytest: **308passed132warnings90.75s**,0skipped/error/failure; JUnit308cases.
+  Py3.13.15,Torch2.11.0+cu128/T4,pytest9.2.0, pinned20runtime lines, no datasets/model
+  inputs. Synthetic fixtures only, scratchsourcegitindex/no commit/identity/remote.
+- Together with local567passed11skipped, all886collected nodes are accounted for:
+  **875passed/11localTorchskips across environments**. This is NOT one uninterrupted
+  full-suite pass. Local full attempt and remaining-node attempt both stopped on
+  thermal limits; no completed local test was rerun, and no third local heavy attempt.
+  Final source validation used remote remaining nodes; production policy SRC unchanged.
+- Additional packaging changes after local interruption are the unit-only job,
+  job-specific builder source inclusion and exactpytestpin/selection metadata.
+  Existing remaining-node bundler tests passed against that builder; no runtime
+  policy/model/threshold/gate change. Ruffallclean, no actual local corpus model work.
+- Candidate remainsKILL. No v2, e2e decision or ELA action wiring; independent
+  Indian validationOPEN. Ready for one finished milestone commit/reviewPR.

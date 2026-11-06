@@ -66,6 +66,18 @@ v1 itself is artifactGO/safetyKILL, newly fitted (not previously shipped), PR#8.
 The killed augmentation's original job did not save student weights. Private
 synthetic/aggregate archive receipt in STATUS.md, humanreview200 pending; HFpublishpending.
 
+Evidence-required alert policy also **KILL** (2026-11-02), no v2/wiring:
+GroundLM SCAM0/1133 (degenerate empirical clusterCI[0,0], not a population guarantee),
+alert4/1133=.353%; SmishX alertrecall175/226=77.43% vsrules39/226/student113/226,
+but10internal fold/label recall guards fail. GroundLM SCAMrecall0/91 must remain
+visible; SmishX fraudalertFPR306/881=34.73%. NativeURLcalONLY18087originalrows,
+threshold.6308487409530461; exactIDs/hash/threshold frozen beforeSMSloading.
+Named policy manifestc51d8f55102637a67da2786d90b9a7abfc053546a0e8ff18cd771890dd35635a
+binds unchangedv1experts. Original escalation remains UNMEASURABLE, native1adapter
+failure retained. In-sample policyselection, independentIndianvalidationOPEN.
+Full endpoints/pairedCIs/coverage/risk–coverage: EVIDENCE_REQUIRED_ALERT_RESULTS.md.
+Next lastP1arm(c)per-familycalibration is separately predeclared; no thresholdfishing.
+
 ## 1. Goal and constraints
 
 - **Project:** offline SMS and URL scam detector on Arm devices, for **Bharat AI-SoC Challenge 2026-27, Problem Statement 3** (on-device cyber safety). Name in the code: Rakshak-Edge.

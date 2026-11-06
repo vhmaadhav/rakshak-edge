@@ -427,7 +427,8 @@ def bundle_names(job: str) -> list[str]:
                                           'kaggle/jobs/url_teacher_kd.py'],
                     'url_teacher_kd': ['kaggle/jobs/url_student.py',
                                        'kaggle/jobs/url_controls_cal.py'],
-                    'sms_clean_kd': ['kaggle/jobs/sms_source_balance.py']}
+                    'sms_clean_kd': ['kaggle/jobs/sms_source_balance.py'],
+                    'evidence_required_alert': ['kaggle/jobs/evidence_escalation.py']}
     validation_paths = (['tests', 'kaggle/jobs', 'kaggle/build_kernel.py',
                          'kaggle/requirements-kaggle.txt', 'kaggle/test_selection.json',
                          'kaggle/publish_url_e0.py',
