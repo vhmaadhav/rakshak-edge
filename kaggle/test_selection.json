@@ -1,0 +1,9 @@
+{
+  "targets": [
+    "tests"
+  ],
+  "collect_all": true,
+  "expected_tests": "collected",
+  "minimum_collected": 835,
+  "maximum_skipped": 18
+}
