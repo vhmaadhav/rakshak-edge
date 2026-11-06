@@ -409,8 +409,24 @@ def bundle_names(job: str) -> list[str]:
     job_rel = f'kaggle/jobs/{job}.py'
     if not (REPO / job_rel).is_file():
         sys.exit(f'build: {job_rel} does not exist; write the job file first. Nothing was written.')
+    sibling_jobs = {'url_controls_recompute': ['kaggle/jobs/url_student.py',
+                         'kaggle/jobs/url_controls_cal.py', 'kaggle/jobs/url_controls_eval.py',
+                         'kaggle/jobs/url_teacher_kd.py'],
+                    'url_controls_cal': ['kaggle/jobs/url_student.py'],
+                    'url_controls_eval': ['kaggle/jobs/url_student.py',
+                                          'kaggle/jobs/url_controls_cal.py',
+                                          'kaggle/jobs/url_teacher_kd.py'],
+                    'url_teacher_kd': ['kaggle/jobs/url_student.py',
+                                       'kaggle/jobs/url_controls_cal.py']}
+    validation_paths = (['tests', 'kaggle/jobs', 'kaggle/build_kernel.py',
+                         'kaggle/requirements-kaggle.txt', 'kaggle/test_selection.json',
+                         'kaggle/publish_url_e0.py',
+                         'kaggle/wait_event.py', 'kaggle/launch.sh', 'kaggle/wait_event.sh',
+                         'kaggle/fetch.sh', 'colab', 'pyproject.toml']
+                        if job == 'unit_validation' else [])
     listed = git('ls-files', '-z', '--cached', '--others', '--exclude-standard', '--',
-                 PACKAGE_DIR, SHARED_FILE, job_rel, *JOB_DEPENDENCIES.get(job, ()))
+                 PACKAGE_DIR, SHARED_FILE, job_rel, *JOB_DEPENDENCIES.get(job, ()),
+                 *sibling_jobs.get(job, []), *validation_paths)
     names = set()
     for rel in listed.split('\0'):
         if not rel or SKIP_PARTS & set(Path(rel).parts) or rel.endswith('.pyc'):
