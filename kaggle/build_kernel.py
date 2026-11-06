@@ -62,7 +62,13 @@ TOPIC_FILE = CONFIG_DIR / 'ntfy_topic'
 PINS_FILE = KAGGLE / 'requirements-kaggle.txt'
 PACKAGE_DIR = 'src/rakshak'
 SHARED_FILE = 'kaggle/jobs/_common.py'
-JOB_DEPENDENCIES = {'sms_source_adversary': ('kaggle/jobs/sms_source_balance.py',)}
+JOB_DEPENDENCIES = {
+    'ela_pte_eval': ('kaggle/jobs/ela_export.py', 'kaggle/jobs/llama_export.py'),
+    'ela_export': ('kaggle/jobs/llama_export.py',),
+    'ela_resume_eval': ('kaggle/jobs/llama_ela_eval.py',),
+    'ela_qlora': ('kaggle/jobs/llama_ela_eval.py', 'kaggle/jobs/ela_recompute.py'),
+    'sms_source_adversary': ('kaggle/jobs/sms_source_balance.py',),
+}
 JOB_RE = re.compile(r'[a-z][a-z0-9_-]*')
 DATASET_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*')
 TOPIC_RE = re.compile(r'[A-Za-z0-9_-]{8,64}')

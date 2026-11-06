@@ -228,7 +228,7 @@ def _rank(tok, model, pkg, lang):
     }
 
 
-def run(ctx):
+def run(ctx, *, model_pair=None, frozen_manifest=None):
     seed_everything(SEED)
     env = env_report()
     ctx.log(f"env: {env}")
@@ -276,6 +276,11 @@ def run(ctx):
         }
         for r in sample.itertuples()
     ]
+    if frozen_manifest is not None:
+        if manifest != frozen_manifest["rows"] or (n, n_inject, n_lang) != (
+            frozen_manifest["n"], frozen_manifest["inject"], frozen_manifest["lang_n"]
+        ):
+            raise ValueError("frozen evaluation sample changed; refuse inference")
     write_metrics(
         "sample_manifest.json",
         {
@@ -292,7 +297,7 @@ def run(ctx):
         f"{len(lang_sample)}; injection cases {n_inject}"
     )
 
-    tok, model = _load_model(ctx, model_dir)
+    tok, model = model_pair if model_pair is not None else _load_model(ctx, model_dir)
     _generate(tok, model, "warm-up", FREEFORM_MAX_NEW_TOKENS)  # discard: CUDA warm-up
     out_path = ctx.work / GEN_FILE
     handle = out_path.open("a", encoding="utf-8")
