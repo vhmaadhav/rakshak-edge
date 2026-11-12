@@ -269,7 +269,9 @@ def report(out_dir: Path = EVAL_DIR) -> int:
             "detect_ms": _p([b["timings_ms"]["detect"] for b in bodies]),
             "evidence_ms": _p([b["timings_ms"]["evidence"] for b in bodies]),
             "llm_per_advisory_ms": _p([b["timings_ms"]["llm_total"] for b in called]),
-            "llm_per_call_ms": _p([c["wall_ms"] for b in called for c in b["llm_calls"]]),
+            "llm_per_call_ms": _p(
+                [c["wall_ms"] for b in called for c in b["llm_calls"] if not c.get("cached")]
+            ),
             "verify_ms": _p([b["timings_ms"]["verify"] for b in bodies]),
             "total_ms": _p([b["timings_ms"]["total"] for b in bodies]),
             "total_ms_llm_called": _p([b["timings_ms"]["total"] for b in called]),
@@ -284,6 +286,9 @@ def report(out_dir: Path = EVAL_DIR) -> int:
             "llm_skipped_low_risk": sum(b["advisory"]["llm_skipped_low_risk"] for b in bodies),
             "llm_advisories": len(called),
             "llm_calls_total": sum(len(b["llm_calls"]) for b in bodies),
+            "llm_calls_cached": sum(
+                1 for b in bodies for c in b["llm_calls"] if c.get("cached")
+            ),
             "points_total": len(pts),
             "points_source_llm": len(llm_pts),
             # raw: the verifier on the model's own sentence, before the template fallback

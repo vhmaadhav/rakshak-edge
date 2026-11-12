@@ -9,6 +9,7 @@ from pathlib import Path
 
 from tools.inbox_export.scrub import VERSION, scrub, scrub_sender, sender_style
 
+DEFAULT_MAX_PER_SENDER = 40
 LABELS = ('benign_transactional', 'benign_personal', 'promotion', 'scam', 'unclear')
 COLUMNS = ('id', 'text', 'sender', 'sender_style', 'label_policy', 'synthetic',
            'human_reviewed', 'scrubber_version')
@@ -45,7 +46,44 @@ def load_messages(path):
             raise ValueError('each SMS requires a string body')
         if str(row.get('type')) != '1':
             continue
-        yield {key: row.get(key, '') for key in ('body', 'address', 'contact_name')}
+        yield {key: row.get(key, '') for key in ('body', 'address', 'contact_name', 'date')}
+
+
+def _sort_date(value):
+    # XML/JSON dates are epoch milliseconds; anything else counts as undated.
+    try:
+        return int(str(value).strip())
+    except ValueError:
+        return None
+
+
+def select_messages(messages, *, max_per_sender=DEFAULT_MAX_PER_SENDER, business_only=True):
+    """Group by raw sender address, keep the newest N per sender, return in file order.
+
+    Undated messages rank after dated ones, in file order. Dates are used only for ranking
+    and are never exported. Returns (messages, counts); counts are for the screen only.
+    """
+    groups, personal_skipped = {}, 0
+    for seq, message in enumerate(messages):
+        if business_only and sender_style(message['address']) == 'numeric':
+            personal_skipped += 1
+            continue
+        groups.setdefault(str(message['address']), []).append((seq, message))
+
+    def rank(item):
+        seq, message = item
+        date = _sort_date(message.get('date'))
+        return (0, -date, seq) if date is not None else (1, 0, seq)
+
+    kept, dropped = [], 0
+    for members in groups.values():
+        chosen = sorted(members, key=rank)[:max_per_sender]
+        dropped += len(members) - len(chosen)
+        kept.extend(chosen)
+    kept.sort(key=lambda item: item[0])
+    counts = {'senders': len(groups), 'kept': len(kept), 'dropped_by_cap': dropped,
+              'skipped_person_to_person': personal_skipped}
+    return [message for _, message in kept], counts
 
 
 def prepare(message, names=()):
@@ -110,11 +148,25 @@ def main(argv=None):
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--names-file', type=Path,
                    help='Local personal names, one per line; never exported')
+    p.add_argument('--max-per-sender', type=int, default=DEFAULT_MAX_PER_SENDER,
+                   help='Keep only the newest N messages per raw sender address (default 40)')
+    p.add_argument('--business-only', action=argparse.BooleanOptionalAction, default=True,
+                   help='Skip person-to-person messages (phone-number sender); on by default. '
+                        'Use --no-business-only to include them.')
     args = p.parse_args(argv)
+    if args.max_per_sender < 1:
+        p.error('--max-per-sender must be at least 1')
     names = args.names_file.read_text().splitlines() if args.names_file else []
     approved = []
     try:
-        for message in load_messages(args.backup):
+        messages, counts = select_messages(load_messages(args.backup),
+                                           max_per_sender=args.max_per_sender,
+                                           business_only=args.business_only)
+        # Counts are printed for the reviewer only; they are never written to the output.
+        print(f"Senders {counts['senders']}; to review {counts['kept']}; dropped by cap "
+              f"{counts['dropped_by_cap']}; skipped person-to-person "
+              f"{counts['skipped_person_to_person']}.")
+        for message in messages:
             row, stop = review(prepare(message, names), names=names)
             if row:
                 approved.append(row)

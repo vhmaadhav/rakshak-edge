@@ -333,11 +333,14 @@ def generate_slot_advisory(
                 "new_tokens": timing.get("new_tokens"),
                 "ttft_ms": timing.get("ttft_ms"),
                 "prefill_tok_s": timing.get("prefill_tok_s"),
+                "prefill_tokens": timing.get("prefill_tokens"),
+                "prefix_reused": timing.get("prefix_reused"),
                 "decode_tok_s": timing.get("decode_tok_s"),
                 "wall_ms": timing.get("wall_ms"),
                 "stop_hit": timing.get("stop_hit"),
                 "generated": generated,
                 "status": status,
+                "cached": bool(timing.get("cached", False)),
             }
         )
     cleanup_rec: list[dict[str, Any]] | None = None

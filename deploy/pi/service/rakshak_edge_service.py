@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Rakshak edge service: one resident process that loads the SMS student and the Llama .pte once.
 
-    POST /analyze   {"sms": "..."}  -> decision, evidence, advisory, per-stage timings, device state
+    POST /analyze   {"sms": "..."}  -> decision, evidence, advisory, remediation, timings
+    POST /analyze_flows  raw pcap body, or {"flows": [...]} -> per-host alerts, remediation, timings
     GET  /health                    -> models, threads, RSS, device state
     GET  /                          -> a minimal page to paste an SMS and see the stages
 
@@ -9,7 +10,12 @@ Detector-only flags (score >= threshold, no rule evidence) follow ``--detector-o
 RAKSHAK_DETECTOR_ONLY_MODE): "quiet" (default) or "verify" (see docs/EDGE_PIPELINE.md, Fix B).
 Hinglish SMS (detect_lang) are answered in Hinglish; ``--hinglish-mode`` (env RAKSHAK_HINGLISH_MODE)
 is "template" (verifier templates, no LLM) or "llm" (Hinglish slot prompt). The request may set
-``"lang": "auto" | "en" | "hinglish"`` (default auto).
+``"lang": "auto" | "en" | "hinglish"`` (default auto). ``--explainer-cache N`` (env
+RAKSHAK_EXPLAINER_CACHE, default 256) memoises explainer sentences by exact prompt; 0 turns it off,
+and latency benchmarks must use 0 (docs/EDGE_PIPELINE.md, "Explainer cache").
+``--llm-runner`` (env RAKSHAK_LLM_RUNNER) defaults to ``direct`` (PteDirectRunner with prefix reuse)
+since 2026-11-11; ``runner`` is the previous TextLLMRunner path, kept for comparison
+(docs/EDGE_PIPELINE.md, "Prefix reuse (direct runner)").
 
 Stdlib HTTP on 127.0.0.1 only. Requests run one at a time (a lock). Before each request the
 SoC temperature is read: at or above ``--temp-limit`` (75 C) the service answers 503 "cooling" and
@@ -51,6 +57,17 @@ from edge_pipeline import (  # noqa: E402
     HINGLISH_MODES,
     LANG_REQUESTS,
 )
+from nids_pipeline import (  # noqa: E402
+    FLOW_SOURCES,
+    MAX_BODY_BYTES,
+    NET_ALERT_THRESHOLD,
+    NET_MODEL_ID,
+    NET_MODEL_MODE,
+    NET_MODEL_MODES,
+    NET_UNCERTAIN_THRESHOLD,
+    FlowRequestError,
+    NidsAnalyzer,
+)
 
 DEFAULT_PORT = 8770
 DEFAULT_HOST = "127.0.0.1"
@@ -62,6 +79,7 @@ PTE_PATH = "models/llama32_1b_spinquant/Llama-3.2-1B-Instruct-SpinQuant_INT4_EO8
 TOKENIZER_PATH = "models/llama32_1b_spinquant/tokenizer.model"
 DETECTOR_MODEL_ID = "sms_student"
 LLM_MODEL_ID = "llama32_1b_spinquant"
+NIDS_ONNX_PATH = "models/nids/student_cse_cic_ids2018_int8.onnx"
 
 
 def netns_report(probe: bool = True) -> dict[str, Any]:
@@ -114,8 +132,14 @@ class Service:
         device_fn=read_snapshot,
         energy_factory=EnergyWindow,
         clock=time.time,
+        nids: NidsAnalyzer | None = None,
+        explainer_cache: Any | None = None,
+        llm_runner: str = "runner",
     ) -> None:
         self.analyzer = analyzer
+        self.nids = nids
+        self.explainer_cache = explainer_cache
+        self.llm_runner = llm_runner
         self.threads = threads
         self.temp_limit = temp_limit
         self.log_path = log_path
@@ -150,12 +174,18 @@ class Service:
             "models": self.models,
             "detector_only_mode": self.detector_only_mode,
             "hinglish_mode": self.hinglish_mode,
+            "llm_runner": self.llm_runner,
             "requests": self.requests,
             "refused_cooling": self.refused,
             "rss_mb": rss_mb(),
             "rss_peak_mb": rss_mb("VmHWM"),
             "device": self.device_fn(),
             "network": self.network,
+            "explainer_cache": (
+                self.explainer_cache.stats()
+                if self.explainer_cache is not None
+                else {"capacity": 0, "size": 0, "hits": 0, "misses": 0}
+            ),
         }
 
     def analyse(self, text: str, lang: str = "auto") -> tuple[int, dict[str, Any]]:
@@ -163,25 +193,9 @@ class Service:
         request_id = uuid.uuid4().hex[:12]
         with self.lock:
             start = self.device_fn()
-            temp = start.get("temp_c")
-            if temp is not None and temp >= self.temp_limit:
-                self.refused += 1
-                self._log(
-                    {
-                        "event": "refused_cooling",
-                        "request_id": request_id,
-                        "temp_c": temp,
-                        "limit_c": self.temp_limit,
-                        "ts": round(self.clock(), 3),
-                    }
-                )
-                return 503, {
-                    "error": "cooling",
-                    "request_id": request_id,
-                    "temp_c": temp,
-                    "limit_c": self.temp_limit,
-                    "detail": "SoC at or above the limit; explainer not run",
-                }
+            refusal = self._cooling_refusal(request_id, start)
+            if refusal is not None:
+                return refusal
             energy = self.energy_factory()
             energy.start()
             t0 = time.perf_counter()
@@ -219,6 +233,82 @@ class Service:
                     "lang": result["advisory"].get("lang"),
                     "total_ms": result["timings_ms"]["total"],
                     "llm_total_ms": result["timings_ms"]["llm_total"],
+                    "llm_cached": result["timings_ms"].get("llm_cached", 0),
+                    "temp_start_c": start.get("temp_c"),
+                    "temp_end_c": end.get("temp_c"),
+                    "energy_j": energy_doc["energy_j"],
+                    "rss_mb": body["device"]["rss_mb"],
+                }
+            )
+            return 200, body
+
+    def _cooling_refusal(self, request_id: str, start: dict[str, Any]) -> tuple[int, dict] | None:
+        """503 "cooling" when the SoC is at or above the limit (the caller holds the lock)."""
+        temp = start.get("temp_c")
+        if temp is not None and temp >= self.temp_limit:
+            self.refused += 1
+            self._log(
+                {
+                    "event": "refused_cooling",
+                    "request_id": request_id,
+                    "temp_c": temp,
+                    "limit_c": self.temp_limit,
+                    "ts": round(self.clock(), 3),
+                }
+            )
+            return 503, {
+                "error": "cooling",
+                "request_id": request_id,
+                "temp_c": temp,
+                "limit_c": self.temp_limit,
+                "detail": "SoC at or above the limit; explainer not run",
+            }
+        return None
+
+    def analyse_flows(self, raw: bytes) -> tuple[int, dict[str, Any]]:
+        """Network path: a pcap or JSON flows body. Same 503 cooling refusal as analyse()."""
+        request_id = uuid.uuid4().hex[:12]
+        if self.nids is None:
+            return 503, {"error": "network model not loaded", "request_id": request_id}
+        with self.lock:
+            start = self.device_fn()
+            refusal = self._cooling_refusal(request_id, start)
+            if refusal is not None:
+                return refusal
+            energy = self.energy_factory()
+            energy.start()
+            t0 = time.perf_counter()
+            try:
+                result = self.nids.analyse_body(raw)
+            finally:
+                energy_doc = energy.stop()
+            wall_ms = round((time.perf_counter() - t0) * 1000.0, 3)
+            end = self.device_fn()
+            self.requests += 1
+            body = {
+                "request_id": request_id,
+                "input_bytes": len(raw),
+                **result,
+                "device": {
+                    "start": start,
+                    "end": end,
+                    "energy": energy_doc,
+                    "rss_mb": rss_mb(),
+                    "rss_peak_mb": rss_mb("VmHWM"),
+                },
+                "wall_ms": wall_ms,
+            }
+            self._log(
+                {
+                    "event": "analyse_flows",
+                    "request_id": request_id,
+                    "ts": round(self.clock(), 3),
+                    "flow_source": result["flow_source"],
+                    "flows": result["flows_processed"],
+                    "alerts": result["decision"]["alerts"],
+                    "risk": result["decision"]["risk"],
+                    "total_ms": result["timings_ms"]["total"],
+                    "wall_ms": wall_ms,
                     "temp_start_c": start.get("temp_c"),
                     "temp_end_c": end.get("temp_c"),
                     "energy_j": energy_doc["energy_j"],
@@ -260,7 +350,11 @@ def make_handler(service: Service, index_html: bytes):
                 self._json(404, {"error": "not found"})
 
         def do_POST(self):  # noqa: N802 - stdlib name
-            if self.path.split("?", 1)[0] != "/analyze":
+            route = self.path.split("?", 1)[0]
+            if route == "/analyze_flows":
+                self._analyse_flows()
+                return
+            if route != "/analyze":
                 self._json(404, {"error": "not found"})
                 return
             try:
@@ -288,6 +382,28 @@ def make_handler(service: Service, index_html: bytes):
                     {"event": "error", "error": repr(exc), "trace": traceback.format_exc(limit=6)}
                 )
                 self._json(500, {"error": "analysis failed", "detail": str(exc)})
+                return
+            self._json(status, body)
+
+        def _analyse_flows(self) -> None:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length <= 0:
+                self._json(411, {"error": "Content-Length is required (pcap or JSON body)"})
+                return
+            if length > MAX_BODY_BYTES:
+                self._json(413, {"error": f"body is larger than {MAX_BODY_BYTES} bytes"})
+                return
+            raw = self.rfile.read(length)
+            try:
+                status, body = service.analyse_flows(raw)
+            except FlowRequestError as exc:
+                self._json(400, {"error": str(exc)})
+                return
+            except Exception as exc:  # noqa: BLE001 - report, keep serving
+                service._log(
+                    {"event": "error", "error": repr(exc), "trace": traceback.format_exc(limit=6)}
+                )
+                self._json(500, {"error": "flow analysis failed", "detail": str(exc)})
                 return
             self._json(status, body)
 
@@ -329,11 +445,45 @@ def _signal_ready(fifo: str | None) -> None:
     threading.Thread(target=writer, name="ready-fifo", daemon=True).start()
 
 
-def load_models(root: Path, threads: int, onnx: Path, pte: Path, tokenizer: Path):
-    """Load the SMS student (ONNX) and the Llama runner once. Returns (analyzer parts, info)."""
+def load_nids(root: Path):
+    """The network student (INT8 ONNX, cse_cic_ids2018). Checks the pin and the model contract."""
+    from rbench.registry import load_registry, model_state
+
+    from rakshak.nids.pi_monitor import OnnxScorer
+
+    reg = load_registry(root / "deploy" / "pi" / "bench" / "registry.toml")
+    model = reg.model(NET_MODEL_ID)
+    state = model_state(root, model, hash_it=True)
+    if state.get("status") != "ready":
+        raise SystemExit(f"model {model.id} is not ready: {state}")
+    t0 = time.perf_counter()
+    scorer = OnnxScorer(str(root / NIDS_ONNX_PATH))
+    info = {"status": state.get("status"), "load_s": round(time.perf_counter() - t0, 3)}
+    return scorer, info
+
+
+LLM_RUNNERS = ("runner", "direct", "direct-noreuse")
+
+
+def load_models(
+    root: Path,
+    threads: int,
+    onnx: Path,
+    pte: Path,
+    tokenizer: Path,
+    llm_runner: str = "runner",
+):
+    """Load the SMS student (ONNX) and the Llama runner once. Returns (analyzer parts, info).
+
+    llm_runner: runner (TextLLMRunner, reset per prompt), direct (PteDirectRunner with prefix
+    reuse) or direct-noreuse (PteDirectRunner, whole prompt every call; for A/B measurement).
+    """
     from rbench.registry import load_registry, model_state
     from rbench.runners import make_runner
     from rbench.runners.onnx import SmsRunner
+
+    if llm_runner not in LLM_RUNNERS:
+        raise ValueError(f"llm_runner must be one of {LLM_RUNNERS}, got {llm_runner!r}")
 
     reg = load_registry(root / "deploy" / "pi" / "bench" / "registry.toml")
     sms_model = reg.model(DETECTOR_MODEL_ID)
@@ -349,11 +499,19 @@ def load_models(root: Path, threads: int, onnx: Path, pte: Path, tokenizer: Path
     detector_runner.load(onnx, threads, {})
     info[DETECTOR_MODEL_ID]["load_s"] = round(time.perf_counter() - t0, 3)
     t1 = time.perf_counter()
-    llm = make_runner("pte_llm")
+    if llm_runner == "runner":
+        llm = make_runner("pte_llm")
+    elif llm_runner == "direct":
+        llm = make_runner("pte_llm_direct")
+    else:
+        from rbench.runners.pte_direct import PteDirectRunner
+
+        llm = PteDirectRunner(reuse_prefix=False)
     llm.load(pte, threads, {"tokenizer": tokenizer})
     info[LLM_MODEL_ID]["load_s"] = round(time.perf_counter() - t1, 3)
     info[LLM_MODEL_ID]["model_load_ms"] = getattr(llm, "load_ms", None)
     info[LLM_MODEL_ID]["threads_reported"] = getattr(llm, "threads_reported", None)
+    info[LLM_MODEL_ID]["runner"] = llm_runner
     return detector_runner, llm, float(sms_model.threshold), info
 
 
@@ -367,6 +525,33 @@ class _DetectorAdapter:
         feed = self.runner.make_feed({"text": text})
         prob, _logit = self.runner.score(self.runner.run(feed))
         return float(prob)
+
+
+def _non_negative_int(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected an integer, got {text!r}") from exc
+    if value < 0:
+        raise argparse.ArgumentTypeError("must be 0 or more")
+    return value
+
+
+def _env_cache_default() -> int:
+    raw = os.environ.get("RAKSHAK_EXPLAINER_CACHE", "256")
+    try:
+        return _non_negative_int(raw)
+    except argparse.ArgumentTypeError as exc:
+        raise SystemExit(f"RAKSHAK_EXPLAINER_CACHE: {exc}") from exc
+
+
+def _env_llm_runner_default() -> str:
+    raw = os.environ.get("RAKSHAK_LLM_RUNNER", "direct")
+    if raw not in LLM_RUNNERS:
+        raise SystemExit(
+            f"RAKSHAK_LLM_RUNNER: expected one of {', '.join(LLM_RUNNERS)}, got {raw!r}"
+        )
+    return raw
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -397,19 +582,82 @@ def main(argv: list[str] | None = None) -> int:
         help="quiet (default): a detector-only flag gets the no-warning path; "
         "verify: UNCERTAIN / VERIFY_INDEPENDENTLY notice. Env RAKSHAK_DETECTOR_ONLY_MODE.",
     )
+    p.add_argument(
+        "--nids-alert",
+        type=float,
+        default=NET_ALERT_THRESHOLD,
+        help="network: attack score at or above which a flow is ALERT (calibrated)",
+    )
+    p.add_argument(
+        "--nids-uncertain",
+        type=float,
+        default=NET_UNCERTAIN_THRESHOLD,
+        help="network: attack score at or above which a flow is UNCERTAIN (calibrated)",
+    )
+    p.add_argument(
+        "--nids-flow-source",
+        choices=FLOW_SOURCES,
+        default="auto",
+        help="network: pcap to flows by nfstream (auto, when installed) or stdlib",
+    )
+    p.add_argument(
+        "--net-model-mode",
+        choices=NET_MODEL_MODES,
+        default=os.environ.get("RAKSHAK_NET_MODEL_MODE", NET_MODEL_MODE),
+        help="network: quiet (rules decide; a model-only flag is advice to verify) or alert "
+        "(the 2026-11-06 behaviour, for comparison). Env RAKSHAK_NET_MODEL_MODE.",
+    )
+    p.add_argument(
+        "--explainer-cache",
+        type=_non_negative_int,
+        default=_env_cache_default(),
+        help="an LRU of explainer sentences keyed by the exact prompt; 0 turns it off; use 0 "
+        "for latency benchmarks. Env RAKSHAK_EXPLAINER_CACHE, default 256.",
+    )
+    p.add_argument(
+        "--llm-runner",
+        choices=LLM_RUNNERS,
+        default=_env_llm_runner_default(),
+        help="explainer runner: direct (own loop on the .pte with prefix reuse; default since "
+        "2026-11-11); runner (TextLLMRunner, reset per prompt; the previous path, kept for "
+        "comparison); direct-noreuse (own loop, whole prompt each call; for A/B). Env "
+        "RAKSHAK_LLM_RUNNER, default direct.",
+    )
     args = p.parse_args(argv)
     root = Path(args.root)
     from edge_pipeline import EdgeAnalyzer
+    from explainer_cache import CachedGenerator
 
     detector_runner, llm, threshold, info = load_models(
-        root, args.threads, root / ONNX_PATH, root / PTE_PATH, root / TOKENIZER_PATH
+        root,
+        args.threads,
+        root / ONNX_PATH,
+        root / PTE_PATH,
+        root / TOKENIZER_PATH,
+        llm_runner=args.llm_runner,
+    )
+    explainer_cache = (
+        CachedGenerator(llm, args.explainer_cache) if args.explainer_cache > 0 else None
     )
     analyzer = EdgeAnalyzer(
         _DetectorAdapter(detector_runner),
-        llm,
+        explainer_cache if explainer_cache is not None else llm,
         threshold,
         detector_only_mode=args.detector_only_mode,
         hinglish_mode=args.hinglish_mode,
+    )
+    try:
+        nids_scorer, nids_info = load_nids(root)
+    except ValueError as exc:
+        raise SystemExit(f"network model contract mismatch: {exc}") from exc
+    info[NET_MODEL_ID] = nids_info
+    nids = NidsAnalyzer(
+        nids_scorer,
+        alert=args.nids_alert,
+        uncertain=args.nids_uncertain,
+        scratch=root / "run" / "nids_uploads",
+        flow_source=args.nids_flow_source,
+        model_mode=args.net_model_mode,
     )
     service = Service(
         analyzer,
@@ -419,6 +667,9 @@ def main(argv: list[str] | None = None) -> int:
         models=info,
         detector_only_mode=args.detector_only_mode,
         hinglish_mode=args.hinglish_mode,
+        nids=nids,
+        explainer_cache=explainer_cache,
+        llm_runner=args.llm_runner,
     )
     index_html = (HERE / "index.html").read_bytes()
     service.network = netns_report()
@@ -439,6 +690,8 @@ def main(argv: list[str] | None = None) -> int:
             "threshold": threshold,
             "detector_only_mode": args.detector_only_mode,
             "hinglish_mode": args.hinglish_mode,
+            "explainer_cache": args.explainer_cache,
+            "llm_runner": args.llm_runner,
             "temp_limit_c": args.temp_limit,
             "network": service.network,
         }

@@ -23,6 +23,10 @@ def make_runner(kind: str):
         from rbench.runners import pte_llm
 
         return pte_llm.PteLlmRunner()
+    if kind == "pte_llm_direct":
+        from rbench.runners import pte_direct
+
+        return pte_direct.PteDirectRunner()
     raise MissingDependency(f"no runner for kind {kind!r}")
 
 

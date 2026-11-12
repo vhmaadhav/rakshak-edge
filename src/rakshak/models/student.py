@@ -47,10 +47,13 @@ class ModelSpec:
     use_rules: bool = True
     buckets: int = 2**17
     dim: int = 16
+    side_extra: int = 0  # appended to the N_RULES rule side features (inbox sender features: 5)
 
     def __post_init__(self):
         if self.kind not in KINDS:
             raise ValueError(f"unknown kind {self.kind!r}")
+        if self.side_extra < 0 or (self.side_extra and (not self.use_rules or self.hashed)):
+            raise ValueError("side_extra needs rule side features on a char-CNN or dual model")
         if self.kind == "fasttext":
             if self.variant not in ("raw", "canon"):
                 raise ValueError("fasttext takes the raw or canon variant")
@@ -96,7 +99,12 @@ def build_model(spec: ModelSpec) -> nn.Module:
     if spec.kind == "fasttext":
         return HashedFastText(spec.buckets, spec.dim)
     views = ("raw", "canon") if spec.kind == "dual" else (spec.variant,)
-    return CharCNN(CONFIGS[spec.size], views=views, n_side=N_RULES if spec.use_rules else 0)
+    return CharCNN(CONFIGS[spec.size], views=views, n_side=side_width(spec))
+
+
+def side_width(spec: ModelSpec) -> int:
+    """Width of the side input: N_RULES (16) plus side_extra when rule features are used, else 0."""
+    return N_RULES + spec.side_extra if spec.use_rules else 0
 
 
 def buckets_for(spec: ModelSpec) -> int | None:
@@ -347,14 +355,14 @@ def latency_ms(fn: Callable[[str], object], texts: Sequence[str], n: int) -> dic
 
 def export_onnx(model: CharCNN, path: Path, opset: int = 17) -> dict:
     """Export the float char-CNN to ONNX with dynamic batch. Inputs are the byte ids per view
-    (int64, shape (batch, max_len)) and, if used, ``side`` (float32, (batch, N_RULES)). The output
-    ``logit`` has shape (batch,); scam probability = sigmoid(logit)."""
+    (int64, shape (batch, max_len)) and, if used, ``side`` (float32, (batch, model.n_side)). The
+    output ``logit`` has shape (batch,); scam probability = sigmoid(logit)."""
     wrapper = OnnxWrapper(model).cpu().eval()
     names = list(model.views) + (["side"] if model.n_side else [])
     dummies: list[Tensor] = [torch.randint(0, 256, (2, MAX_LEN), dtype=torch.long)
                              for _ in model.views]
     if model.n_side:
-        dummies.append(torch.zeros(2, N_RULES, dtype=torch.float32))
+        dummies.append(torch.zeros(2, model.n_side, dtype=torch.float32))
     dynamic = {name: {0: "batch"} for name in names}
     dynamic["logit"] = {0: "batch"}
     kwargs = {"input_names": names, "output_names": ["logit"], "dynamic_axes": dynamic,

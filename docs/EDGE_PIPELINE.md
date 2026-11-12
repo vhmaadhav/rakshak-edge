@@ -171,6 +171,72 @@ risk, the timings and the energy.
 - explainer: `rbench.slot.generate_slot_advisory(..., guards=True)` (slot mode, G1 and G2), Llama `.pte`
   through `rbench.runners.pte_llm` (preloads, reset, stop)
 
+### Explainer cache
+
+An LRU of explainer sentences keyed by the exact prompt (`deploy/pi/service/explainer_cache.py`).
+It is exact by construction: decoding is greedy and the KV cache is reset before each prompt, so the
+same prompt always gives the same text, and a hit returns the stored text. Output text is unchanged;
+a hit only skips the LLM call. Flag `--explainer-cache N`, env `RAKSHAK_EXPLAINER_CACHE`, default
+256; 0 turns it off, negative is an error. New response fields: `llm_calls[].cached`,
+`timings_ms.llm_cached`, and `/health.explainer_cache` (`capacity`, `size`, `hits`, `misses`).
+Latency, energy and soak numbers are measured with `--explainer-cache 0`.
+Measured on the Pi on 2026-11-11: see the table in the next section. Laptop estimate of the hit rate: 46% of
+explainer prompts repeat at capacity 256 on 800 de-duplicated English scam SMS with rule evidence
+(one per campaign, data/processed/sms.parquet), 34% at capacity 64, 49% at 1024.
+
+### Prefix reuse (direct runner)
+
+`rbench.runners.pte_direct.PteDirectRunner` drives the `.pte` `forward` method itself, not
+TextLLMRunner. Flag `--llm-runner {runner,direct,direct-noreuse}`, env `RAKSHAK_LLM_RUNNER`, default
+`direct` (since 2026-11-11). `runner` is the previous TextLLMRunner path, kept for comparison. `direct` reuses the KV cache for the system turn; `direct-noreuse` runs the whole prompt
+each call (A/B only). The split is after the first `<|eot_id|>` in the prompt, so it depends only on
+the prompt. New response fields: `llm_calls[].prefill_tokens`, `llm_calls[].prefix_reused`.
+Probe, 12 real explainer prompts from the 40-row eval set, 3 threads, Pi 5 without cooler, throttle
+flag 0x50000 after boot: TextLLMRunner mean 1,724 ms per call, ttft 1,317 ms. Direct loop without
+reuse: 1,690 ms, same sentences on 12 of 12. Direct with reuse: 826 ms, ttft 422 ms, shared prefix
+67 tokens of 100-112, identical text on 11 of 12; the other one is unterminated in both.
+Prefix reuse is not bit-exact with `runner` (33 of 34 sentences identical on the 40-row eval below).
+
+40-row eval, 2026-11-11, Pi 5 (no cooler, USB power, throttle flag `0x50000` at every start and end: under-voltage and throttling have occurred since boot), 3 threads, explainer cache off unless stated. Same 40 rows as before (`results/edge_eval/rows.json`); outputs in `results/edge_eval_1111/` on the Pi. Evidence rows (n = 30) unless stated.
+
+| Measure | `runner` (TextLLMRunner) | `direct-noreuse` | `direct` (prefix reuse) | `runner` + cache, 2nd pass |
+|---|---|---|---|---|
+| Total p50 / p95 (ms) | 1,683 / 3,188 | 1,714 / 3,169 | 957 / 1,873 | 6.9 / 10.5 |
+| LLM per call p50 / p95 (ms) | 1,679 / 2,143 (n = 31) | 1,677 / 2,201 (n = 31) | 935 / 1,329 (n = 31) | no LLM call (31 of 31 cached) |
+| Energy per request p50 / p95 / mean (J, PMIC estimate) | 7.28 / 15.55 / 7.89 | 6.68 / 16.47 / 7.30 | 3.49 / 9.36 / 4.10 | 0.098 / 0.112 / 0.088 |
+| Raw point pass (model sentences that pass the verifier) | 27 of 33 | 27 of 33 | 27 of 33 | 27 of 33 |
+| Advisory mode llm / partial / template | 21 / 1 / 8 | 21 / 1 / 8 | 21 / 1 / 8 | 21 / 1 / 8 |
+| Model sentences identical to `runner` (34 points with LLM text, all 40 rows) | – | 34 of 34 | 33 of 34 | 34 of 34 |
+| Decisions identical to `runner` (all 40 rows) | – | 40 of 40 | 40 of 40 | 40 of 40 |
+| Wall time for the 40 requests (s) | 55.5 | 56.7 | 33.4 | 3.2 |
+| Max SoC temperature (°C) | 72.5 | 73.0 | 73.0 | 55.4 |
+| RSS after batch (MB) | 1,675.8 | 1,734.5 | 1,734.6 | 1,676.0 |
+
+The one sentence that differs under `direct`: "This message claims a prize or lottery and is asking the reader to do something." became "This message claims a prize or lottery and asks the reader to do something." Both pass the verifier.
+
+A separate 12-prompt probe showed that leftover KV entries from an earlier call do not change the output: re-prefilling the prefix before every call gave the same text as reusing it on 12 of 12. The difference from `runner` comes from splitting the prefill in two.
+
+Explainer cache, first pass over the same 40 rows from an empty cache: 4 of 31 calls were hits (13%), all sentences identical to `runner`; total p50 / p95 1,692 / 3,462 ms (not different from `runner` at this hit rate). Second pass: the last column above.
+
+Repeat run, same day, after a reboot (throttle flag `0x50000` again; outputs in `results/edge_eval_1111/runner_run2` and `direct_run2`): `runner` total p50 / p95 1,974 / 3,838 ms, energy p50 8.60 J; `direct` 1,200 / 2,479 ms, energy p50 5.01 J; raw point pass 27 of 33 in both. Every model sentence is identical to the first run of the same arm (40 of 40 rows each), so each runner is deterministic. Both arms were 17% to 25% slower at the median than in the first run, so absolute latency moves between sessions on this power supply; the `direct` gain was 43% in the first run and 39% in the second.
+
+Clean-power runs, same day, on the supply used on 2026-11-06 (throttle flag `0x0` at every start and end, 5.15 V on the input rail), 3 threads, cache off:
+
+| Measure | `runner` | `direct` |
+|---|---|---|
+| 40-row eval, evidence 30: total p50 / p95 (ms) | 1,722 / 3,078 | 989 / 1,887 |
+| 40-row eval: energy p50 per request (J) | 7.12 | 3.52 |
+| 40-row eval: raw point pass | 27 of 33 | 27 of 33 |
+| Soak, 100 requests, 0 aborts, 0 refusals: total p50 / p95 (ms) | 1,765 / 4,034 | 956 / 2,152 |
+| Soak: LLM per call p50 / p95 (ms, n = 85) | 1,873 / 2,406 | 1,037 / 1,532 |
+| Soak: energy per request p50 / p95 (J, PMIC estimate) | 6.57 / 14.72 | 3.12 / 8.95 |
+| Soak: wall time for 100 requests (s) | 171.5 | 101.5 |
+| Soak: decode speed (tok/s) | 12.23 | 14.64 |
+
+Outputs: `results/edge_eval_1111/{runner,direct}_run3` and `results/soak_1111/{runner,direct}` on the Pi. An earlier soak attempt the same afternoon was refused by `soak.py` because the flag read `0x50000` (under-voltage since boot on a different supply); the guard was left as it is. These clean runs are the ones to quote; the first-run table above was taken with the flag at `0x50000`. Still no cooler.
+
+Decision: `direct` is the service default from 2026-11-11 (same verifier pass rate, same decisions, 43% lower p50, 52% lower median energy on the first run). Two runs per arm for `runner` and `direct` (see the repeat-run note); no confidence intervals. Final numbers still need the cooler and the 27 W supply.
+
 ### Thermal
 
 Before each request: temperature read. At or above 75 C: 503, no Llama. The eval client does not start a
@@ -723,7 +789,28 @@ service was started in that mode and `/health` reports it).
 The Hinglish prompt on a different model or with a stop rule that accepts a quote mark. A Hinglish detector
 threshold: the student's threshold was not changed for Hinglish. The 65 C gate was never exercised at its limit.
 
+## 6. Network endpoint and remediation (2026-11-06)
+
+- **`POST /analyze_flows`** (`deploy/pi/service/nids_pipeline.py`, route in `rakshak_edge_service.py`).
+  Body: a classic pcap (raw bytes, at most 20 MB) or JSON `{"flows": [...]}` (at most 50,000 flows). A pcap
+  goes through nfstream when it imports, else through `src/rakshak/nids/pcap_flows.py` (stdlib fallback).
+  Each flow is scored by the INT8 student `nids_cse_cic_ids2018_int8` (registry, sha256 pinned) with the
+  calibrated thresholds (alert 0.0015007, uncertain 0.0005502), then aggregated per source host
+  (`src/rakshak/nids/host_alerts.py`). Response: `decision`, `alerts[]` (per host: `decision`, `evidence`,
+  `advisory` (template), `verifier`, `remediation`, `examples`), `watchlist[]`, `flows_processed`,
+  `flow_source`, `flows_per_s`, `model`, `timings_ms`, `device`, `wall_ms`. Same 503 `cooling` refusal as
+  `/analyze`. Body errors: 400 (bad body), 411 (no Content-Length), 413 (over 20 MB).
+- **`remediation`** on every `/analyze` response: ordered `{code, title, steps[]}`, from the chosen SMS action
+  and the package's allowed actions (`src/rakshak/remediation.py`). `verifier.remediation_ok` checks that no
+  code is from the other domain. Hinglish SMS wording needs native review. Network steps are English only.
+- `--nids-alert`, `--nids-uncertain`, `--nids-flow-source {auto,nfstream,stdlib}` on the service. The
+  `--net-explainer llm` option is not built (the network advisory is the template).
+- The SMS path output is unchanged except the added `remediation` field (40-row eval on the Pi, see
+  `docs/NIDS_EDGE.md`, "SMS regression").
+- Full results, model choice, cross-dataset caveats and the Pi timings: **`docs/NIDS_EDGE.md`**.
+
 ## Untested
+
 
 - A live 503 cooling refusal (only mocked in `tests/test_edge_service.py`).
 - Fix A on more than 10 trial rows: the variant choice rests on 11 points, so it is not a stable ranking.
@@ -738,7 +825,10 @@ threshold: the student's threshold was not changed for Hinglish. The 65 C gate w
 
 ## Files
 
-Repo (uncommitted): `src/rakshak/verifier.py` (G1, G2, `risk` opt-in in `check_points` and
+Repo (uncommitted): `deploy/pi/service/nids_pipeline.py`, `deploy/pi/service/make_test_pcaps.py`,
+`src/rakshak/remediation.py`, `src/rakshak/nids/host_alerts.py`, `src/rakshak/nids/pcap_flows.py`,
+`tests/test_edge_nids_service.py`, `tests/test_nids_pcap_flows.py`, `docs/NIDS_EDGE.md` (network path, section 6 here).
+Repo (uncommitted, earlier): `src/rakshak/verifier.py` (G1, G2, `risk` opt-in in `check_points` and
 `render_advisory`), `src/rakshak/ela_eval.py` (`score_advisory(..., risk=None)`),
 `deploy/pi/bench/rbench/slot.py` (`guards`, `g2_rejected`, `point_problems`),
 `deploy/pi/bench/rbench/worker.py` and `guard.py` and `cli.py` (`--guards`),

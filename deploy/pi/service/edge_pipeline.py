@@ -35,6 +35,7 @@ from rbench.slot import HINGLISH_LANG, SLOT_MAX_NEW_TOKENS, generate_slot_adviso
 from rakshak.canonicalize import canonicalize
 from rakshak.datasets.lang import detect_lang
 from rakshak.evidence import EvidencePackage
+from rakshak.remediation import remediation_for, remediation_problems
 from rakshak.rules import run_rules
 from rakshak.verifier import check_points, template_only_advisory
 
@@ -184,6 +185,7 @@ class EdgeAnalyzer:
                 lang=lang_route,
                 lang_detected=lang_detected,
             )
+        remediation = remediation_for(package, action.value, lang_route)
         llm_package = collapse_by_type(package)
         template_hinglish = lang_route == HINGLISH_LANG and self.hinglish_mode == "template"
         if template_hinglish:
@@ -283,9 +285,11 @@ class EdgeAnalyzer:
                 "evidence_items": len(package.evidence),
                 "action": action.value,
             },
+            "remediation": remediation,
             "verifier": {
                 "final_contract_ok": bool(gen["final_verifier_ok"]),
                 "g2_rejected": g2,
+                "remediation_ok": not remediation_problems(remediation, package),
             },
             "llm_calls": [
                 {
@@ -294,8 +298,11 @@ class EdgeAnalyzer:
                     "prompt_tokens": c.get("prompt_tokens"),
                     "new_tokens": c.get("new_tokens"),
                     "ttft_ms": c.get("ttft_ms"),
+                    "prefill_tokens": c.get("prefill_tokens"),
+                    "prefix_reused": c.get("prefix_reused"),
                     "wall_ms": c.get("wall_ms"),
                     "stop_hit": c.get("stop_hit"),
+                    "cached": bool(c.get("cached", False)),
                 }
                 for c in calls
             ],
@@ -305,6 +312,7 @@ class EdgeAnalyzer:
                 "evidence": _ms(t_detect, t_evidence),
                 "llm_calls": [round(float(c["wall_ms"] or 0.0), 3) for c in calls],
                 "llm_total": round(llm_total, 3),
+                "llm_cached": sum(1 for c in calls if c.get("cached")),
                 "verify": round(verify_ms, 3),
                 "total": _ms(t_start, t_end),
             },
@@ -330,6 +338,7 @@ class EdgeAnalyzer:
             summary = DETECTOR_ONLY_QUIET_SUMMARY if quiet else DETECTOR_ONLY_SUMMARY
         final = {"lang": lang, "summary": summary, "points": []}
         contract_ok = check_points(json.dumps(final, ensure_ascii=False), package, lang).ok
+        remediation = remediation_for(package, action.value, lang)
         t_end = self.clock()
         return {
             "decision": {
@@ -361,7 +370,12 @@ class EdgeAnalyzer:
                 "points": [],
                 "action": action.value,
             },
-            "verifier": {"final_contract_ok": bool(contract_ok), "g2_rejected": []},
+            "remediation": remediation,
+            "verifier": {
+                "final_contract_ok": bool(contract_ok),
+                "g2_rejected": [],
+                "remediation_ok": not remediation_problems(remediation, package),
+            },
             "llm_calls": [],
             "timings_ms": {
                 "canonicalise": _ms(t_start, t_canon),
@@ -369,6 +383,7 @@ class EdgeAnalyzer:
                 "evidence": _ms(t_detect, t_evidence),
                 "llm_calls": [],
                 "llm_total": 0.0,
+                "llm_cached": 0,
                 "verify": 0.0,
                 "total": _ms(t_start, t_end),
             },

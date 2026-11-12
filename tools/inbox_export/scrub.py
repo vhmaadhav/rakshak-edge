@@ -50,9 +50,12 @@ def scrub(text, *, names=()):
     return text
 
 
+DLT_SENDER = r'[A-Z]{2}-[A-Z0-9]{3,9}(?:-[PSTG])?'
+
+
 def sender_style(address):
     address = str(address).strip()
-    if re.fullmatch(r'[A-Z]{2}-[A-Z0-9]{3,9}', address):
+    if re.fullmatch(DLT_SENDER, address):
         return 'alphanumeric_id'
     if re.search(r'\d', address):
         return 'numeric'

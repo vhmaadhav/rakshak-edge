@@ -23,6 +23,7 @@ from rakshak.rules import Evidence
 
 NETWORK_DOMAIN = "network"
 PORT_SCAN_MIN_PORTS = 20  # distinct destination ports from one source inside the window
+PORT_SCAN_WEIGHT = 0.9  # host-window port-scan evidence weight (rule, not model)
 SSH_PORT = 22
 MAX_SUMMARY = 280
 
@@ -134,6 +135,17 @@ _ACTION_PRIORITY = [
 
 STATE_LABEL = {"scam": "ALERT", "uncertain": "UNCERTAIN", "benign": "SAFE"}
 
+# Rules-first policy (docs/NIDS_EDGE.md, 2026-11-07). A rule's type decides the advice; the model
+# only adds a model_only advisory when no rule fired (quiet mode).
+RULE_TYPES: frozenset[str] = frozenset(
+    {"port_scan", "brute_force_ssh", "brute_force_other", "dos_flood", "dns_tunnel"}
+)
+MODEL_ONLY_PATH = "model_only_quiet"
+MODEL_ONLY_SUMMARY = (
+    "The traffic model marked some flows as unusual, but no known attack pattern was found. "
+    "Check the device if you don't recognise it."
+)
+
 
 @dataclass(frozen=True)
 class NetEvidence:
@@ -187,7 +199,7 @@ def evidence_for_flow(
         found[etype] = (_clamp(p_attack), family, "model")
     if window is not None and window.distinct_dst_ports >= PORT_SCAN_MIN_PORTS:
         prev = found.get("port_scan")
-        weight = max(prev[0] if prev else 0.0, 0.9)
+        weight = max(prev[0] if prev else 0.0, PORT_SCAN_WEIGHT)
         found["port_scan"] = (weight, prev[1] if prev else "port_scan", "window")
     ordered = sorted(found.items(), key=lambda kv: (-kv[1][0], kv[0]))
     return [
@@ -228,6 +240,43 @@ def build_network_package(evidence: list[NetEvidence], state: str) -> EvidencePa
     )
 
 
+def build_model_only_package(evidence: list[NetEvidence]) -> EvidencePackage:
+    """Quiet-mode package for a host with model evidence and no rule hit.
+
+    Risk is capped at UNCERTAIN and the only allowed action is VERIFY_INDEPENDENTLY. The model
+    evidence is kept for the record (its ids and weights), but it grants no other action.
+    """
+    return EvidencePackage(
+        risk=Risk.UNCERTAIN,
+        confidence_state="uncertain",
+        evidence=[e.as_rule_evidence() for e in evidence],
+        allowed_actions=[NetAction.VERIFY_INDEPENDENTLY],
+        domain=NETWORK_DOMAIN,
+    )
+
+
+def model_only_template(package: EvidencePackage) -> dict[str, Any]:
+    """Fixed neutral advisory for a model-only host (quiet mode). Names no evidence type."""
+    return {
+        "summary": MODEL_ONLY_SUMMARY,
+        "reasons": [e.id for e in package.evidence],
+        "action": NetAction.VERIFY_INDEPENDENTLY.value,
+    }
+
+
+def _pick_action(package: EvidencePackage) -> NetAction:
+    """The advised action. A rule's type takes its first allowed action in its map entry;
+    other types use the priority list."""
+    allowed = set(package.allowed_actions)
+    if package.evidence:
+        primary = max(package.evidence, key=lambda e: e.weight).type
+        if primary in RULE_TYPES:
+            for act in NET_ACTION_MAP.get(primary, ()):
+                if act in allowed:
+                    return act
+    return next((a for a in _ACTION_PRIORITY if a in allowed), package.allowed_actions[0])
+
+
 def net_template(package: EvidencePackage) -> dict[str, Any]:
     """Deterministic explanation for a network package. Always passes ``verify``.
 
@@ -245,8 +294,7 @@ def net_template(package: EvidencePackage) -> dict[str, Any]:
     else:
         summary = base
     summary = summary[:MAX_SUMMARY]
-    allowed = set(package.allowed_actions)
-    action = next((a for a in _ACTION_PRIORITY if a in allowed), package.allowed_actions[0])
+    action = _pick_action(package)
     return {
         "summary": summary,
         "reasons": [e.id for e in package.evidence],

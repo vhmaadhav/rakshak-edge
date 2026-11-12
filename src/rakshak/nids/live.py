@@ -65,6 +65,7 @@ NFSTREAM_KEYS: tuple[str, ...] = (
     "dst2src_psh_packets",
     "dst2src_rst_packets",
     "dst2src_fin_packets",
+    "requested_server_name",  # DNS query name for DNS flows (rule input only, not a model feature)
 )
 
 _HIST = "nfstream gives packet-size min/mean/stddev/max, not a histogram"

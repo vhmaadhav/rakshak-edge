@@ -425,7 +425,8 @@ def test_analyser_exception_is_not_swallowed_by_the_lock():
 def server():
     service = _service()
     httpd = svc.serve(service, "127.0.0.1", 0, (svc.HERE / "index.html").read_bytes())
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread = threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.01},
+                              daemon=True)
     thread.start()
     host, port = httpd.server_address[:2]
     yield f"http://{host}:{port}", service
@@ -543,7 +544,9 @@ def test_unix_socket_serves_the_same_api_and_the_bridge_relays_it(tmp_path):
     service = _service()
     index = (svc.HERE / "index.html").read_bytes()
     unix_server = svc.serve_unix(service, sock, index)
-    threading.Thread(target=unix_server.serve_forever, daemon=True).start()
+    threading.Thread(
+        target=unix_server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    ).start()
     port = _free_port()
     threading.Thread(
         target=socket_bridge.serve, args=("127.0.0.1", port, sock), daemon=True
@@ -573,7 +576,9 @@ def test_eval_client_talks_to_the_unix_socket(tmp_path, monkeypatch):
     sock = tmp_path / "edge.sock"
     service = _service()
     unix_server = svc.serve_unix(service, str(sock), b"<html></html>")
-    threading.Thread(target=unix_server.serve_forever, daemon=True).start()
+    threading.Thread(
+        target=unix_server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    ).start()
     monkeypatch.setattr(eval_service, "SOCKET", sock)
     try:
         assert eval_service._get("/health")["status"] == "ok"

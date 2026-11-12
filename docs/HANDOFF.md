@@ -198,6 +198,15 @@ a calibration and training problem. A threshold cannot fix it: the smallest thre
 which drops campaign recall to 71.9% and SmishX scam recall to 5.8%. The go criterion (≤ 11 FPs on 1,133) is met only by
 alert (c), the MEDIUM-and-above warning. The visible-notice alert (d) is about 40 times over it.
 
+### 2026-11-11: explainer latency (cache and prefix reuse)
+
+- New service options: `--explainer-cache 256` (default; env `RAKSHAK_EXPLAINER_CACHE`) and `--llm-runner direct` (default since 2026-11-11; env `RAKSHAK_LLM_RUNNER`). `runner` is the old TextLLMRunner path, kept for comparison.
+- Headline, 30 evidence rows: total p50 / p95 1,683 / 3,188 ms before, 957 / 1,873 ms with `direct`; energy p50 7.28 J to 3.49 J (PMIC estimate); raw point pass 27 of 33 in both; 39 of 40 advisories word-for-word identical, the other one an equivalent sentence.
+- Latency, energy and soak benchmarks must use `--explainer-cache 0`, or the cache hits hide the LLM cost.
+- Throttle flag `0x50000` is still set at every start and end on the Pi (no cooler, USB power). Numbers are for this setup only.
+- Laptop suite: `uv run pytest -q -n auto` now works (pytest-xdist). Serial runs take about 46 s on the laptop.
+- Details: `docs/EDGE_PIPELINE.md`, sections "Explainer cache" and "Prefix reuse (direct runner)".
+
 ### Open decisions for Maadhav
 
 (a) **DECIDED (2026-11-06): quiet for demo; verify mode kept behind `detector_only_mode`; detector fix on bank/UPI/telecom
@@ -212,6 +221,21 @@ test recall 16.2% against 98.1%. The recall cost is accepted for the demo and is
 1.5.1 AAR) needs one for the demo.
 (d) **Commit timing.** DECIDED (2026-11-06): committed as one batch.
 (e) **verifier.py formatting.** DECIDED (2026-11-06): left as is; no formatting-only commit.
+
+### Network path on the Pi (2026-11-06, details: `docs/NIDS_EDGE.md`)
+
+- **Built:** `POST /analyze_flows` (pcap or JSON flows, per-host alerts, template advisory, verifier,
+  remediation, timings), a Network section on the page, `make_test_pcaps.py` (synthetic, offline), and a
+  `remediation` field on `/analyze` (SMS) and each network alert.
+- **Model:** the cse_cic_ids2018 INT8 student, chosen for the low-FPR operating point (recall at 0.1% FPR 0.62
+  against 0.07 for unsw). Thresholds are the calibrated ones from `results.json`.
+- **nfstream:** installed on the Pi 6.6.0 with pip (no sudo), used for pcap in auto mode. The stdlib reader is
+  the fallback, aligned to nfstream's frame-size convention.
+- **PS3 coverage (network):** intrusion alerts on the device with plain-language remediation, no cloud. Within
+  dataset only: cross-dataset is near chance in every table. On the synthetic captures the port scan is found,
+  the SSH brute-force shape gives an alert with the wrong family, the DNS tunnel shape is missed, and the
+  benign HTTPS shape gives a false alert. No accuracy on real traffic is claimed.
+- **Not built:** the Llama explainer for network evidence. Hinglish SMS remediation awaits native review.
 
 ### Ranked next tasks
 
@@ -232,6 +256,9 @@ test recall 16.2% against 98.1%. The recall cost is accepted for the demo and is
 6. Decide the HIGH "is a scam" policy (stated fact vs hedged) and the "likely" hedge limit (G2 only matches "likely" directly
    before the term; row 25 is the one G2 rejection).
 7. DONE: committed as one batch (2026-11-06).
+8. Network path (2026-11-06): a labelled real-traffic check of `/analyze_flows` (not synthetic), the SSH brute-force family
+   (model says dos_ddos), the benign false alert on short HTTPS flows, DNS-tunnel features (needs a DNS parser), and the
+   Llama explainer for network evidence (not built). Details and caveats in `docs/NIDS_EDGE.md`.
 
 ### Untested
 

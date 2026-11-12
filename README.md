@@ -22,7 +22,10 @@ verifier rejects any explanation that cites evidence or actions the detector did
 
 ```bash
 uv sync
-uv run pytest -q
+uv run pytest -q            # serial, about 46 s
+uv run pytest -q -n auto    # parallel (pytest-xdist), about 22 s
 ```
+
+Either run takes the laptop CPU from about 46 °C to about 75 °C, so leave a gap between runs.
 
 Raw and processed data live in `data/` and are not committed; see `docs/DATACARD.md` for provenance and licences.

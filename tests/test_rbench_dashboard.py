@@ -136,7 +136,8 @@ def server(home):
 
     bench = dash.BenchControl(home, python=sys.executable, wrapper=WRAPPER)
     srv = dash.DashboardServer(("127.0.0.1", 0), Sampler(), bench)
-    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread = threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.01},
+                              daemon=True)
     thread.start()
     try:
         yield f"http://127.0.0.1:{srv.server_address[1]}"

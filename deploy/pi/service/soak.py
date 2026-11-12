@@ -166,9 +166,11 @@ def _record(
         return rec
     dev = body["device"]
     calls = body["llm_calls"]
-    new_tokens = sum(float(c.get("new_tokens") or 0) for c in calls)
+    # Cached calls decoded nothing: they are counted, but not in latency, tokens or decode time.
+    live = [c for c in calls if not c.get("cached")]
+    new_tokens = sum(float(c.get("new_tokens") or 0) for c in live)
     decode_s = (
-        sum(max(float(c.get("wall_ms") or 0) - float(c.get("ttft_ms") or 0), 0.0) for c in calls)
+        sum(max(float(c.get("wall_ms") or 0) - float(c.get("ttft_ms") or 0), 0.0) for c in live)
         / 1000.0
     )
     rec.update(
@@ -179,7 +181,8 @@ def _record(
             "total_ms": body["timings_ms"]["total"],
             "llm_total_ms": body["timings_ms"]["llm_total"],
             "llm_calls": len(calls),
-            "llm_call_ms": [round(float(c.get("wall_ms") or 0), 1) for c in calls],
+            "llm_calls_cached": len(calls) - len(live),
+            "llm_call_ms": [round(float(c.get("wall_ms") or 0), 1) for c in live],
             "new_tokens": new_tokens,
             "decode_s": round(decode_s, 3),
             "temp_start_c": dev["start"]["temp_c"],
@@ -337,6 +340,7 @@ def summarise(
         "total_ms": _dist([r["total_ms"] for r in ok]),
         "llm_per_advisory_ms": _dist([r["llm_total_ms"] for r in called]),
         "llm_per_call_ms": _dist(call_ms),
+        "llm_calls_cached": sum(r["llm_calls_cached"] for r in ok),
         "decode_tok_s": round(tokens / decode_s, 2) if decode_s > 0 else None,
         "energy_j_per_advisory": _dist([r["energy_j"] for r in ok]),
         "energy_j_per_llm_advisory": _dist([r["energy_j"] for r in called]),

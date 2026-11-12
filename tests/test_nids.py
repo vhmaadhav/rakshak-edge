@@ -493,7 +493,10 @@ def test_sampling_is_label_stratified_and_t4_is_host_disjoint(synthetic_root):
     assert not sets[0] & sets[1] and not sets[0] & sets[2] and not sets[1] & sets[2]
 
 
-def test_end_to_end_job_on_tiny_synthetic_data(synthetic_root):
+def test_end_to_end_job_on_tiny_synthetic_data(synthetic_root, monkeypatch):
+    # The tests check result structure, not accuracy, so small ensembles are enough.
+    monkeypatch.setattr(job, "LGBM_N_ESTIMATORS", 30)
+    monkeypatch.setattr(job, "IFOREST_N_ESTIMATORS", 20)
     argv = ["--data-root", str(synthetic_root), "--datasets", "unsw_nb15", "bot_iot",
             "--max-rows", "400", "--models", "lightgbm", "logreg",
             "--protocols", "T0", "T1", "T2", "T4", "--t2-cross-models", "lightgbm",
@@ -775,7 +778,10 @@ def _three_dataset_root(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_end_to_end_calibrated_lodo_and_hybrid_on_synthetic_data(tmp_path):
+def test_end_to_end_calibrated_lodo_and_hybrid_on_synthetic_data(tmp_path, monkeypatch):
+    # The tests check result structure, not accuracy, so small ensembles are enough.
+    monkeypatch.setattr(job, "LGBM_N_ESTIMATORS", 30)
+    monkeypatch.setattr(job, "IFOREST_N_ESTIMATORS", 20)
     root = _three_dataset_root(tmp_path)
     argv = ["--data-root", str(root), "--max-rows", "400", "--models", "lightgbm",
             "--protocols", "T1", "T2", "T5", "--t2-cross-models", "lightgbm",

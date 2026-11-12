@@ -59,3 +59,11 @@ Then open http://localhost:8765.
 - Keep the case vented or open. Do not stack it under other hardware.
 - A small 5 V heatsink or fan hat is the real fix. Passive operation with the governor just trades speed for staying cool.
 - Keep heavy jobs on Kaggle or the laptop. The Pi is for light inference and monitoring.
+
+## Synthetic test pcaps (deploy/pi/service/make_test_pcaps.py)
+
+The network path (`POST /analyze_flows`, see `docs/NIDS_EDGE.md`) is tested with pcaps this script
+writes. They are synthetic and offline: scapy builds the packets and `wrpcap` writes the files. The script
+opens no socket and sends nothing, and it uses only RFC 1918 addresses. The captures are fabricated
+traffic shapes for a functional test, not real attacks or real hosts. Run it on the laptop; the Pi needs
+only the pcap files, not scapy.

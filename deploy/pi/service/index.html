@@ -101,6 +101,11 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     </div>
   </section>
 
+  <section id="smsRemediationCard" class="card" hidden>
+    <h2>Remediation</h2>
+    <div id="smsRemediation"></div>
+  </section>
+
   <section id="evidenceCard" class="card" hidden>
     <h2>Rule evidence</h2>
     <div id="evidence"></div>
@@ -129,6 +134,36 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   <section id="deviceCard" class="card" hidden>
     <h2>Device</h2>
     <div class="kv" id="device"></div>
+  </section>
+  <section class="card" id="netCard">
+    <h2>Network: analyse a pcap</h2>
+    <div class="note">Upload a classic .pcap (up to 20 MB). Flows are built and scored on this Pi.
+      The file is not sent anywhere else. Synthetic test captures come from
+      make_test_pcaps.py.</div>
+    <div style="margin-top:8px">
+      <input id="pcapFile" type="file" accept=".pcap,application/vnd.tcpdump.pcap,application/octet-stream">
+    </div>
+    <div style="margin-top:8px">
+      <button id="netGo" type="button">Analyse pcap</button>
+      <span id="netStatus" class="muted"></span>
+    </div>
+  </section>
+
+  <section id="netResult" class="card" hidden>
+    <h2>Network result</h2>
+    <div class="kv" id="netSummary"></div>
+    <div id="netAlerts"></div>
+    <div class="note" id="netNone"></div>
+  </section>
+
+  <section id="netTiming" class="card" hidden>
+    <h2>Network timings and device</h2>
+    <div class="kv" id="netTimes"></div>
+  </section>
+
+  <section id="netRemediationCard" class="card" hidden>
+    <h2>Remediation</h2>
+    <div id="netRemediation"></div>
   </section>
 </main>
 <script>
@@ -159,6 +194,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 
   function render(d) {
     $("result").hidden = false;
+    renderRemediation($("smsRemediation"), d.remediation);
+    $("smsRemediationCard").hidden = !(d.remediation && d.remediation.length);
     var risk = d.decision.risk;
     $("risk").textContent = risk;
     $("risk").className = "big risk-" + risk;
@@ -215,7 +252,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
       body.appendChild(tr);
     });
     $("llmCalls").textContent = t.llm_calls.length
-      ? "Per call (ms): " + t.llm_calls.map(function (x) { return fmt(x, 0); }).join(", ")
+      ? "Per call (ms): " + t.llm_calls.map(function (x, i) {
+          var c = d.llm_calls[i];
+          return t.llm_cached > 0 && c && c.cached ? "cached" : fmt(x, 0);
+        }).join(", ")
       : "No explainer call for this decision.";
     $("timingCard").hidden = false;
 
@@ -251,6 +291,113 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     }).catch(function (err) {
       banner("bad", "Could not reach the service: " + err);
       $("status").textContent = "";
+    }).then(function () { btn.disabled = false; });
+  });
+
+  function renderRemediation(container, items) {
+    container.textContent = "";
+    (items || []).forEach(function (item) {
+      var box = el("div", "", "");
+      box.style.marginTop = "8px";
+      box.appendChild(el("div", "", item.code + ": " + item.title));
+      box.firstChild.style.fontWeight = "700";
+      var ol = el("ol", "", "");
+      ol.style.margin = "4px 0 0 18px";
+      (item.steps || []).forEach(function (step) { ol.appendChild(el("li", "", step)); });
+      box.appendChild(ol);
+      container.appendChild(box);
+    });
+  }
+
+  function renderAlert(parent, a) {
+    var card = el("div", "", "");
+    card.style.borderTop = "1px solid var(--line)";
+    card.style.marginTop = "10px";
+    card.style.paddingTop = "10px";
+    card.appendChild(el("div", "label", "Host " + a.src));
+    var head = el("div", "big", a.decision.risk + " / " + a.decision.state + " / " + a.decision.family);
+    card.appendChild(head);
+    var kv = el("div", "kv", "");
+    row(kv, "Attack score (max)", fmt(a.decision.p_attack, 4));
+    row(kv, "Flagged flows", a.decision.flagged_flows + " of " + a.decision.flows_from_host);
+    row(kv, "Distinct destination ports", a.decision.distinct_dst_ports);
+    row(kv, "Verifier", a.verifier.ok ? "passed" : "rejected: " + a.verifier.reasons.join("; "));
+    card.appendChild(kv);
+    card.appendChild(el("div", "label", "Evidence"));
+    var ev = el("div", "", "");
+    a.evidence.forEach(function (e) {
+      ev.appendChild(el("div", "", e.id + " " + e.type + " (weight " + fmt(e.weight, 3) + ")"));
+    });
+    card.appendChild(ev);
+    card.appendChild(el("div", "label", "Advisory (template)"));
+    card.appendChild(el("div", "", a.advisory.summary));
+    card.appendChild(el("div", "note", "Action: " + a.advisory.action));
+    card.appendChild(el("div", "label", "Examples"));
+    a.examples.forEach(function (x) {
+      card.appendChild(el("div", "note", (x.dst || "?") + ":" + (x.dst_port === null ? "?" : x.dst_port) +
+        " " + x.family + " p=" + fmt(x.p_attack, 4) + " " + x.state));
+    });
+    parent.appendChild(card);
+  }
+
+  function renderNet(d) {
+    $("netResult").hidden = false;
+    var sum = $("netSummary");
+    sum.textContent = "";
+    row(sum, "Overall", d.decision.risk + " / " + d.decision.state);
+    row(sum, "Flows processed", d.flows_processed + " (" + d.flow_source + ")");
+    row(sum, "Flows per second", fmt(d.flows_per_s, 1));
+    row(sum, "Alerts (hosts)", d.decision.alerts + " of " + d.decision.hosts_seen + " seen");
+    var alerts = $("netAlerts");
+    alerts.textContent = "";
+    (d.alerts || []).forEach(function (a) { renderAlert(alerts, a); });
+    $("netNone").textContent = d.alerts && d.alerts.length ? "" :
+      "No host alert in this capture.";
+    var rem = [];
+    (d.alerts || []).forEach(function (a) { rem = rem.concat(a.remediation || []); });
+    var seen = {};
+    rem = rem.filter(function (x) { if (seen[x.code]) return false; seen[x.code] = true; return true; });
+    $("netRemediationCard").hidden = rem.length === 0;
+    renderRemediation($("netRemediation"), rem);
+
+    var t = d.timings_ms, dev = d.device;
+    var tt = $("netTimes");
+    tt.textContent = "";
+    row(tt, "Request wall time", fmt(d.wall_ms, 1) + " ms");
+    row(tt, "Parse", fmt(t.parse, 1) + " ms");
+    row(tt, "Score (all flows)", fmt(t.score, 1) + " ms");
+    row(tt, "Per flow p50 / p95", fmt(t.per_flow_p50, 3) + " / " + fmt(t.per_flow_p95, 3) + " ms");
+    row(tt, "Host alerts", fmt(t.host_alerts, 1) + " ms");
+    row(tt, "Remediation and verify", fmt(t.remediation_and_verify, 1) + " ms");
+    row(tt, "Temperature", fmt(dev.start.temp_c, 1) + " to " + fmt(dev.end.temp_c, 1) + " C");
+    row(tt, "Energy this request", fmt(dev.energy.energy_j, 2) + " J (" + dev.energy.method + ")");
+    row(tt, "Service RSS", fmt(dev.rss_mb, 0) + " MB");
+    $("netTiming").hidden = false;
+  }
+
+  $("netGo").addEventListener("click", function () {
+    var file = $("pcapFile").files[0];
+    if (!file) { banner("warn", "Choose a .pcap file first."); return; }
+    if (file.size > 20 * 1024 * 1024) { banner("warn", "The pcap is larger than 20 MB."); return; }
+    clearBanner();
+    var btn = $("netGo"); btn.disabled = true; $("netStatus").textContent = "running on the Pi...";
+    fetch("/analyze_flows", {
+      method: "POST",
+      headers: {"Content-Type": "application/vnd.tcpdump.pcap"},
+      body: file
+    }).then(function (r) {
+      return r.json().then(function (j) { return {status: r.status, body: j}; });
+    }).then(function (res) {
+      if (res.status === 200) { renderNet(res.body); $("netStatus").textContent = "done"; return; }
+      if (res.status === 503 && res.body.temp_c !== undefined) {
+        banner("bad", "The Pi is too hot (" + fmt(res.body.temp_c) + " C). The network analysis was not run.");
+      } else {
+        banner("bad", res.body.error || ("request failed (" + res.status + ")"));
+      }
+      $("netStatus").textContent = "";
+    }).catch(function (err) {
+      banner("bad", "Could not reach the service: " + err);
+      $("netStatus").textContent = "";
     }).then(function () { btn.disabled = false; });
   });
 })();

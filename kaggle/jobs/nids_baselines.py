@@ -103,6 +103,8 @@ FPR_OPERATING = 0.01
 BATCH_ROWS = 1_000_000
 BUDGET_BYTES = 1_000_000
 CONTROL_FAMILY_INDEX = 0  # benign
+LGBM_N_ESTIMATORS = 300  # trees per LightGBM classifier (tests shrink this)
+IFOREST_N_ESTIMATORS = 200  # trees per IsolationForest scorer (tests shrink this)
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -295,7 +297,7 @@ def make_estimator(kind: str, seed: int):
         import lightgbm as lgb
 
         return lgb.LGBMClassifier(
-            n_estimators=300, learning_rate=0.08, num_leaves=63, subsample=0.8,
+            n_estimators=LGBM_N_ESTIMATORS, learning_rate=0.08, num_leaves=63, subsample=0.8,
             subsample_freq=1, colsample_bytree=0.8, random_state=seed, verbose=-1,
         )
     from sklearn.pipeline import make_pipeline
@@ -514,7 +516,8 @@ def transfer_variants(sources: list[Site], test: Split, target_base: np.ndarray,
     s_test_lgbm = np.clip(1.0 - p_test[:, CONTROL_FAMILY_INDEX], 0.0, 1.0)
 
     benign_fit = _cap_rows(benign_train, ANOMALY_TRAIN_CAP, seed)
-    detectors = {"isolation_forest": B.IsolationForestScorer(seed),
+    detectors = {"isolation_forest": B.IsolationForestScorer(
+                     seed, n_estimators=IFOREST_N_ESTIMATORS),
                  "autoencoder": B.AutoencoderScorer(seed)}
     variants: dict[str, Any] = {"lightgbm": result_from_scores(cal_all, test, p_cal, p_test,
                                                               seed, n_boot)}

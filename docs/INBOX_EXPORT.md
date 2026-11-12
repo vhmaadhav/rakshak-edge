@@ -25,3 +25,7 @@ Future independent Indian validation must be collected after rules/thresholds fr
 consented/privacy-scrubbed, human labelled and campaign/near-duplicate checked; never
 use it for tuning. Bank/UPI/OTP/delivery/telecom and received scams are the planned mix.
 No benchmark results or performance headline changed by these tools.
+
+**Amendment 2026-11-07 (approved by Maadhav).** Reviewed inbox data may be used for training only under a
+pre-registered donor split (`docs/INBOX_RETRAIN_PLAN.md`): at least one donor's data is a frozen test set, never used
+for training, threshold choice or tuning, and scored once per pre-registered arm. Consent per `docs/INBOX_CONSENT.md`.

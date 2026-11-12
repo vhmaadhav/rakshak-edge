@@ -19,12 +19,14 @@ import argparse
 import json
 import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
 from rakshak.nids.evidence import (
     STATE_LABEL,
+    NetEvidence,
     build_network_package,
     evidence_for_flow,
     net_template,
@@ -36,15 +38,28 @@ from rakshak.verifier import verify
 ProbsFn = Callable[[np.ndarray], np.ndarray]  # (1, n_live) float32 -> (1, n_families) probs
 
 
-def assess_flow(
+@dataclass(frozen=True)
+class FlowDecision:
+    """The scored state of one flow, before any advisory is built."""
+
+    state: str  # "scam", "uncertain" or "benign" (the detector and window decision)
+    p_attack: float
+    family: str
+    src: str
+    dst: Any
+    dst_port: int | None
+    evidence: list[NetEvidence]
+
+
+def flow_decision(
     flow: Mapping[str, Any],
     probs_fn: ProbsFn,
     window: HostWindow,
     *,
     alert: float,
     uncertain: float,
-) -> dict[str, Any]:
-    """Score one flow and return the JSON-ready record. Pure apart from ``window``."""
+) -> FlowDecision:
+    """Score one flow and its window evidence. Pure apart from ``window``."""
     if not 0.0 <= uncertain <= alert <= 1.0:
         raise ValueError("need 0 <= uncertain <= alert <= 1")
     x = coerce_matrix(featurize_flow(flow)[LIVE_COLUMNS][None, :], LIVE_FEATURES)
@@ -71,19 +86,35 @@ def assess_flow(
     if state == "benign" and evidence:
         # Window evidence can raise the state, never lower it (as the SMS rules do).
         state = "uncertain"
-    package = build_network_package(evidence, state)
+    return FlowDecision(state=state, p_attack=p_attack, family=family, src=str(src),
+                        dst=flow.get("dst_ip"),
+                        dst_port=None if dst_port is None else int(dst_port),
+                        evidence=evidence)
+
+
+def assess_flow(
+    flow: Mapping[str, Any],
+    probs_fn: ProbsFn,
+    window: HostWindow,
+    *,
+    alert: float,
+    uncertain: float,
+) -> dict[str, Any]:
+    """Score one flow and return the JSON-ready record. Pure apart from ``window``."""
+    dec = flow_decision(flow, probs_fn, window, alert=alert, uncertain=uncertain)
+    package = build_network_package(dec.evidence, dec.state)
     template = net_template(package)
     verified = verify(json.dumps(template), package).ok
     return {
-        "state": STATE_LABEL[state],
-        "p_attack": round(p_attack, 4),
-        "family": family,
-        "src": src,
-        "dst": flow.get("dst_ip"),
-        "dst_port": dst_port,
+        "state": STATE_LABEL[dec.state],
+        "p_attack": round(dec.p_attack, 4),
+        "family": dec.family,
+        "src": dec.src,
+        "dst": dec.dst,
+        "dst_port": dec.dst_port,
         "risk": package.risk.value,
         "evidence": [{"id": e.id, "type": e.type, "weight": round(e.weight, 3)}
-                     for e in evidence],
+                     for e in dec.evidence],
         "action": template["action"],
         "summary": template["summary"],
         "verified": verified,

@@ -71,6 +71,29 @@ JOB_DEPENDENCIES = {
     'fusion_hardneg': ('kaggle/jobs/fusion_transactional.py',),
     'sms_transactional_hardneg': ('kaggle/jobs/sms_source_balance.py',),
     'nids_provenance_map': ('kaggle/jobs/nids_baselines.py',),
+    'sms_retrain': ('kaggle/jobs/baseline_v0.py',),
+    'sms_inbox_retrain': ('kaggle/jobs/baseline_v0.py', 'kaggle/jobs/sms_retrain.py'),
+    'sms_surrogate_d0': (
+        'kaggle/jobs/baseline_v0.py',
+        'kaggle/jobs/sms_retrain.py',
+        'kaggle/jobs/sms_inbox_retrain.py',
+    ),
+    'sms_teacher_xsource': (
+        'kaggle/jobs/baseline_v0.py',
+        'kaggle/jobs/sms_retrain.py',
+        'kaggle/jobs/sms_inbox_retrain.py',
+        'kaggle/jobs/sms_surrogate_d0.py',
+        'kaggle/jobs/sms_teacher.py',
+    ),
+    'sms_teacher_export': ('kaggle/jobs/_common.py',),
+    'sms_teacher_finetune': (
+        'kaggle/jobs/baseline_v0.py',
+        'kaggle/jobs/sms_retrain.py',
+        'kaggle/jobs/sms_inbox_retrain.py',
+        'kaggle/jobs/sms_surrogate_d0.py',
+        'kaggle/jobs/sms_teacher.py',
+        'kaggle/jobs/sms_teacher_xsource.py',
+    ),
 }
 JOB_RE = re.compile(r'[a-z][a-z0-9_-]*')
 DATASET_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*')
@@ -352,8 +375,22 @@ def finalize():
         write_and_notify()
 
 
+REDACT = False  # set from the job module's REDACT_ERRORS once it is loaded
+
+
+def describe_error(exc):
+    """(error text, traceback text) for results.json and the log. With REDACT (the job sets
+    REDACT_ERRORS = True) the message is dropped and only the frames (file, line, function) stay."""
+    if not REDACT:
+        return f'{type(exc).__name__}: {exc}', traceback.format_exc()
+    frames = [f'  File "{f.filename}", line {f.lineno}, in {f.name}'
+              for f in traceback.extract_tb(exc.__traceback__)]
+    error = f'{type(exc).__name__} (message redacted)'
+    return error, '\n'.join(['Traceback (message redacted; frames only):', *frames, error])
+
+
 def main():
-    global _log, _watchdog_thread
+    global _log, _watchdog_thread, REDACT
     WORK.mkdir(parents=True, exist_ok=True)
     os.environ['RAKSHAK_WORK'] = str(WORK)
     _log = LOG_PATH.open('w', encoding='utf-8')
@@ -365,6 +402,7 @@ def main():
         install_pins()
         unpack()
         job = load_job()
+        REDACT = bool(getattr(job, 'REDACT_ERRORS', False))
         save()
         outcome = job.run(Context())
         if isinstance(outcome, str):
@@ -374,9 +412,10 @@ def main():
         else:
             set_outcome('ok' if outcome else 'fail')
     except BaseException as exc:  # an exception still writes results.json and still notifies
-        set_outcome('error', f'{type(exc).__name__}: {exc}')
-        log(f'ERROR {type(exc).__name__}: {exc}')
-        log(traceback.format_exc())
+        error, trace = describe_error(exc)
+        set_outcome('error', error)
+        log(f'ERROR {error}')
+        log(trace)
     finally:
         _cancel_watchdog.set()
         finalize()

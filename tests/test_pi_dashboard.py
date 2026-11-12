@@ -339,7 +339,8 @@ def test_http_endpoints_and_sse_frame():
     sampler.tick()
     server = dash.DashboardServer(("127.0.0.1", 0), sampler)
     port = server.server_address[1]
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01},
+                              daemon=True)
     thread.start()
     try:
         base = f"http://127.0.0.1:{port}"

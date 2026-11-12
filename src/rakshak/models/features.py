@@ -90,6 +90,18 @@ class Featurized:
         return out
 
 
+def with_side_extra(fz: Featurized, extra: np.ndarray) -> Featurized:
+    """A copy with ``extra`` (n, k) float32 appended to both side views (raw and canonical).
+    Used for the inbox sender features; rows without a sender pass zeros."""
+    extra = np.asarray(extra, dtype=np.float32)
+    if extra.ndim != 2 or extra.shape[0] != len(fz):
+        raise ValueError(f"extra side features must be (rows, k), got {extra.shape}")
+    out = copy.copy(fz)
+    out.side_raw = np.hstack([fz.side_raw, extra])
+    out.side_canon = np.hstack([fz.side_canon, extra])
+    return out
+
+
 def featurize(texts: Sequence[str], *, buckets: int | None = None,
               max_len: int = MAX_LEN) -> Featurized:
     """Both views, rule flags and (when ``buckets`` is given) hashed n-grams for each message."""
