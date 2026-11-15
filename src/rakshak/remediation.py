@@ -24,6 +24,15 @@ LANGS = ("en", "hinglish")
 
 # (title, steps) per code. Steps are plain sentences.
 SMS_EN: dict[str, tuple[str, tuple[str, ...]]] = {
+    Action.DO_NOT_OPEN_LINK.value: (
+        "Do not open the link; check the sender through the official app or number",
+        (
+            "Do not open the link in this message.",
+            "Check the sender through the official app, or the number on your card or official "
+            "website.",
+            "Delete the message if you are not sure.",
+        ),
+    ),
     Action.DO_NOT_CLICK.value: (
         "Do not click the links in this message",
         (
@@ -91,6 +100,14 @@ SMS_EN: dict[str, tuple[str, tuple[str, ...]]] = {
 }
 
 SMS_HINGLISH: dict[str, tuple[str, tuple[str, ...]]] = {
+    Action.DO_NOT_OPEN_LINK.value: (
+        "Link na kholein; sender ko official app ya official number se check karein",
+        (
+            "Is message ka link na kholein.",
+            "Sender ko official app, ya card ya official website par diye number se check karein.",
+            "Shak ho to message delete kar dein.",
+        ),
+    ),
     Action.DO_NOT_CLICK.value: (
         "Is message ke links par click na karein",
         (

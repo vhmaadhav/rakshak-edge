@@ -197,6 +197,7 @@ _TYPE_PHRASE = {
         "shortened_url": "contains a shortened link",
         "suspicious_url": "contains a suspicious link",
         "urgency": "uses time pressure (turant, abhi, 24 hours)",
+        "phishing_url_model": "contains a link that the URL model scores as high risk",
     },
     "hinglish": {
         "credential_request": "OTP, PIN ya password maangta hai",
@@ -215,11 +216,13 @@ _TYPE_PHRASE = {
         "shortened_url": "chhota (shortened) link deta hai",
         "suspicious_url": "shaq wala link deta hai",
         "urgency": "jaldi karne ka dabav dalta hai (turant, abhi, 24 ghante)",
+        "phishing_url_model": "aisa link deta hai jise URL model high risk maanta hai",
     },
 }
 
 _ACTION_PRIORITY = [
     Action.DO_NOT_SHARE_OTP,
+    Action.DO_NOT_OPEN_LINK,
     Action.DO_NOT_CLICK,
     Action.REPORT_1930_OR_CHAKSHU,
     Action.CONTACT_BANK_OFFICIAL,

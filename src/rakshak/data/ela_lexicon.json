@@ -17,7 +17,8 @@
     "brand_domain_mismatch": ["link", "links", "website", "domain", "official", "url", "site", "page"],
     "shortened_url": ["shortened", "short link", "short url", "link", "links", "tinyurl", "bit.ly"],
     "suspicious_url": ["link", "links", "url", "website", "site", "suspicious"],
-    "urgency": ["urgent", "urgently", "immediately", "immediate", "now", "today", "hurry", "hours", "time pressure", "turant", "abhi", "aaj", "jaldi"]
+    "urgency": ["urgent", "urgently", "immediately", "immediate", "now", "today", "hurry", "hours", "time pressure", "turant", "abhi", "aaj", "jaldi"],
+    "phishing_url_model": ["link", "links", "url"]
   },
   "hinglish": {
     "credential_request": ["otp", "pin", "mpin", "password", "passcode", "cvv", "code", "verification code", "one time password"],
@@ -35,6 +36,7 @@
     "brand_domain_mismatch": ["link", "links", "domain", "website", "site", "official", "brand", "url"],
     "shortened_url": ["shortened", "short", "link", "links", "chhota", "url"],
     "suspicious_url": ["link", "links", "url", "site", "website", "shaq", "suspicious"],
-    "urgency": ["urgent", "urgently", "immediately", "turant", "abhi", "aaj", "jaldi", "ghante", "hours", "today", "now"]
+    "urgency": ["urgent", "urgently", "immediately", "turant", "abhi", "aaj", "jaldi", "ghante", "hours", "today", "now"],
+    "phishing_url_model": ["link", "links", "url"]
   }
 }

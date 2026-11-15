@@ -25,18 +25,27 @@ from typing import Any, Protocol
 
 from edge_decision import (  # noqa: F401 - scam_state_for and detector_only_package re-exported
     DEFAULT_DETECTOR_ONLY_MODE,
+    add_url_evidence,
     check_mode,
     decide_edge,
     detector_only_package,
     scam_state_for,
+    url_model_active,
 )
 from rbench.slot import HINGLISH_LANG, SLOT_MAX_NEW_TOKENS, generate_slot_advisory
 
 from rakshak.canonicalize import canonicalize
 from rakshak.datasets.lang import detect_lang
-from rakshak.evidence import EvidencePackage
+from rakshak.evidence import EvidencePackage, build_package, choose_action
 from rakshak.remediation import remediation_for, remediation_problems
 from rakshak.rules import run_rules
+from rakshak.url_features import registered_domain
+from rakshak.url_model import (
+    URL_MODEL_TYPE,
+    UrlScorer,
+    add_url_model_evidence,
+    best_url_hit,
+)
 from rakshak.verifier import check_points, template_only_advisory
 
 LANG = "en"
@@ -151,7 +160,13 @@ class EdgeAnalyzer:
         clock: Callable[[], float] = time.perf_counter,
         detector_only_mode: str = DEFAULT_DETECTOR_ONLY_MODE,
         hinglish_mode: str = DEFAULT_HINGLISH_MODE,
+        url_scorer: UrlScorer | None = None,
+        url_threshold: float | None = None,
     ) -> None:
+        """``url_scorer`` and ``url_threshold`` together turn the URL model on. With either one
+        None (the registry has no threshold for url_student) the URL path is off and the
+        decision is the same as before it existed. The URL model adds evidence in verify mode
+        only: in quiet mode the scorer is never called (edge_decision.URL_EVIDENCE_MODE)."""
         if hinglish_mode not in HINGLISH_MODES:
             raise ValueError(
                 f"hinglish_mode must be one of {HINGLISH_MODES}, got {hinglish_mode!r}"
@@ -163,6 +178,9 @@ class EdgeAnalyzer:
         self.clock = clock
         self.detector_only_mode = check_mode(detector_only_mode)
         self.hinglish_mode = hinglish_mode
+        self.url_scorer = url_scorer
+        self.url_threshold = None if url_scorer is None else url_threshold
+        self.url_active = url_model_active(self.detector_only_mode, self.url_threshold)
 
     def analyse(self, text: str, lang: str = "auto") -> dict[str, Any]:
         clock = self.clock
@@ -171,7 +189,10 @@ class EdgeAnalyzer:
         t_canon = clock()
         p_scam = float(self.detector.score(text))
         t_detect = clock()
-        evidence = run_rules(canon)
+        hit = best_url_hit(canon.urls, self.url_scorer) if self.url_active else None
+        evidence = add_url_evidence(
+            run_rules(canon), canon, hit, self.url_threshold, self.detector_only_mode
+        )
         dec = decide_edge(canon, evidence, p_scam, self.threshold, self.detector_only_mode)
         state, package, action = dec.state, dec.package, dec.action
         t_evidence = clock()
@@ -388,3 +409,69 @@ class EdgeAnalyzer:
                 "total": _ms(t_start, t_end),
             },
         }
+
+
+# ----------------------------------------------------------------- POST /analyze_url
+# Rule types a bare URL can trigger. The SMS-only rules are not run on a link check.
+URL_RULE_TYPES = ("brand_domain_mismatch", "shortened_url", "suspicious_url")
+
+
+def check_url(
+    url_text: str,
+    scorer: UrlScorer | None,
+    threshold: float | None,
+    *,
+    clock: Callable[[], float] = time.perf_counter,
+) -> dict[str, Any]:
+    """POST /analyze_url: the URL score, the domain rules, a verdict and remediation for one link.
+
+    ``verdict`` is "phishing" when the URL model is at or above its threshold, or a brand-domain
+    mismatch fired; "suspicious" when only the shortened or suspicious-URL rules fired; otherwise
+    "no_signal". The state is never "scam" (there is no SMS student here), so the model alone
+    gives UNCERTAIN; a brand mismatch (weight 0.9) gives HIGH. No explainer runs.
+    """
+    active = scorer is not None and threshold is not None
+    t0 = clock()
+    canon = canonicalize(url_text)
+    t_canon = clock()
+    hit = best_url_hit(canon.urls, scorer) if active else None
+    rules = [e for e in run_rules(canon) if e.type in URL_RULE_TYPES]
+    evidence = add_url_model_evidence(rules, canon, hit, threshold if active else None)
+    t_evidence = clock()
+    state = "uncertain" if evidence else "benign"
+    package = build_package(canon, evidence, state)
+    action = choose_action(package)
+    remediation = remediation_for(package, action.value, LANG)
+    model_fired = any(e.type == URL_MODEL_TYPE for e in evidence)
+    brand = any(e.type == "brand_domain_mismatch" for e in evidence)
+    if model_fired or brand:
+        verdict = "phishing"
+    elif evidence:
+        verdict = "suspicious"
+    else:
+        verdict = "no_signal"
+    t_end = clock()
+    return {
+        "verdict": verdict,
+        "risk": package.risk.value,
+        "action": action.value,
+        "url_count": len(canon.urls),
+        "url_model": {
+            "enabled": active,
+            "threshold": round(float(threshold), 4) if active else None,
+            "score": round(hit.score, 4) if hit is not None else None,
+            "domain": (registered_domain(hit.url) or None) if hit is not None else None,
+            "fired": model_fired,
+        },
+        "evidence": [
+            {"id": e.id, "type": e.type, "weight": round(e.weight, 3), "text": e.text}
+            for e in evidence
+        ],
+        "remediation": remediation,
+        "remediation_ok": not remediation_problems(remediation, package),
+        "timings_ms": {
+            "canonicalise": _ms(t0, t_canon),
+            "url_and_rules": _ms(t_canon, t_evidence),
+            "total": _ms(t0, t_end),
+        },
+    }

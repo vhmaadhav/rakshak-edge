@@ -2,6 +2,7 @@
 """Rakshak edge service: one resident process that loads the SMS student and the Llama .pte once.
 
     POST /analyze   {"sms": "..."}  -> decision, evidence, advisory, remediation, timings
+    POST /analyze_url {"url": "..."} -> URL score, domain rules, verdict, remediation (no explainer)
     POST /analyze_flows  raw pcap body, or {"flows": [...]} -> per-host alerts, remediation, timings
     GET  /health                    -> models, threads, RSS, device state
     GET  /                          -> a minimal page to paste an SMS and see the stages
@@ -50,12 +51,17 @@ sys.path[:0] = [
     str(REPO / "deploy" / "pi"),
 ]
 
-from edge_decision import DEFAULT_DETECTOR_ONLY_MODE, DETECTOR_ONLY_MODES  # noqa: E402
+from edge_decision import (  # noqa: E402
+    DEFAULT_DETECTOR_ONLY_MODE,
+    DETECTOR_ONLY_MODES,
+    URL_EVIDENCE_MODE,
+)
 from edge_device import EnergyWindow, read_snapshot  # noqa: E402
 from edge_pipeline import (  # noqa: E402
     DEFAULT_HINGLISH_MODE,
     HINGLISH_MODES,
     LANG_REQUESTS,
+    check_url,
 )
 from nids_pipeline import (  # noqa: E402
     FLOW_SOURCES,
@@ -74,6 +80,8 @@ DEFAULT_HOST = "127.0.0.1"
 EGRESS_PROBE = ("1.1.1.1", 443)
 DEFAULT_TEMP_LIMIT = 75.0
 MAX_SMS_CHARS = 2000
+MAX_URL_CHARS = 2000
+URL_MODEL_ID = "url_student"
 ONNX_PATH = "models/sms_student/best_student.onnx"
 PTE_PATH = "models/llama32_1b_spinquant/Llama-3.2-1B-Instruct-SpinQuant_INT4_EO8.pte"
 TOKENIZER_PATH = "models/llama32_1b_spinquant/tokenizer.model"
@@ -135,9 +143,11 @@ class Service:
         nids: NidsAnalyzer | None = None,
         explainer_cache: Any | None = None,
         llm_runner: str = "runner",
+        url_check: Any | None = None,
     ) -> None:
         self.analyzer = analyzer
         self.nids = nids
+        self.url_check = url_check
         self.explainer_cache = explainer_cache
         self.llm_runner = llm_runner
         self.threads = threads
@@ -173,6 +183,13 @@ class Service:
             "temp_limit_c": self.temp_limit,
             "models": self.models,
             "detector_only_mode": self.detector_only_mode,
+            "url_model": {
+                # Diagnostic only (no per-request field in /analyze). Quiet mode never scores
+                # URLs for /analyze; /analyze_url works in every mode.
+                "enabled": bool((self.models.get(URL_MODEL_ID) or {}).get("enabled")),
+                "threshold": (self.models.get(URL_MODEL_ID) or {}).get("threshold"),
+                "evidence_visible": self.detector_only_mode == URL_EVIDENCE_MODE,
+            },
             "hinglish_mode": self.hinglish_mode,
             "llm_runner": self.llm_runner,
             "requests": self.requests,
@@ -265,6 +282,57 @@ class Service:
             }
         return None
 
+    def analyse_url(self, url: str) -> tuple[int, dict[str, Any]]:
+        """POST /analyze_url. Same lock and 503 cooling refusal as analyse()."""
+        request_id = uuid.uuid4().hex[:12]
+        if self.url_check is None:
+            return 503, {"error": "url check not loaded", "request_id": request_id}
+        with self.lock:
+            start = self.device_fn()
+            refusal = self._cooling_refusal(request_id, start)
+            if refusal is not None:
+                return refusal
+            energy = self.energy_factory()
+            energy.start()
+            t0 = time.perf_counter()
+            try:
+                result = self.url_check(url)
+            finally:
+                energy_doc = energy.stop()
+            wall_ms = round((time.perf_counter() - t0) * 1000.0, 3)
+            end = self.device_fn()
+            self.requests += 1
+            body = {
+                "request_id": request_id,
+                "input_chars": len(url),
+                **result,
+                "device": {
+                    "start": start,
+                    "end": end,
+                    "energy": energy_doc,
+                    "rss_mb": rss_mb(),
+                    "rss_peak_mb": rss_mb("VmHWM"),
+                },
+                "wall_ms": wall_ms,
+            }
+            self._log(
+                {
+                    "event": "analyse_url",
+                    "request_id": request_id,
+                    "ts": round(self.clock(), 3),
+                    "verdict": result["verdict"],
+                    "risk": result["risk"],
+                    "action": result["action"],
+                    "url_fired": result["url_model"]["fired"],
+                    "total_ms": result["timings_ms"]["total"],
+                    "wall_ms": wall_ms,
+                    "temp_start_c": start.get("temp_c"),
+                    "temp_end_c": end.get("temp_c"),
+                    "energy_j": energy_doc["energy_j"],
+                }
+            )
+            return 200, body
+
     def analyse_flows(self, raw: bytes) -> tuple[int, dict[str, Any]]:
         """Network path: a pcap or JSON flows body. Same 503 cooling refusal as analyse()."""
         request_id = uuid.uuid4().hex[:12]
@@ -354,6 +422,9 @@ def make_handler(service: Service, index_html: bytes):
             if route == "/analyze_flows":
                 self._analyse_flows()
                 return
+            if route == "/analyze_url":
+                self._analyse_url()
+                return
             if route != "/analyze":
                 self._json(404, {"error": "not found"})
                 return
@@ -382,6 +453,31 @@ def make_handler(service: Service, index_html: bytes):
                     {"event": "error", "error": repr(exc), "trace": traceback.format_exc(limit=6)}
                 )
                 self._json(500, {"error": "analysis failed", "detail": str(exc)})
+                return
+            self._json(status, body)
+
+        def _analyse_url(self) -> None:
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(length) if length > 0 else b""
+                doc = json.loads(raw.decode("utf-8") or "{}")
+            except (ValueError, UnicodeDecodeError):
+                self._json(400, {"error": "body must be JSON"})
+                return
+            url = doc.get("url") if isinstance(doc, dict) else None
+            if not isinstance(url, str) or not url.strip():
+                self._json(400, {"error": "field 'url' must be a non-empty string"})
+                return
+            if len(url) > MAX_URL_CHARS:
+                self._json(400, {"error": f"url is longer than {MAX_URL_CHARS} characters"})
+                return
+            try:
+                status, body = service.analyse_url(url)
+            except Exception as exc:  # noqa: BLE001 - report, keep serving
+                service._log(
+                    {"event": "error", "error": repr(exc), "trace": traceback.format_exc(limit=6)}
+                )
+                self._json(500, {"error": "url analysis failed", "detail": str(exc)})
                 return
             self._json(status, body)
 
@@ -460,6 +556,40 @@ def load_nids(root: Path):
     scorer = OnnxScorer(str(root / NIDS_ONNX_PATH))
     info = {"status": state.get("status"), "load_s": round(time.perf_counter() - t0, 3)}
     return scorer, info
+
+
+def load_url_model(root: Path):
+    """The URL student (url_student) through the same registry check as the SMS model.
+
+    Returns (scorer or None, threshold or None, info). The path is OFF unless the registry has a
+    threshold for url_student and the model and its side scaler are ready (every pinned file
+    hashed). Off means no URL evidence is ever added and /analyze is unchanged. The reason is
+    kept in info and logged at startup.
+    """
+    from rbench.registry import load_registry, model_state
+
+    from rakshak.fusion.url_expert import FrozenURLExpert
+
+    reg = load_registry(root / "deploy" / "pi" / "bench" / "registry.toml")
+    model = reg.model(URL_MODEL_ID)
+    info: dict[str, Any] = {"enabled": False, "threshold": model.threshold}
+    if not model.enabled:
+        reason = "registry entry is disabled"
+    elif model.threshold is None:
+        reason = "no threshold for url_student in registry.toml; URL path disabled"
+    else:
+        state = model_state(root, model, hash_it=True)
+        info["status"] = state.get("status")
+        if state.get("status") != "ready":
+            reason = f"model not ready: {state.get('status')}"
+        else:
+            t0 = time.perf_counter()
+            scorer = FrozenURLExpert((root / model.path).parent)
+            info["enabled"] = True
+            info["load_s"] = round(time.perf_counter() - t0, 3)
+            return scorer, float(model.threshold), info
+    info["reason"] = reason
+    return None, None, info
 
 
 LLM_RUNNERS = ("runner", "direct", "direct-noreuse")
@@ -639,12 +769,16 @@ def main(argv: list[str] | None = None) -> int:
     explainer_cache = (
         CachedGenerator(llm, args.explainer_cache) if args.explainer_cache > 0 else None
     )
+    url_scorer, url_threshold, url_info = load_url_model(root)
+    info[URL_MODEL_ID] = url_info
     analyzer = EdgeAnalyzer(
         _DetectorAdapter(detector_runner),
         explainer_cache if explainer_cache is not None else llm,
         threshold,
         detector_only_mode=args.detector_only_mode,
         hinglish_mode=args.hinglish_mode,
+        url_scorer=url_scorer,
+        url_threshold=url_threshold,
     )
     try:
         nids_scorer, nids_info = load_nids(root)
@@ -670,6 +804,7 @@ def main(argv: list[str] | None = None) -> int:
         nids=nids,
         explainer_cache=explainer_cache,
         llm_runner=args.llm_runner,
+        url_check=lambda text: check_url(text, url_scorer, url_threshold),
     )
     index_html = (HERE / "index.html").read_bytes()
     service.network = netns_report()

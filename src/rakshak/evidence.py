@@ -16,6 +16,7 @@ from enum import StrEnum
 from rakshak.canonicalize import Canon
 from rakshak.rules import Evidence
 from rakshak.url_features import mentioned_brand_domains, registered_domain
+from rakshak.url_model import URL_MODEL_TYPE, url_model_fields
 
 
 class Risk(StrEnum):
@@ -27,6 +28,7 @@ class Risk(StrEnum):
 
 class Action(StrEnum):
     DO_NOT_CLICK = "DO_NOT_CLICK"
+    DO_NOT_OPEN_LINK = "DO_NOT_OPEN_LINK"
     DO_NOT_SHARE_OTP = "DO_NOT_SHARE_OTP"
     OPEN_OFFICIAL_APP = "OPEN_OFFICIAL_APP"
     CONTACT_BANK_OFFICIAL = "CONTACT_BANK_OFFICIAL"
@@ -76,6 +78,7 @@ ACTION_MAP: dict[str, tuple[Action, ...]] = {
     "brand_domain_mismatch": (Action.DO_NOT_CLICK, Action.OPEN_OFFICIAL_APP),
     "shortened_url": (Action.DO_NOT_CLICK,),
     "suspicious_url": (Action.DO_NOT_CLICK,),
+    URL_MODEL_TYPE: (Action.DO_NOT_OPEN_LINK,),
 }
 
 _PHONE_RE = re.compile(r"\+?\d[\d \-]{8,}\d")
@@ -119,6 +122,10 @@ class EvidencePackage:
                 item["domain"] = registered_domain(e.text) or None
                 if include_raw:
                     item["url"] = e.text
+            elif e.type == URL_MODEL_TYPE:
+                domain, score = url_model_fields(e.text)
+                item["domain"] = domain or None
+                item["url_score"] = score
             elif include_raw:
                 item["text"] = e.text
             ev_out.append(item)
@@ -152,6 +159,11 @@ def _allowed_actions(evidence: list[Evidence], risk: Risk) -> list[Action]:
 def _risk(evidence: list[Evidence], scam_state: str) -> Risk:
     top = max((e.weight for e in evidence), default=0.0)
     if top >= 0.85:
+        return Risk.HIGH
+    # The URL model item (phishing_url_model) is only present at or above its registered
+    # threshold. With the SMS student also over its threshold it is HIGH; otherwise it only
+    # makes the state at least UNCERTAIN (the rules below). Without the item nothing changes.
+    if scam_state == "scam" and any(e.type == URL_MODEL_TYPE for e in evidence):
         return Risk.HIGH
     if top >= 0.6:
         return Risk.MEDIUM

@@ -9,6 +9,14 @@ No Llama, no explainer text. ``tests/test_eval_groundlm.py`` checks that ``edge_
 same decision on the same inputs.
 
     eval_groundlm.py run --out-dir DIR [--mode quiet|verify] [--threads 1] [--limit N] [--rescore]
+                         [--url-scores PATH --url-threshold T]
+
+``--url-scores`` (the Kaggle url_scores.parquet: id, set, score, has_url) and ``--url-threshold``
+add the URL model: in verify mode, a message whose best URL score is at or above T gets the
+``phishing_url_model`` evidence, through ``edge_decision.add_url_evidence`` (as the service does).
+Quiet mode ignores URL evidence whatever the score. The student probabilities
+are reused from the cache; the decisions are recomputed from the texts. Without the two options
+the output is the same as before.
 
 The user-visible warning is ``action != IGNORE`` (alert f). In quiet mode a detector-only flag is
 IGNORE, so it is not a warning; in verify mode it is an UNCERTAIN / VERIFY notice.
@@ -43,6 +51,8 @@ sys.path[:0] = [str(HERE), str(REPO / "src"), str(REPO / "deploy" / "pi" / "benc
 from edge_decision import (  # noqa: E402
     DEFAULT_DETECTOR_ONLY_MODE,
     DETECTOR_ONLY_MODES,
+    URL_EVIDENCE_MODE,
+    add_url_evidence,
     check_mode,
     decide_edge,
 )
@@ -55,6 +65,9 @@ from rakshak.ela_eval import proxy_scam_state  # noqa: E402
 from rakshak.eval.data import eval_mask  # noqa: E402
 from rakshak.evidence import Action, build_package  # noqa: E402
 from rakshak.rules import run_rules  # noqa: E402
+from rakshak.url_model import URL_MODEL_TYPE, UrlHit  # noqa: E402
+
+URL_SCORE_SETS = ("groundlm", "smishx", "campaign_test")  # the dataset names in scores.parquet
 
 GROUNDLM_PATH = REPO / "data/processed/external/external_groundlm.parquet"
 SMISHX_PATH = REPO / "data/processed/external/external_smishx.parquet"
@@ -80,13 +93,35 @@ ALERT_NAMES = [
 # ----------------------------------------------------------------- decision (edge_decision)
 
 
-def decide(text: str, prob: float, threshold: float, mode: str = DEFAULT_DETECTOR_ONLY_MODE):
-    """Edge decision for one message given its student probability (no LLM)."""
+def decide(
+    text: str,
+    prob: float,
+    threshold: float,
+    mode: str = DEFAULT_DETECTOR_ONLY_MODE,
+    url_score: float | None = None,
+    url_threshold: float | None = None,
+    url_quiet_policy: str | None = None,
+):
+    """Edge decision for one message given its student probability (no LLM).
+
+    ``url_score`` is the message's best URL score (None when the message has no URL or the URL
+    model is not used). With ``url_threshold`` it adds the phishing_url_model item through
+    ``edge_decision.add_url_evidence``, as the service does, and only in verify mode: quiet mode
+    ignores URL evidence whatever the score. The file gives only the message score, so the item's
+    domain is the message's first URL. No count depends on it.
+    """
     canon = canonicalize(text)
-    evidence = run_rules(canon)
+    rules = run_rules(canon)
+    hit = None
+    if url_score is not None and url_threshold is not None and canon.urls:
+        hit = UrlHit(canon.urls[0], float(url_score))
+    evidence = add_url_evidence(
+        rules, canon, hit, url_threshold, mode,
+        p_scam=prob, p_threshold=threshold, quiet_policy=url_quiet_policy,
+    )
     dec = decide_edge(canon, evidence, prob, threshold, mode)
-    # Rules-only cross-check: the label-free proxy state with no student score.
-    rules_only_risk = build_package(canon, evidence, proxy_scam_state(evidence)).risk.value
+    # Rules-only cross-check: the label-free proxy state with no student score and no URL item.
+    rules_only_risk = build_package(canon, rules, proxy_scam_state(rules)).risk.value
     ranked = sorted(enumerate(evidence), key=lambda iv: (-iv[1].weight, iv[0]))
     primary = ranked[0][1].type if ranked else ""
     return {
@@ -117,6 +152,67 @@ def apply_mode(scored: pd.DataFrame, mode: str) -> pd.DataFrame:
         out.loc[sel, "risk"] = d.package.risk.value
         out.loc[sel, "action"] = d.action.value
         out.loc[sel, "detector_only"] = d.detector_only
+    return out
+
+
+def apply_url_model(
+    scored: pd.DataFrame,
+    texts: pd.DataFrame,
+    url_map: dict[tuple[str, str], float | None],
+    url_threshold: float,
+    threshold: float,
+    mode: str = URL_EVIDENCE_MODE,
+    url_quiet_policy: str | None = None,
+) -> pd.DataFrame:
+    """Recompute the decision columns of every row for ``mode`` with the URL model item (the
+    item is added in verify mode only). Probabilities and rules_only_risk are kept. ``texts`` must
+    line up with ``scored`` row by row (dataset and id), as ``source_texts`` builds it."""
+    same = (scored["dataset"].astype(str).to_numpy() == texts["dataset"].to_numpy()) & (
+        scored["id"].astype(str).to_numpy() == texts["id"].to_numpy()
+    )
+    if len(texts) != len(scored) or not same.all():
+        raise SystemExit("scores.parquet rows do not line up with the source texts; use --rescore")
+    decided = []
+    for ds, rid, text, prob in zip(
+        texts["dataset"], texts["id"], texts["text"], scored["prob"], strict=True
+    ):
+        decided.append(
+            decide(
+                text,
+                float(prob),
+                threshold,
+                mode=mode,
+                url_score=url_map.get((ds, rid)),
+                url_threshold=url_threshold,
+                url_quiet_policy=url_quiet_policy,
+            )
+        )
+    out = scored.copy()
+    frame = pd.DataFrame(decided)
+    for col in ("state", "risk", "action", "detector_only", "n_evidence", "types", "primary_type"):
+        out[col] = frame[col].to_numpy()
+    return out
+
+
+def url_score_map(path: Path) -> dict[tuple[str, str], float | None]:
+    """(set, id) -> message URL score, or None when the row has no URL or no finite score."""
+    df = pd.read_parquet(path)
+    missing = {"id", "set", "score", "has_url"} - set(df.columns)
+    if missing:
+        raise SystemExit(f"--url-scores: missing columns {sorted(missing)}")
+    unknown = sorted(set(df["set"].astype(str)) - set(URL_SCORE_SETS))
+    if unknown:
+        raise SystemExit(f"--url-scores: unknown set values {unknown}; expected {URL_SCORE_SETS}")
+    out: dict[tuple[str, str], float | None] = {}
+    for rec_set, rec_id, score, has_url in zip(
+        df["set"], df["id"], df["score"], df["has_url"], strict=True
+    ):
+        key = (str(rec_set), str(rec_id))
+        if key in out:
+            raise SystemExit(f"--url-scores: duplicate row {key}")
+        has = bool(has_url) and not pd.isna(has_url)
+        value = float(score) if has and not pd.isna(score) else None
+        out[key] = value if value is None or math.isfinite(value) else None
     return out
 
 
@@ -323,6 +419,40 @@ def load_campaign_test(sms_path: Path, split_path: Path) -> pd.DataFrame:
     return df[eval_mask(df)].reset_index(drop=True)
 
 
+def select_groundlm(gl: pd.DataFrame, limit: int) -> pd.DataFrame:
+    """GroundLM rows that are scored: text available (first ``limit`` rows when limit > 0)."""
+    rows = gl[gl["text_available"].fillna(False).astype(bool)]
+    return rows.head(limit) if limit else rows
+
+
+def select_smishx(sx: pd.DataFrame, limit: int) -> pd.DataFrame:
+    rows = sx[sx["eval_ok"].fillna(False).astype(bool)]
+    return rows.head(limit) if limit else rows
+
+
+def select_campaign(limit: int) -> pd.DataFrame:
+    camp = load_campaign_test(SMS_PATH, CAMPAIGN_SPLIT)
+    return camp.head(limit) if limit else camp
+
+
+def source_texts(limit: int) -> pd.DataFrame:
+    """dataset, id and text of every row ``run`` scores, in the same order as the cache."""
+    gl = select_groundlm(pd.read_parquet(GROUNDLM_PATH), limit)
+    sx = select_smishx(pd.read_parquet(SMISHX_PATH), limit)
+    camp = select_campaign(limit)
+    parts = [
+        pd.DataFrame(
+            {
+                "dataset": name,
+                "id": frame["id"].astype(str).to_numpy(),
+                "text": frame["text"].to_numpy(),
+            }
+        )
+        for name, frame in (("groundlm", gl), ("smishx", sx), ("campaign_test", camp))
+    ]
+    return pd.concat(parts, ignore_index=True)
+
+
 # ----------------------------------------------------------------- scoring
 
 
@@ -385,9 +515,7 @@ def run(args: argparse.Namespace) -> int:
         student = Student(MODEL_PATH, args.threads)
         frames = []
 
-        gl_rows = gl[gl["text_available"].fillna(False).astype(bool)]
-        if args.limit:
-            gl_rows = gl_rows.head(args.limit)
+        gl_rows = select_groundlm(gl, args.limit)
         gl_cols = [
             "id",
             "label_binary",
@@ -400,10 +528,7 @@ def run(args: argparse.Namespace) -> int:
         meta = gl_rows[gl_cols].assign(dataset="groundlm", label_scam=None, label_policy=None)
         frames.append(score_frame(student, gl_rows["text"].tolist(), meta, threshold, "groundlm"))
 
-        sx = pd.read_parquet(SMISHX_PATH)
-        sx = sx[sx["eval_ok"].fillna(False).astype(bool)]
-        if args.limit:
-            sx = sx.head(args.limit)
+        sx = select_smishx(pd.read_parquet(SMISHX_PATH), args.limit)
         sx_cols = [
             "id",
             "label_binary",
@@ -417,9 +542,7 @@ def run(args: argparse.Namespace) -> int:
         meta["label_scam"] = meta["label_scam"].astype("float")
         frames.append(score_frame(student, sx["text"].tolist(), meta, threshold, "smishx"))
 
-        camp = load_campaign_test(SMS_PATH, CAMPAIGN_SPLIT)
-        if args.limit:
-            camp = camp.head(args.limit)
+        camp = select_campaign(args.limit)
         meta = camp[["id", "label_binary", "eval_ok"]].assign(
             dataset="campaign_test",
             label_fine=None,
@@ -434,9 +557,36 @@ def run(args: argparse.Namespace) -> int:
         scored = pd.concat(frames, ignore_index=True)
         scored.to_parquet(scores_path, index=False)
 
+    url_info = None
+    if args.url_scores:
+        url_threshold = float(args.url_threshold)
+        url_path = Path(args.url_scores)
+        scored = apply_url_model(
+            scored,
+            source_texts(args.limit),
+            url_score_map(url_path),
+            url_threshold,
+            threshold,
+            mode=mode,
+            url_quiet_policy=args.url_quiet_policy,
+        )
+        url_info = {
+            "threshold": url_threshold,
+            "quiet_policy": args.url_quiet_policy,
+            "evidence_visible": (
+                mode == URL_EVIDENCE_MODE or args.url_quiet_policy == "corroborated"
+            ),
+            "url_scores": str(url_path),
+            "url_scores_sha256": sha256_file(url_path),
+            "rows_with_url_item": int(
+                scored["types"].astype(str).str.contains(URL_MODEL_TYPE).sum()
+            ),
+        }
     scored = apply_mode(scored, mode)
     metrics = analyse(scored, threshold)
     metrics["detector_only_mode"] = mode
+    if url_info is not None:
+        metrics["url_model"] = url_info
     metrics["inputs"] = {
         "student_onnx_sha256": model_sha,
         "groundlm_sha256": sha256_file(GROUNDLM_PATH),
@@ -600,12 +750,33 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_DETECTOR_ONLY_MODE,
         help="detector-only mode (default quiet)",
     )
+    r.add_argument(
+        "--url-scores",
+        default=None,
+        help="url_scores.parquet from the Kaggle URL job (id, set, score, has_url)",
+    )
+    r.add_argument(
+        "--url-threshold",
+        type=float,
+        default=None,
+        help="registered url_student threshold T (0 < T < 1); needed with --url-scores",
+    )
+    r.add_argument(
+        "--url-quiet-policy",
+        choices=("off", "corroborated"),
+        default="off",
+        help="quiet-mode URL evidence: off (shipped) or corroborated (student or rule agrees)",
+    )
     r.set_defaults(func=run)
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if bool(args.url_scores) != (args.url_threshold is not None):
+        raise SystemExit("--url-scores and --url-threshold must be given together")
+    if args.url_threshold is not None and not 0.0 < args.url_threshold < 1.0:
+        raise SystemExit("--url-threshold must be in (0, 1)")
     return args.func(args)
 
 

@@ -111,8 +111,9 @@ def test_url_student_phreshphish_threshold_free_quality(real_root, tmp_path):
     )
     assert doc["status"] == "ok"
     assert doc["quality"]["average_precision"] is not None
-    assert doc["quality"]["threshold"] is None
-    assert doc["quality"]["key_metric"]["name"] == "average_precision"
+    assert doc["quality"]["threshold"] == pytest.approx(0.6308487409530461)  # tau_url
+    # with a registered threshold the key metric is thresholded (F1); AP is still reported
+    assert doc["quality"]["key_metric"]["name"] == "f1"
 
 
 def test_incompatible_pair_raises_usage_exit(real_root, tmp_path):

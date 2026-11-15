@@ -21,9 +21,14 @@ import dataclasses
 from rakshak.canonicalize import Canon
 from rakshak.evidence import Action, EvidencePackage, Risk, build_package, choose_action
 from rakshak.rules import Evidence
+from rakshak.url_model import add_url_model_evidence
 
 DETECTOR_ONLY_MODES = ("quiet", "verify")
 DEFAULT_DETECTOR_ONLY_MODE = "quiet"
+# URL model evidence on SMS decisions is shown in verify mode only. The quiet-mode URL warning
+# failed gate U2 (docs/URL_SERVICE_RESULTS.md), so quiet mode ignores it. /analyze_url is not
+# affected: it has no mode.
+URL_EVIDENCE_MODE = "verify"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -38,6 +43,45 @@ def check_mode(mode: str) -> str:
     if mode not in DETECTOR_ONLY_MODES:
         raise ValueError(f"detector_only_mode must be one of {DETECTOR_ONLY_MODES}, got {mode!r}")
     return mode
+
+
+def url_model_active(mode: str, threshold: float | None) -> bool:
+    """True when the URL model may add evidence to an SMS decision in this mode."""
+    return check_mode(mode) == URL_EVIDENCE_MODE and threshold is not None
+
+
+# Quiet-mode URL policy. "off": quiet mode ignores URL evidence (shipped default, U2 failed).
+# "corroborated": quiet mode adds it only when the SMS student is over its threshold or a rule
+# fired (docs/URL_SERVICE_PLAN.md, amendment 2026-11-12 night; ships only if U2 and U3 pass).
+URL_QUIET_POLICIES = ("off", "corroborated")
+URL_QUIET_POLICY = "off"
+
+
+def add_url_evidence(
+    evidence: list[Evidence],
+    canon: Canon,
+    hit,
+    threshold: float | None,
+    mode: str,
+    *,
+    p_scam: float | None = None,
+    p_threshold: float | None = None,
+    quiet_policy: str | None = None,
+) -> list[Evidence]:
+    """``evidence`` plus the phishing_url_model item. Verify mode: always (when the URL is over
+    threshold). Quiet mode: never under policy "off"; under "corroborated", only when rule evidence
+    already fired or the student score is over its threshold.
+    Shared by the service and eval_groundlm."""
+    policy = URL_QUIET_POLICY if quiet_policy is None else quiet_policy
+    if policy not in URL_QUIET_POLICIES:
+        raise ValueError(f"quiet_policy must be one of {URL_QUIET_POLICIES}, got {policy!r}")
+    if check_mode(mode) == URL_EVIDENCE_MODE:
+        return add_url_model_evidence(evidence, canon, hit, threshold)
+    if policy == "corroborated":
+        student_over = p_scam is not None and p_threshold is not None and p_scam >= p_threshold
+        if evidence or student_over:
+            return add_url_model_evidence(evidence, canon, hit, threshold)
+    return list(evidence)
 
 
 def scam_state_for(p_scam: float, threshold: float, evidence: list) -> str:

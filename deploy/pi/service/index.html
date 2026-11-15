@@ -35,6 +35,8 @@ h2{font-size:14px;margin:0 0 8px;font-weight:700}
 .label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
 textarea{width:100%;min-height:96px;font:14px/1.4 system-ui,sans-serif;color:var(--fg);
   background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;resize:vertical}
+input[type="text"]{width:100%;font:14px/1.4 system-ui,sans-serif;color:var(--fg);
+  background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
 button{font:600 14px system-ui,sans-serif;color:#fff;background:var(--accent);border:0;
   border-radius:8px;padding:9px 16px;cursor:pointer;margin-top:8px}
 button[disabled]{opacity:.55;cursor:wait}
@@ -135,6 +137,36 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     <h2>Device</h2>
     <div class="kv" id="device"></div>
   </section>
+  <section class="card" id="linkCard">
+    <h2>Check a link</h2>
+    <div class="note">Paste one link. The URL model scores it and the domain rules run on this
+      Pi. The link is not opened.</div>
+    <div class="note">Links inside SMS are checked in verify mode; use Check a link for any link.</div>
+    <div style="margin-top:8px">
+      <input id="linkText" type="text" maxlength="2000" placeholder="Paste the link here" autocomplete="off">
+    </div>
+    <div class="row">
+      <button id="linkGo" type="button">Check link</button>
+      <span id="linkStatus" class="muted"></span>
+    </div>
+  </section>
+
+  <section id="linkResult" class="card" hidden>
+    <div class="row" style="justify-content:space-between">
+      <div><div class="label">Verdict</div><div id="linkVerdict" class="big"></div></div>
+      <div><div class="label">Risk</div><div id="linkRisk" style="font-weight:700"></div></div>
+      <div><div class="label">Total</div><div id="linkTotal" class="big"></div></div>
+    </div>
+    <div class="kv" style="margin-top:10px">
+      <div>Domain</div><div id="linkDomain"></div>
+      <div>URL model score</div><div id="linkScore"></div>
+      <div>Rule hits</div><div id="linkRules"></div>
+    </div>
+    <div id="linkEvidence"></div>
+    <h2 style="margin-top:12px">Remediation</h2>
+    <div id="linkRemediation"></div>
+  </section>
+
   <section class="card" id="netCard">
     <h2>Network: analyse a pcap</h2>
     <div class="note">Upload a classic .pcap (up to 20 MB). Flows are built and scored on this Pi.
@@ -374,6 +406,56 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     row(tt, "Service RSS", fmt(dev.rss_mb, 0) + " MB");
     $("netTiming").hidden = false;
   }
+
+  function renderLink(d) {
+    $("linkResult").hidden = false;
+    var verdict = d.verdict === "no_signal" ? "no signal" : d.verdict;
+    var vEl = $("linkVerdict");
+    vEl.textContent = verdict;
+    vEl.className = "big " + (d.verdict === "phishing" ? "bad" :
+      d.verdict === "suspicious" ? "risk-MEDIUM" : "ok");
+    $("linkRisk").textContent = d.risk;
+    $("linkRisk").className = "risk-" + d.risk;
+    $("linkTotal").textContent = fmt(d.timings_ms.total, 0) + " ms";
+    var m = d.url_model;
+    $("linkDomain").textContent = m.domain || (d.url_count ? "n/a" : "no link found");
+    $("linkScore").textContent = !m.enabled ? "off (no threshold in registry)" :
+      (m.score === null ? "no link" : fmt(m.score, 4) + " (threshold " + fmt(m.threshold, 4) + ")");
+    $("linkRules").textContent = d.evidence.length ? d.evidence.map(function (e) { return e.type; }).join(", ") : "none";
+    var ev = $("linkEvidence"); ev.textContent = "";
+    d.evidence.forEach(function (e) {
+      var p = el("div", "point");
+      p.appendChild(el("span", "pill", e.id + " " + e.type + " w=" + fmt(e.weight, 2)));
+      p.appendChild(el("div", "text", "matched: " + e.text));
+      ev.appendChild(p);
+    });
+    renderRemediation($("linkRemediation"), d.remediation);
+  }
+
+  $("linkGo").addEventListener("click", function () {
+    var text = $("linkText").value;
+    if (!text.trim()) { banner("warn", "Paste a link first."); return; }
+    clearBanner();
+    var btn = $("linkGo"); btn.disabled = true; $("linkStatus").textContent = "checking on the Pi...";
+    fetch("/analyze_url", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({url: text})
+    }).then(function (r) {
+      return r.json().then(function (j) { return {status: r.status, body: j}; });
+    }).then(function (res) {
+      if (res.status === 200) { renderLink(res.body); $("linkStatus").textContent = "done"; return; }
+      if (res.status === 503 && res.body.temp_c !== undefined) {
+        banner("bad", "The Pi is too hot (" + fmt(res.body.temp_c) + " C). The link was not checked.");
+      } else {
+        banner("bad", res.body.error || ("request failed (" + res.status + ")"));
+      }
+      $("linkStatus").textContent = "";
+    }).catch(function (err) {
+      banner("bad", "Could not reach the service: " + err);
+      $("linkStatus").textContent = "";
+    }).then(function () { btn.disabled = false; });
+  });
 
   $("netGo").addEventListener("click", function () {
     var file = $("pcapFile").files[0];

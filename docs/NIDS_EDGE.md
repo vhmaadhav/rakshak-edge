@@ -151,6 +151,174 @@ Addresses are RFC 1918 only: attacker 10.0.1.23, scan source 10.0.2.50, flood so
 multicast group, so the file stays inside RFC 1918. Files are written with `wrpcap` only.
 Nothing is sent, and no scanner or socket is involved.
 
+### Holdout set (generated 2026-11-12, before scoring)
+
+Written before any rule was run on these files. Generator: `deploy/pi/service/make_holdout_pcaps.py`
+(seed label `holdout-2026-11-12:<file name>`, scapy `wrpcap`, RFC 1918 only, nothing sent). Output goes to
+`results/nids_holdout/pcaps/` (gitignored). This set is not the design profile and not the earlier
+`--profile holdout` of `make_test_pcaps.py`: new seed, new addresses (172.16.5.x clients and servers, attacker
+10.20.30.40, scanner 10.20.31.41, flooder 10.20.32.42) and new parameters. Each file has one expected outcome,
+fixed here. "Near" rows are threshold cases, where the expected outcome is the rule as written. Two benign
+files are look-alikes on purpose; the CDN look-alike of six lookups meets the length rule by design and is
+expected to be a false alert. A miss is a miss: it is reported, not retuned.
+
+Predictions written in advance: a slow SSH rate of 7 s (span 63 s) and a slow SYN scan of 1 s per port are
+expected to fall outside the window rules. The 24-char hex DNS names have no prediction (the entropy is near
+the 3.8 bit line).
+
+| File | Group | Settings | Expected | Expected source |
+|---|---|---|---|---|
+| `ho_benign_web_dns.pcap` | benign | 200-packet HTTPS download, 10 HTTPS sessions to 4 servers, 12 DNS names, NTP, 2 mDNS | none | - |
+| `ho_benign_ssh_interactive.pcap` | benign | 8 interactive SSH sessions, 40 keystroke/echo exchanges each, 25 s, 30 s apart | none | - |
+| `ho_benign_ssh_bulk.pcap` | benign | one SSH bulk download, 300 x 1400 B, 0.05 s gap (about 15 s) | none | - |
+| `ho_benign_near_miss.pcap` | benign | 6 short SSH logins 4 s apart (below 10), 3 lookups of the 42-char CDN label 5 s apart | none | - |
+| `ho_benign_cdn_lookalike_4.pcap` | benign | 4 lookups of the 42-char CDN label in 30 s (below 5), then 2 normal names | none | - |
+| `ho_benign_cdn_lookalike_6.pcap` | benign | 6 lookups of the 42-char CDN label 8 s apart (rule shape met on purpose; expected FP) | none | - |
+| `ho_ssh_brute_fast.pcap` | main | 40 short SSH attempts 0.5 s apart from 10.20.30.40 to :22 | brute_force_ssh | 10.20.30.40 |
+| `ho_ssh_brute_slow.pcap` | main | 12 short SSH attempts 6 s apart (span 66 s, 11 fit in 60 s) | brute_force_ssh | 10.20.30.40 |
+| `ho_telnet_brute.pcap` | main | 12 short sessions to :23 1 s apart | brute_force_other | 10.20.30.40 |
+| `ho_port_scan_syn_fast.pcap` | main | 40 ports, SYN then RST-ACK, 0.05 s apart | port_scan | 10.20.31.41 |
+| `ho_port_scan_connect_fast.pcap` | main | 30 ports, TCP connect (SYN, SYN-ACK, ACK, RST), 0.1 s apart | port_scan | 10.20.31.41 |
+| `ho_dns_tunnel_b32.pcap` | main | 20 TXT queries, 32-char base32-like labels, about 1 s apart, no answers | dns_tunnel | 172.16.5.60 |
+| `ho_dns_tunnel_long.pcap` | main | 8 TXT queries, 45 to 60 char lowercase+digit labels, 3 s apart | dns_tunnel | 172.16.5.60 |
+| `ho_dos_syn_300_3s.pcap` | main | 300 SYN-only connections to :80 in 3 s | dos_flood | 10.20.32.42 |
+| `ho_dos_syn_1000_20s.pcap` | main | 1000 SYN-only connections to :80 in 20 s (50/s) | dos_flood | 10.20.32.42 |
+| `ho_mixed_attacks.pcap` | mixed | 10 SSH attempts 1 s apart from 10.20.30.40, 30-port SYN scan from 10.20.31.41, 4 HTTPS | brute_force_ssh + port_scan | 10.20.30.40 + 10.20.31.41 |
+| `ho_ssh_brute_9.pcap` | near | 9 short SSH attempts 3 s apart (one below the line) | none | - |
+| `ho_ssh_brute_10_5s.pcap` | near | 10 short SSH attempts 5 s apart (span 45 s, exactly the line) | brute_force_ssh | 10.20.30.40 |
+| `ho_ssh_brute_10_7s.pcap` | near | 10 short SSH attempts 7 s apart (span 63 s, at most 9 fit in 60 s) | none | - |
+| `ho_port_scan_20.pcap` | near | 20 ports, SYN scan, 0.5 s apart (exactly the 10 s line) | port_scan | 10.20.31.41 |
+| `ho_port_scan_slow.pcap` | near | 40 ports, SYN scan, 1.0 s apart (10 s window holds about 11 ports) | none | - |
+| `ho_dns_tunnel_5.pcap` | near | 5 base32-like queries 4 s apart (exactly the count line) | dns_tunnel | 172.16.5.60 |
+| `ho_dns_tunnel_4.pcap` | near | 4 base32-like queries 4 s apart (one below the line) | none | - |
+| `ho_dns_hex24.pcap` | near | 10 hex labels of 24 chars, 2 s apart (entropy near the 3.8 bit line; no prediction made) | no prediction | - |
+| `ho_dos_syn_150.pcap` | near | 150 SYN-only connections in 10 s (below 200) | none | - |
+| `ho_dos_syn_200.pcap` | near | 200 SYN-only connections, 0.05 s apart (span 9.95 s, exactly the line) | dos_flood | 10.20.32.42 |
+
+Scoring rules for this set (fixed before the run): a family case is a TP when the expected source raises an
+alert, and "family right" when the alert family equals the expected one. A benign file with any alert is an
+FP. Model-only mode alerts on any host with a flow in the model's ALERT state (score >= 0.0015007), with the
+host window and the rules left out. Combined mode is `--net-model-mode alert` (model ALERT flows and the rules
+together; the strict 2026-11-06 behaviour with no rules is no longer selectable).
+
+### Holdout results (2026-11-12)
+
+Scored on the laptop (`deploy/pi/service/run_holdout_nids.py`, output `results/nids_holdout/results_laptop.md`
+and `.json`). Model: `student_cse_cic_ids2018_int8.onnx`, sha256 prefix `d3dfdcb16dcaa278` (the copy under
+`kaggle/out/`). nfstream is not installed on the laptop, so all 26 files went through the stdlib reader
+(`pcap_stdlib`). 2017 flows in total. Scored after the set above was fixed; no rule or threshold was changed.
+
+Summary (TP/FN for attack instances: a family instance is a TP when the expected source raised an alert;
+"family right" means the alert carried the expected family, with the model's `brute_force` and `dos_ddos`
+names counted as the matching rule family):
+
+| Family (instances) | (a) rules-first TP/FN, family right | (b) model-only TP/FN, family right | (c) combined TP/FN, family right |
+|---|---|---|---|
+| brute_force_ssh (3) | 3/0, 3/3 | 3/0, 0/3 | 3/0, 3/3 |
+| brute_force_other (1) | 1/0, 1/1 | 1/0, 0/1 | 1/0, 1/1 |
+| port_scan (3) | 3/0, 3/3 | 0/3, 0/3 | 3/0, 3/3 |
+| dns_tunnel (2) | 2/0, 2/2 | 0/2, 0/2 | 2/0, 2/2 |
+| dos_flood (2) | 2/0, 2/2 | 0/2, 0/2 | 2/0, 2/2 |
+| Benign files with any alert (FP/n) | 1/6 | 5/6 | 6/6 |
+
+The `ho_mixed_attacks` file counts once in brute_force_ssh and once in port_scan (two sources, both found in
+rules mode). The one rules-mode benign alert is `ho_benign_cdn_lookalike_6`, which meets the length rule on
+purpose (six lookups of a 42-character label in 40 s). It is a false alert of the rule as written, not a
+surprise.
+
+Near-threshold files (the expected outcome is the rule as written):
+
+| Near-threshold file | Expected | (a) rules-first alerts (as specified) | (b) model-only alerts (as specified) | (c) combined alerts (as specified) |
+|---|---|---|---|---|
+| `ho_ssh_brute_9` | none | none (yes) | 10.20.30.40 dos_ddos (no, alert raised) | 10.20.30.40 dos_ddos (no, alert raised) |
+| `ho_ssh_brute_10_5s` | brute_force_ssh | 10.20.30.40 brute_force_ssh (yes) | 10.20.30.40 dos_ddos (no) | 10.20.30.40 brute_force_ssh (yes) |
+| `ho_ssh_brute_10_7s` | none | none (yes) | 10.20.30.40 dos_ddos (no, alert raised) | 10.20.30.40 dos_ddos (no, alert raised) |
+| `ho_port_scan_20` | port_scan | 10.20.31.41 port_scan (yes) | none (no) | 10.20.31.41 port_scan (yes) |
+| `ho_port_scan_slow` | none | none (yes) | none (yes) | none (yes) |
+| `ho_dns_tunnel_5` | dns_tunnel | 172.16.5.60 dns_tunnel (yes) | none (no) | 172.16.5.60 dns_tunnel (yes) |
+| `ho_dns_tunnel_4` | none | none (yes) | none (yes) | none (yes) |
+| `ho_dns_hex24` | no prediction | none | none | none |
+| `ho_dos_syn_150` | none | none (yes) | none (yes) | none (yes) |
+| `ho_dos_syn_200` | dos_flood | 10.20.32.42 dos_flood (yes) | none (no) | 10.20.32.42 dos_flood (yes) |
+
+Per file (rules alerts with state, risk, action; model-only and combined alerts; model flags in rules mode):
+
+| File | Group | Expected | (a) rules alerts | (b) model-only alerts | (c) combined alerts | Model flags (a) |
+|---|---|---|---|---|---|---|
+| `ho_benign_web_dns` | benign | none | none | 172.16.5.20 dos_ddos | 172.16.5.20 dos_ddos | 11 flows, 1 model-only host, p max 0.9986 |
+| `ho_benign_ssh_interactive` | benign | none | none | 172.16.5.44 dos_ddos | 172.16.5.44 dos_ddos | 8 flows, 1 model-only host, p max 0.9887 |
+| `ho_benign_ssh_bulk` | benign | none | none | 172.16.5.44 brute_force | 172.16.5.44 brute_force | 1 flow, 1 model-only host, p max 0.977 |
+| `ho_benign_near_miss` | benign | none | none | 172.16.5.44 dos_ddos | 172.16.5.44 dos_ddos | 6 flows, 1 model-only host, p max 0.9606 |
+| `ho_benign_cdn_lookalike_4` | benign | none | none | 172.16.5.20 brute_force | 172.16.5.20 brute_force | 2 flows, 1 model-only host, p max 0.0024 |
+| `ho_benign_cdn_lookalike_6` | benign | none | 172.16.5.20 dns_tunnel (UNCERTAIN, HIGH, ISOLATE_DEVICE) | none | 172.16.5.20 dns_tunnel | 0 flows, p max 0.0 |
+| `ho_ssh_brute_fast` | main | brute_force_ssh | 10.20.30.40 brute_force_ssh (UNCERTAIN, HIGH, CHANGE_PASSWORD) | 10.20.30.40 dos_ddos | 10.20.30.40 brute_force_ssh | 40 flows, p max 0.055 |
+| `ho_ssh_brute_slow` | main | brute_force_ssh | 10.20.30.40 brute_force_ssh (UNCERTAIN, HIGH, CHANGE_PASSWORD) | 10.20.30.40 dos_ddos | 10.20.30.40 brute_force_ssh | 12 flows, p max 0.0545 |
+| `ho_telnet_brute` | main | brute_force_other | 10.20.30.40 brute_force_other (UNCERTAIN, HIGH, CHANGE_PASSWORD) | 10.20.30.40 dos_ddos | 10.20.30.40 brute_force_other | 12 flows, p max 0.055 |
+| `ho_port_scan_syn_fast` | main | port_scan | 10.20.31.41 port_scan (UNCERTAIN, HIGH, BLOCK_SOURCE_IP) | none | 10.20.31.41 port_scan | 0 flows |
+| `ho_port_scan_connect_fast` | main | port_scan | 10.20.31.41 port_scan (UNCERTAIN, HIGH, BLOCK_SOURCE_IP) | none | 10.20.31.41 port_scan | 0 flows |
+| `ho_dns_tunnel_b32` | main | dns_tunnel | 172.16.5.60 dns_tunnel (UNCERTAIN, HIGH, ISOLATE_DEVICE) | none | 172.16.5.60 dns_tunnel | 0 flows |
+| `ho_dns_tunnel_long` | main | dns_tunnel | 172.16.5.60 dns_tunnel (UNCERTAIN, HIGH, ISOLATE_DEVICE) | none | 172.16.5.60 dns_tunnel | 0 flows |
+| `ho_dos_syn_300_3s` | main | dos_flood | 10.20.32.42 dos_flood (UNCERTAIN, HIGH, RATE_LIMIT) | none | 10.20.32.42 dos_flood | 0 flows |
+| `ho_dos_syn_1000_20s` | main | dos_flood | 10.20.32.42 dos_flood (UNCERTAIN, HIGH, RATE_LIMIT) | none | 10.20.32.42 dos_flood | 0 flows |
+| `ho_mixed_attacks` | mixed | brute_force_ssh + port_scan | 10.20.30.40 brute_force_ssh, 10.20.31.41 port_scan (both UNCERTAIN, HIGH) | 10.20.30.40 dos_ddos, 172.16.5.20 dos_ddos | 172.16.5.20 dos_ddos, 10.20.30.40 brute_force_ssh, 10.20.31.41 port_scan | 14 flows, p max 0.9982 |
+| `ho_ssh_brute_9` | near | none | none | 10.20.30.40 dos_ddos | 10.20.30.40 dos_ddos | 9 flows, p max 0.0545 |
+| `ho_ssh_brute_10_5s` | near | brute_force_ssh | 10.20.30.40 brute_force_ssh (UNCERTAIN, HIGH, CHANGE_PASSWORD) | 10.20.30.40 dos_ddos | 10.20.30.40 brute_force_ssh | 10 flows, p max 0.0498 |
+| `ho_ssh_brute_10_7s` | near | none | none | 10.20.30.40 dos_ddos | 10.20.30.40 dos_ddos | 10 flows, p max 0.0545 |
+| `ho_port_scan_20` | near | port_scan | 10.20.31.41 port_scan (UNCERTAIN, HIGH, BLOCK_SOURCE_IP) | none | 10.20.31.41 port_scan | 0 flows |
+| `ho_port_scan_slow` | near | none | none | none | none | 0 flows |
+| `ho_dns_tunnel_5` | near | dns_tunnel | 172.16.5.60 dns_tunnel (UNCERTAIN, HIGH, ISOLATE_DEVICE) | none | 172.16.5.60 dns_tunnel | 0 flows |
+| `ho_dns_tunnel_4` | near | none | none | none | none | 0 flows |
+| `ho_dns_hex24` | near | no prediction | none | none | none | 0 flows |
+| `ho_dos_syn_150` | near | none | none | none | none | 0 flows |
+| `ho_dos_syn_200` | near | dos_flood | 10.20.32.42 dos_flood (UNCERTAIN, HIGH, RATE_LIMIT) | none | 10.20.32.42 dos_flood | 0 flows |
+
+Throughput, laptop, not Pi: 27,816 flows/s (scoring only: featurize, ONNX, window; median of 3 runs per file).
+Per request p50 1.2 ms, p95 15.8 ms (whole request, parse to verifier). The Pi numbers come from
+`run_holdout_nids.py --label "Pi 5"` and are not in this table yet.
+
+What this says, plainly:
+
+- **Rules-first detected every attack instance in the main and mixed sets (11 of 11), with the right family in all
+  11.** That is the claim this set can support. It is a holdout in the sense that the files, addresses and
+  counts were fixed before the run; it is not blind to the thresholds, because the parameters were chosen by
+  reading the rule constants so that each case sits at a stated edge. Real traffic was not tested.
+- **Misses, all predicted, all by the rule as written:** a slow SSH run at 7 s spacing (span 63 s, 9 attempts
+  fit in the 60 s window) and a slow SYN scan at 1 s per port (about 11 ports in the 10 s window). Both are the
+  price of the pre-registered windows, and they are reported as misses, not retuned.
+- **Benign:** 5 of 6 benign files raised no alert. That includes 8 interactive SSH sessions, a bulk SSH download,
+  six short SSH logins 4 s apart, and four lookups of the long CDN name. The sixth (six lookups in 40 s) alerts
+  because the length rule cannot tell it from a tunnel.
+- **Model-only (b) is not an alerting mode on this set.** It detected the SSH and telnet brute-force files
+  (4 of 11 attack instances, all labelled dos_ddos), missed every port scan, DNS tunnel and SYN flood, and
+  alerted on 5 of 6 benign files. This is consistent with the 2026-11-07 design finding that the model does not
+  separate these shapes.
+- **Combined (c) detects and names the attacks but also alerts on all 6 benign files.** The benign alerts come
+  from the model's ALERT flows (p up to 0.999 on ordinary web and SSH traffic). Combined mode is not safe for
+  a home device on this evidence.
+- **Near-threshold, rules-first:** every case behaved as written. Fired: 10 SSH attempts at 5 s, 20 scan ports,
+  5 DNS queries, 200 SYN. Did not fire: 9 SSH attempts, 10 SSH attempts at 7 s, 40 slow scan ports, 4 DNS
+  queries, 150 SYN. The 24-char hex DNS set had no prediction (see below).
+- **`ho_dns_hex24`:** no prediction was made, and the rules did not fire. The label entropy was not measured,
+  so the reason is not known.
+
+Not tested or not done: real traffic; the nfstream reader (the laptop used the stdlib reader only; the Pi
+run uses `--flow-source auto`, which takes nfstream); the older `make_test_pcaps.py --profile holdout` set
+(not run here); the Pi itself (no Pi access in this run).
+
+### Running the holdout on the Pi (later)
+
+The pcaps and `manifest.json` are made on the laptop with `make_holdout_pcaps.py` (scapy is not needed on the
+Pi). Copy `results/nids_holdout/pcaps/` to the Pi, then from the repo root:
+
+```
+.venv/bin/python deploy/pi/service/run_holdout_nids.py --pcaps <copied pcaps dir> \
+    --model models/nids/student_cse_cic_ids2018_int8.onnx --label "Pi 5" --repeat 3 \
+    --json <out dir>/results_pi.json
+```
+
+The runner has no thermal guard of its own. Check the Pi's temperature before the run, as the service does
+(it refuses at 75 C), and do not run it while the service is busy.
+
 ## Synthetic pcaps (offline, not real traffic)
 
 `deploy/pi/service/make_test_pcaps.py` writes four files with scapy `wrpcap` (no socket, nothing sent,
@@ -265,3 +433,13 @@ under `~/rakshak-bench/results/edge_eval/`). The previous outputs are in `result
   is not tested at size.
 - Restart after a crash (same as the SMS service).
 - `pi_monitor` CLI defaults (0.5 / 0.2) are not the calibrated student thresholds. Left unchanged.
+
+### Holdout on the Pi 5 (2026-11-12)
+
+`deploy/pi/service/run_holdout_nids.py --repeat 3` on the Pi 5 (3-thread service stack, INT8 model sha `d3dfdcb1…`),
+run under `thermal_run.py --pause 63 --resume 58 --kill 65`: start 54 °C, peak 59.0 °C, 0 pauses, throttle `0x0`,
+11.3 s wall. The flow source on the Pi is nfstream (`pcap_nfstream`); the laptop run used the stdlib reader.
+**Every alert and verdict matches the laptop table above, file for file**: rules-first 11/11 attacks with the family
+right and 1/6 benign files alerted; model-only 4/11 (family right 0/11) and 5/6 benign; combined 11/11 and 6/6 benign.
+Pi throughput: **6 188 flows/s** (scoring only, rules mode, median of 3 runs per file); per request p50 **56.4 ms**,
+p95 **125.8 ms** (whole request, parse to verifier). Raw output: `results/nids_holdout/results_pi.json` (gitignored).

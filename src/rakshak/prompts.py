@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from rakshak.evidence import EvidencePackage
 from rakshak.url_features import registered_domain
+from rakshak.url_model import URL_MODEL_TYPE, url_model_fields
 from rakshak.verifier import _URL_RE, TYPE_PHRASE
 
 BOS ="<|begin_of_text|>"
@@ -123,6 +124,9 @@ def fact_slot(evidence) -> str:
     """
     if evidence.type in URL_TYPES:
         return registered_domain(evidence.text) or ""
+    if evidence.type == URL_MODEL_TYPE:
+        domain, score = url_model_fields(evidence.text)
+        return f"{domain} score {score:.2f}" if score is not None else domain
     text = _URL_RE.sub(lambda m: registered_domain(m.group(0)) or "a link", evidence.text)
     text = " ".join(text.replace('"', " ").split())
     if len(text) > SLOT_MAX_CHARS:

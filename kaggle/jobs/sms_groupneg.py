@@ -36,7 +36,7 @@ import pandas as pd
 from _common import env_report, job_status, seed_everything, timed
 
 from rakshak.eval import data as D
-from rakshak.eval.groupneg import assign_folds, negative_clusters
+from rakshak.eval.groupneg import cross_fit_folds
 from rakshak.eval.protocol import evaluate_scores, headline
 from rakshak.models.features import Featurized, featurize
 from rakshak.models.student import (
@@ -111,8 +111,8 @@ def run(ctx) -> str:
     ).to_numpy()
     neg_idx = np.flatnonzero(neg_flag)
     keys = gl.loc[neg_idx, "template_key"].fillna("").astype(str).tolist()
-    clusters = negative_clusters(keys)
-    fold = np.asarray(assign_folds(clusters, n_folds=N_FOLDS))
+    clusters, fold = cross_fit_folds(keys, n_folds=N_FOLDS)
+    fold = np.asarray(fold)
     ctx.log(
         f"GroundLM scoreable negatives {len(neg_idx)}, clusters {len(set(clusters))}, "
         f"fold sizes {np.bincount(fold, minlength=N_FOLDS).tolist()}"

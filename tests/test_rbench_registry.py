@@ -36,7 +36,8 @@ def test_real_registry_loads_and_has_expected_entries():
     reg = R.load_registry(REAL)
     assert reg.model("sms_student").task == "sms_binary"
     assert reg.model("sms_student").threshold == pytest.approx(0.35127517580986023)
-    assert reg.model("url_student").threshold is None  # threshold belongs to another unit
+    # tau_url, registered 2026-11-12 (docs/URL_SERVICE_RESULTS.md)
+    assert reg.model("url_student").threshold == pytest.approx(0.6308487409530461)
     assert reg.model("llama32_1b_spinquant").sha256.startswith("8715cdba")
     assert reg.model("llama32_1b_spinquant").hf["repo"].startswith("executorch-community/")
     assert not reg.model("llama32_1b_qlora").enabled

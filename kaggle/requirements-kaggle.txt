@@ -28,6 +28,9 @@ protobuf==7.36.2
 # (2026-10-09). fasttext is not pinned: no cp313 wheel exists (see sms_student.py).
 onnx==1.23.2
 onnxruntime==1.31.0
+# onnx-ir: required by onnxruntime.quantization.matmul_nbits_quantizer (MatMulNBits variants in
+# kaggle/jobs/sms_encoder_export.py). 1.1.0 uploaded 2026-10-20.
+onnx-ir==1.1.0
 # QLoRA runtime; stable PyPI releases >= two weeks old on 2026-11-01.
 # Exact transformers/T4 compatibility is validated by the private QLoRA job, not assumed.
 peft==0.21.2

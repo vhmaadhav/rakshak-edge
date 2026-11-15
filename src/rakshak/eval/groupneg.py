@@ -69,3 +69,14 @@ def assign_folds(clusters: Sequence[int], n_folds: int = 2) -> list[int]:
         fold_of[c] = k
         load[k] += sizes[c]
     return [fold_of[c] for c in clusters]
+
+
+def cross_fit_folds(keys: Sequence[str], n_folds: int = 2) -> tuple[list[int], list[int]]:
+    """The cross-fit fold construction of kaggle/jobs/sms_groupneg.py: template clusters over the
+    keys (negative_clusters), then whole clusters assigned to folds (assign_folds).
+
+    Returns (cluster per row, fold per row). Used by sms_groupneg and sms_crossfit_confirm, so both
+    jobs build the same folds.
+    """
+    clusters = negative_clusters(keys)
+    return clusters, assign_folds(clusters, n_folds=n_folds)

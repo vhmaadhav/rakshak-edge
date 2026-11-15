@@ -13,9 +13,19 @@ the throttle flags (start, end).
 It refuses to start at or above --max-temp, and it stops early, recording why, if the SoC
 reaches it.
 
+Two input modes. Default: the built-in SMS strings, tokenised on the Pi with tokenizer.json
+(needs the tokenizers package, which the bench venv has). --rows FILE.npz: pre-tokenised rows built
+on the laptop by deploy/pi/bench/build_encoder_rows.py from the cal split, with the token length
+distribution stored in the file; no tokenizer is needed on the Pi.
+
+--companion-peak-mb records a companion process's peak (for example the Llama explainer, 1 839 MB
+in docs/BASELINE_PI.md) as ADDED to the encoder's VmHWM. The sum is an estimate, labelled as such,
+not a measurement of the two together.
+
 Usage:
-  encoder_bench.py --model PATH.onnx --tokenizer DIR --threads N [--seq-lens 32 64 128]
-                   [--runs 50] [--warmup 5] [--max-temp 75] [--out FILE.json]
+  encoder_bench.py --model PATH.onnx (--tokenizer DIR | --rows FILE.npz) --threads N
+                   [--seq-lens 32 64 128] [--runs 50] [--warmup 5] [--max-temp 75]
+                   [--companion-peak-mb MB] [--out FILE.json]
 
 Exit codes: 0 done, 1 bad arguments or a missing dependency, 2 refused at start (too hot),
 3 stopped early (temperature reached --max-temp; the JSON still holds what was measured).
@@ -39,6 +49,13 @@ MAX_LEN = 128
 DEFAULT_SEQ_LENS = (32, 64, 128)
 REALISTIC_PASSES = 2
 DEFAULT_MAX_TEMP = 75.0
+DEFAULT_COOL_BELOW = 55.0
+DEFAULT_MAX_COOL_WAIT = 120.0
+DEFAULT_BURST_ABORT_C = 63.0
+COOL_POLL_S = 1.0
+MAX_COOL_FAILURES = 3
+STALL_MS = 1000.0
+LENGTH_BUCKETS = ((1, 32), (33, 64), (65, 96), (97, 128))
 SCHEMA = 1
 THROTTLE_BITS = {
     0: "under_voltage_now",
@@ -97,9 +114,21 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     p.add_argument("--model", required=True, type=Path, help="ONNX model file")
     p.add_argument(
         "--tokenizer",
-        required=True,
         type=Path,
-        help="folder with tokenizer.json (and tokenizer_config.json)",
+        default=None,
+        help="folder with tokenizer.json (and tokenizer_config.json); not needed with --rows",
+    )
+    p.add_argument(
+        "--rows",
+        type=Path,
+        default=None,
+        help="pre-tokenised .npz of SMS rows (build_encoder_rows.py) instead of --tokenizer",
+    )
+    p.add_argument(
+        "--companion-peak-mb",
+        type=float,
+        default=None,
+        help="peak RSS of a companion process, added (not measured) into the combined estimate",
     )
     p.add_argument("--threads", required=True, type=int, help="intra-op threads")
     p.add_argument("--seq-lens", nargs="+", type=int, default=list(DEFAULT_SEQ_LENS))
@@ -111,8 +140,40 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         default=DEFAULT_MAX_TEMP,
         help="refuse to start at or above this SoC temperature, and stop at it (C)",
     )
+    p.add_argument(
+        "--burst",
+        type=int,
+        default=0,
+        help="duty cycle: run messages in bursts of N, cooling before each burst "
+        "(0 = continuous, the original mode)",
+    )
+    p.add_argument(
+        "--cool-below",
+        type=float,
+        default=DEFAULT_COOL_BELOW,
+        help="burst mode: wait until the SoC is below this before each burst (C)",
+    )
+    p.add_argument(
+        "--max-cool-wait",
+        type=float,
+        default=DEFAULT_MAX_COOL_WAIT,
+        help="burst mode: bound on each cooldown wait (s); 3 waits in a row that do not cool "
+        "abort the run",
+    )
+    p.add_argument(
+        "--burst-abort-c",
+        type=float,
+        default=DEFAULT_BURST_ABORT_C,
+        help="burst mode: a reading at or above this aborts and discards the burst (C)",
+    )
+    p.add_argument(
+        "--only",
+        choices=("all", "realistic", "sweep"),
+        default="all",
+        help="which measurements to run",
+    )
     p.add_argument("--out", type=Path, default=None, help="write the JSON document here")
-    args = p.parse_args(list(argv or []))
+    args = p.parse_args(None if argv is None else list(argv))
     if args.threads < 1:
         p.error("--threads must be at least 1")
     if args.runs < 1 or args.warmup < 0:
@@ -121,6 +182,17 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         p.error(f"--seq-lens must be between 1 and {MAX_LEN}")
     if args.max_temp <= 0:
         p.error("--max-temp must be positive")
+    if (args.tokenizer is None) == (args.rows is None):
+        p.error("give exactly one of --tokenizer and --rows")
+    if args.companion_peak_mb is not None and args.companion_peak_mb < 0:
+        p.error("--companion-peak-mb must not be negative")
+    if args.burst < 0:
+        p.error("--burst must not be negative")
+    if args.burst > 0:
+        if args.cool_below <= 0 or args.max_cool_wait <= 0:
+            p.error("--cool-below and --max-cool-wait must be positive")
+        if args.burst_abort_c <= args.cool_below:
+            p.error("--burst-abort-c must be above --cool-below")
     return args
 
 
@@ -137,11 +209,12 @@ def percentile(values: Sequence[float], q: float) -> float:
 
 def summarise(samples_ms: Sequence[float]) -> dict[str, Any]:
     if not samples_ms:
-        return {"n": 0, "p50": None, "p95": None, "mean": None, "min": None}
+        return {"n": 0, "p50": None, "p95": None, "p99": None, "mean": None, "min": None}
     return {
         "n": len(samples_ms),
         "p50": round(percentile(samples_ms, 50), 3),
         "p95": round(percentile(samples_ms, 95), 3),
+        "p99": round(percentile(samples_ms, 99), 3),
         "mean": round(sum(samples_ms) / len(samples_ms), 3),
         "min": round(min(samples_ms), 3),
     }
@@ -251,23 +324,268 @@ def token_length_stats(lengths: Sequence[int], truncated: int) -> dict[str, Any]
     }
 
 
+def load_rows(path: Path) -> tuple[list[list[int]], int, dict[str, Any]]:
+    """Read a rows file written by build_encoder_rows.py: (rows, pad_id, meta). Each row is the
+    unpadded token ids (already truncated to MAX_LEN, final SEP kept). meta holds the token length
+    summary of the untruncated tokenisation, as stored by the builder."""
+    import numpy as np
+
+    with np.load(path, allow_pickle=False) as npz:
+        ids = np.asarray(npz["ids"], dtype=np.int64)
+        lengths = np.asarray(npz["lengths"], dtype=np.int64)
+        full = np.asarray(npz["full_lengths"], dtype=np.int64)
+        pad_id = int(npz["pad_id"])
+        meta = json.loads(str(npz["meta_json"]))
+    if ids.ndim != 2 or ids.shape[1] > MAX_LEN or lengths.shape != (ids.shape[0],):
+        raise ValueError(f"{path}: ids {ids.shape} and lengths {lengths.shape} do not agree")
+    if ids.shape[0] == 0:
+        raise ValueError(f"{path}: no rows")
+    if np.any(lengths < 1) or np.any(lengths > ids.shape[1]):
+        raise ValueError(f"{path}: a length is outside 1..{ids.shape[1]}")
+    if full.shape != lengths.shape:
+        raise ValueError(f"{path}: full_lengths does not match lengths")
+    rows = [ids[i, : lengths[i]].tolist() for i in range(ids.shape[0])]
+    meta = {
+        **meta,
+        "rows": int(ids.shape[0]),
+        "truncated_at_max_len": int(np.sum(full > MAX_LEN)),
+        "full_token_len": token_length_stats(full.tolist(), int(np.sum(full > MAX_LEN))),
+    }
+    return rows, pad_id, meta
+
+
+def length_bucket_stats(pairs: Sequence[tuple[int, float]]) -> dict[str, Any]:
+    """Latency summary per token-length bucket from (token length, ms) pairs."""
+    out: dict[str, Any] = {}
+    for lo, hi in LENGTH_BUCKETS:
+        out[f"{lo}-{hi}"] = summarise([ms for length, ms in pairs if lo <= length <= hi])
+    return out
+
+
+class Cooler:
+    """Waits until the SoC is below ``cool_below`` before a burst. Each wait is bounded by
+    ``max_wait_s``; a wait that ends without cooling is a failure, and ``max_failures`` failures in
+    a row abort the run. A missing reading counts as cool (as in ``start_refusal``). Clock and sleep
+    are injected so the logic can be tested without a Pi."""
+
+    def __init__(
+        self,
+        read_temp: Callable[[], float | None],
+        cool_below: float,
+        max_wait_s: float,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+        poll_s: float = COOL_POLL_S,
+        max_failures: int = MAX_COOL_FAILURES,
+    ) -> None:
+        self.read_temp = read_temp
+        self.cool_below = float(cool_below)
+        self.max_wait_s = float(max_wait_s)
+        self.clock = clock
+        self.sleep = sleep
+        self.poll_s = poll_s
+        self.max_failures = max_failures
+        self.failures = 0
+        self.waits: list[dict[str, Any]] = []
+
+    def _cool(self, temp: float | None) -> bool:
+        return temp is None or temp < self.cool_below
+
+    def wait(self) -> dict[str, Any]:
+        t_start = self.clock()
+        first = self.read_temp()
+        temp = first
+        cooled = self._cool(temp)
+        while not cooled and self.clock() - t_start < self.max_wait_s:
+            self.sleep(self.poll_s)
+            temp = self.read_temp()
+            cooled = self._cool(temp)
+        self.failures = 0 if cooled else self.failures + 1
+        rec = {
+            "temp_before": first,
+            "temp_after": temp,
+            "waited_s": round(self.clock() - t_start, 2),
+            "cooled": cooled,
+        }
+        self.waits.append(rec)
+        return rec
+
+    @property
+    def aborted(self) -> bool:
+        return self.failures >= self.max_failures
+
+    @property
+    def non_cooling(self) -> int:
+        return sum(1 for w in self.waits if not w["cooled"])
+
+
+def _cooldown_stop(cooler: Cooler) -> str:
+    return (
+        f"cooldown: {cooler.max_failures} waits in a row did not bring the SoC below "
+        f"{cooler.cool_below:g} C within {cooler.max_wait_s:g} s each"
+    )
+
+
+def cool_until_ready(cooler: Cooler) -> tuple[dict[str, Any], str | None]:
+    """Waits until the SoC is below the cool threshold. Returns the last wait and a stop reason if
+    the cooldown aborted the run."""
+    while True:
+        wait = cooler.wait()
+        if wait["cooled"]:
+            return wait, None
+        if cooler.aborted:
+            return wait, _cooldown_stop(cooler)
+
+
+def run_warmup(
+    session: Any,
+    feeds: Sequence[dict[str, Any]],
+    count: int,
+    args: argparse.Namespace,
+    gate: TempGate,
+    cooler: Cooler,
+) -> dict[str, Any]:
+    """Untimed warm-up, gated like the bursts: the SoC must be below --cool-below before warm-up
+    starts, and warm-up ends early at --burst-abort-c (the heat it adds is seen by the abort) or at
+    the hard stop. A cooldown abort stops the run. Returns what ran and why it stopped."""
+    _, stop = cool_until_ready(cooler)
+    if stop is not None:
+        return {"messages_run": 0, "aborted_at_c": None, "stop_reason": stop}
+    ran = 0
+    for feed in list(feeds)[:count]:
+        session.run(None, feed)
+        ran += 1
+        temp = gate.sample()
+        if gate.tripped:
+            return {"messages_run": ran, "aborted_at_c": None, "stop_reason": gate.stop_reason}
+        if temp is not None and temp >= args.burst_abort_c:
+            return {"messages_run": ran, "aborted_at_c": temp, "stop_reason": None}
+    return {"messages_run": ran, "aborted_at_c": None, "stop_reason": None}
+
+
+def run_bursts(
+    session: Any,
+    feeds: Sequence[dict[str, Any]],
+    lengths: Sequence[int],
+    args: argparse.Namespace,
+    gate: TempGate,
+    cooler: Cooler,
+    clock: Callable[[], float] = time.perf_counter,
+    warmup: int = 0,
+) -> dict[str, Any]:
+    """Runs ``feeds`` in bursts of ``args.burst``, cooling before each. A burst is discarded (not
+    retried) when a reading reaches ``--burst-abort-c`` or one message stalls past STALL_MS, which
+    is how a guard pause shows up. Only kept bursts contribute latencies, as (token length, ms).
+    ``warmup`` untimed messages run first, under the same temperature gate (see run_warmup)."""
+    burst = int(args.burst)
+    pairs: list[tuple[int, float]] = []
+    bursts: list[dict[str, Any]] = []
+    discarded: list[dict[str, Any]] = []
+    stop: str | None = None
+    t_start = clock()
+    warm: dict[str, Any] | None = None
+    if warmup > 0:
+        warm = run_warmup(session, feeds, warmup, args, gate, cooler)
+        stop = warm["stop_reason"]
+    i = 0
+    while i < len(feeds) and stop is None:
+        wait, stop = cool_until_ready(cooler)
+        if stop is not None:
+            break
+        if gate.tripped:
+            stop = gate.stop_reason
+            break
+        end = min(i + burst, len(feeds))
+        kept: list[tuple[int, float]] = []
+        reason: str | None = None
+        temp_max: float | None = None
+        for j in range(i, end):
+            t0 = clock()
+            session.run(None, feeds[j])
+            ms = (clock() - t0) * 1000.0
+            kept.append((int(lengths[j]), ms))
+            temp = gate.sample()
+            if temp is not None and (temp_max is None or temp > temp_max):
+                temp_max = temp
+            if gate.tripped:
+                stop = gate.stop_reason
+                reason = "hard stop at --max-temp"
+                break
+            if ms > STALL_MS:
+                reason = f"message took {ms:.0f} ms (stall, over {STALL_MS:g} ms)"
+                break
+            if temp is not None and temp >= args.burst_abort_c:
+                reason = f"SoC {temp:.1f} C, at or above the {args.burst_abort_c:g} C burst abort"
+                break
+        rec: dict[str, Any] = {
+            "index": len(bursts),
+            "first_row": i,
+            "messages_run": len(kept),
+            "temp_before": wait["temp_before"],
+            "cool_waited_s": wait["waited_s"],
+            "temp_max": temp_max,
+            "discarded": reason is not None,
+        }
+        bursts.append(rec)
+        if reason is not None:
+            discarded.append({**rec, "reason": reason})
+        else:
+            pairs.extend(kept)
+        i = end
+    wall = clock() - t_start
+    return {
+        "burst_size": burst,
+        "pairs": pairs,
+        "bursts": bursts,
+        "discarded": discarded,
+        "stop_reason": stop,
+        "stopped": stop is not None,
+        "measured": len(pairs),
+        "rows_not_measured": len(feeds) - len(pairs),
+        "warmup": warm,
+        "cool_waits": cooler.waits,
+        "non_cooling_waits": cooler.non_cooling,
+        "wall_s": round(wall, 2),
+        "msgs_per_min": round(len(pairs) / wall * 60.0, 2) if wall > 0 else None,
+        "cooldown": {
+            "cool_below_c": cooler.cool_below,
+            "max_cool_wait_s": cooler.max_wait_s,
+            "max_failures": cooler.max_failures,
+            "burst_abort_c": args.burst_abort_c,
+            "stall_ms": STALL_MS,
+        },
+    }
+
+
+def _burst_summary(run: dict[str, Any]) -> dict[str, Any]:
+    """The part of a run_bursts result that goes into the JSON (no raw pairs)."""
+    return {k: v for k, v in run.items() if k != "pairs"}
+
+
 def run_benchmark(
     session: Any,
-    encode: Callable[[str], list[int]],
+    encode: Callable[[Any], list[int]],
     pad_id: int,
-    texts: Sequence[str],
+    texts: Sequence[Any],
     args: argparse.Namespace,
     gate: TempGate,
     input_names: tuple[str, str] = ("input_ids", "attention_mask"),
     clock: Callable[[], float] = time.perf_counter,
 ) -> dict[str, Any]:
     """Every measurement. Only ``session.run`` (and ``encode``) are called on the model side, so a
-    fake session can drive the whole payload in tests. Stops at the first tripped gate."""
+    fake session can drive the whole payload in tests. Stops at the first tripped gate. With
+    ``args.burst`` the messages run as bursts with a cooldown before each (see run_bursts)."""
     import numpy as np
 
     id_name, mask_name = input_names
     seq_out: dict[str, Any] = {}
     stop = False
+    do_sweep = args.only in ("all", "sweep")
+    do_real = args.only in ("all", "realistic")
+    burst_mode = args.burst > 0
+    cooler = Cooler(gate.sample, args.cool_below, args.max_cool_wait) if burst_mode else None
+    stop_reason: str | None = None
 
     def feed_for(ids: list[int], mask: list[int]) -> dict[str, Any]:
         return {
@@ -275,9 +593,31 @@ def run_benchmark(
             mask_name: np.asarray([mask], dtype=np.int64),
         }
 
-    for length in args.seq_lens:
+    for length in args.seq_lens if do_sweep else []:
         if stop:
             break
+        if burst_mode:
+            tok_ms = []
+            feeds = []
+            for i in range(args.runs):
+                text = texts[i % len(texts)]
+                t0 = clock()
+                ids, mask = fit_to_length(encode(text), length, pad_id)
+                tok_ms.append((clock() - t0) * 1000.0)
+                feeds.append(feed_for(ids, mask))
+            run = run_bursts(
+                session, feeds, [length] * len(feeds), args, gate, cooler, clock, warmup=args.warmup
+            )
+            seq_out[str(length)] = {
+                "seq_len": length,
+                "tokenize_ms": summarise(tok_ms),
+                "latency_ms": summarise([ms for _, ms in run["pairs"]]),
+                "burst": _burst_summary(run),
+            }
+            if run["stopped"]:
+                stop = True
+                stop_reason = run["stop_reason"]
+            continue
         tok_ms: list[float] = []
         feeds: list[dict[str, Any]] = []
         for i in range(args.runs):
@@ -303,6 +643,55 @@ def run_benchmark(
         block["latency_ms"] = summarise(lat)
         block["seq_len"] = length
         seq_out[str(length)] = block
+
+    if not do_real:
+        return {"seq_lens": seq_out, "realistic": None, "stopped": stop, "stop_reason": stop_reason}
+
+    if burst_mode:
+        full_b = [encode(t) for t in texts]
+        natural_b = [truncate_keep_special(ids, MAX_LEN) for ids in full_b]
+        token_lengths = token_length_stats(
+            [len(x) for x in natural_b], sum(1 for ids in full_b if len(ids) > MAX_LEN)
+        )
+        realistic_b: dict[str, Any] = {
+            "n_strings": len(texts),
+            "passes": 1,
+            "mode": "burst",
+            "token_lengths": token_lengths,
+            "skipped": stop,
+        }
+        if not stop:
+            feeds_b = [feed_for(ids, [1] * len(ids)) for ids in natural_b]
+            run = run_bursts(
+                session,
+                feeds_b,
+                [len(x) for x in natural_b],
+                args,
+                gate,
+                cooler,
+                clock,
+                warmup=args.warmup,
+            )
+            realistic_b["latency_ms"] = summarise([ms for _, ms in run["pairs"]])
+            realistic_b["by_length"] = length_bucket_stats(run["pairs"])
+            realistic_b["duty"] = {
+                "measured": run["measured"],
+                "wall_s": run["wall_s"],
+                "msgs_per_min": run["msgs_per_min"],
+            }
+            realistic_b["burst"] = _burst_summary(run)
+            realistic_b["skipped"] = run["stopped"]
+            if run["stopped"]:
+                stop_reason = run["stop_reason"]
+            stop = stop or run["stopped"]
+        else:
+            realistic_b["latency_ms"] = None
+        return {
+            "seq_lens": seq_out,
+            "realistic": realistic_b,
+            "stopped": stop,
+            "stop_reason": stop_reason,
+        }
 
     realistic: dict[str, Any] = {"n_strings": len(texts), "passes": REALISTIC_PASSES}
     full = [encode(t) for t in texts]
@@ -330,7 +719,7 @@ def run_benchmark(
     else:
         realistic["latency_ms"] = None
     realistic["skipped"] = stop
-    return {"seq_lens": seq_out, "realistic": realistic, "stopped": stop}
+    return {"seq_lens": seq_out, "realistic": realistic, "stopped": stop, "stop_reason": None}
 
 
 def build_payload(
@@ -346,6 +735,7 @@ def build_payload(
     started: str,
     finished: str,
     reason: str | None = None,
+    combined: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The one JSON document written to --out."""
     measured = measured or {"seq_lens": {}, "realistic": None}
@@ -363,6 +753,7 @@ def build_payload(
         "thermal": thermal,
         "seq_lens": measured["seq_lens"],
         "realistic": measured["realistic"],
+        "combined": combined,
         "args": {
             "model": str(args.model),
             "tokenizer": str(args.tokenizer),
@@ -371,6 +762,8 @@ def build_payload(
             "runs": args.runs,
             "warmup": args.warmup,
             "max_temp_c": args.max_temp,
+            "rows": str(args.rows) if args.rows else None,
+            "companion_peak_mb": args.companion_peak_mb,
         },
     }
 
@@ -391,13 +784,30 @@ def human_summary(payload: dict[str, Any]) -> str:
         tok = block.get("tokenize_ms") or {}
         if lat.get("p50") is not None:
             lines.append(
-                f"  seq {length:>4}: latency p50 {lat['p50']} ms, p95 {lat['p95']} ms; "
+                f"  seq {length:>4}: latency p50 {lat['p50']} ms, p95 {lat['p95']} ms, "
+                f"p99 {lat['p99']} ms; "
                 f"tokenise p50 {tok.get('p50')} ms"
             )
     real = payload.get("realistic") or {}
     rl = real.get("latency_ms") or {}
     if rl.get("p50") is not None:
-        lines.append(f"  natural length: latency p50 {rl['p50']} ms, p95 {rl['p95']} ms")
+        lines.append(
+            f"  natural length: latency p50 {rl['p50']} ms, p95 {rl['p95']} ms, p99 {rl['p99']} ms"
+        )
+    duty = real.get("duty")
+    if duty:
+        lines.append(
+            f"  bursts: {len(real['burst']['discarded'])} discarded of "
+            f"{len(real['burst']['bursts'])}; "
+            f"duty {duty['msgs_per_min']} msgs/min over {duty['wall_s']} s"
+        )
+    combined = payload.get("combined")
+    if combined:
+        lines.append(
+            f"  encoder peak {combined['encoder_vmhwm_mb']} MB + companion "
+            f"{combined['companion_peak_mb']} MB = {combined['estimated_sum_mb']} MB "
+            "(estimate, not measured together)"
+        )
     therm = payload["thermal"]
     lines.append(
         f"temp start {therm['start'].get('temp_c')} C, max {therm.get('max_c')} C, "
@@ -494,28 +904,55 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     try:
         import onnxruntime as ort
-        from tokenizers import Tokenizer
+
+        if args.rows is None:
+            from tokenizers import Tokenizer
     except ImportError as exc:
         print(f"encoder_bench: missing dependency: {exc}", file=sys.stderr)
         return 1
     if not args.model.is_file():
         print(f"encoder_bench: model file not found: {args.model}", file=sys.stderr)
         return 1
-    tok_json = args.tokenizer / "tokenizer.json"
-    if not tok_json.is_file():
-        print(f"encoder_bench: {tok_json} not found", file=sys.stderr)
-        return 1
-
     model_info = {
         "file": args.model.name,
         "bytes": args.model.stat().st_size,
         "sha256": file_sha256(args.model),
     }
-    tokenizer = Tokenizer.from_file(str(tok_json))
-    config_path = args.tokenizer / "tokenizer_config.json"
-    config = json.loads(config_path.read_text()) if config_path.is_file() else {}
-    pad_id, pad_token = resolve_pad_id(config, tokenizer.token_to_id)
-    tokenizer_info = {"dir": args.tokenizer.name, "pad_id": pad_id, "pad_token": pad_token}
+    rows_meta: dict[str, Any] | None = None
+    if args.rows is not None:
+        if not args.rows.is_file():
+            print(f"encoder_bench: rows file not found: {args.rows}", file=sys.stderr)
+            return 1
+        try:
+            rows, pad_id, rows_meta = load_rows(args.rows)
+        except (ValueError, KeyError, OSError) as exc:
+            print(f"encoder_bench: bad rows file: {exc}", file=sys.stderr)
+            return 1
+        tokenizer_info = {
+            "rows": args.rows.name,
+            "rows_sha256": file_sha256(args.rows),
+            "pad_id": pad_id,
+            "rows_meta": rows_meta,
+        }
+        texts: Sequence[Any] = rows
+
+        def encode(row: Any) -> list[int]:
+            return list(row)
+
+    else:
+        tok_json = args.tokenizer / "tokenizer.json"
+        if not tok_json.is_file():
+            print(f"encoder_bench: {tok_json} not found", file=sys.stderr)
+            return 1
+        tokenizer = Tokenizer.from_file(str(tok_json))
+        config_path = args.tokenizer / "tokenizer_config.json"
+        config = json.loads(config_path.read_text()) if config_path.is_file() else {}
+        pad_id, pad_token = resolve_pad_id(config, tokenizer.token_to_id)
+        tokenizer_info = {"dir": args.tokenizer.name, "pad_id": pad_id, "pad_token": pad_token}
+        texts = SMS_STRINGS
+
+        def encode(text: Any) -> list[int]:
+            return tokenizer.encode(text).ids
 
     rss_before = read_rss_kb()
     opts = ort.SessionOptions()
@@ -548,10 +985,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     gate = TempGate(args.max_temp, read_soc_temp_c)
     gate.max_seen = temp_start
 
-    def encode(text: str) -> list[int]:
-        return tokenizer.encode(text).ids
-
-    measured = run_benchmark(session, encode, pad_id, SMS_STRINGS, args, gate)
+    measured = run_benchmark(session, encode, pad_id, texts, args, gate)
+    if rows_meta is not None and measured["realistic"] is not None:
+        tl = measured["realistic"]["token_lengths"]
+        tl["truncated_at_max_len"] = rows_meta["truncated_at_max_len"]
+        tl["untruncated"] = rows_meta["full_token_len"]
 
     rss_end = read_rss_kb()
     thermal["end"] = {"temp_c": read_soc_temp_c(), "throttled": read_throttled()}
@@ -563,6 +1001,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         "vmhwm_peak": rss_end["vmhwm"],
         "rss_end": rss_end["vmrss"],
     }
+    combined = None
+    if args.companion_peak_mb is not None and rss_end["vmhwm"] is not None:
+        enc_mb = round(rss_end["vmhwm"] / 1024, 1)
+        combined = {
+            "encoder_vmhwm_mb": enc_mb,
+            "companion_peak_mb": args.companion_peak_mb,
+            "estimated_sum_mb": round(enc_mb + args.companion_peak_mb, 1),
+            "basis": "ADDED estimate: encoder VmHWM plus companion peak from a separate run; "
+            "not measured together",
+        }
     status = "stopped_early" if measured["stopped"] else "ok"
     payload = build_payload(
         status=status,
@@ -575,7 +1023,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         measured=measured,
         started=started,
         finished=_now(),
-        reason=gate.stop_reason,
+        reason=measured.get("stop_reason") or gate.stop_reason,
+        combined=combined,
     )
     _write(args.out, payload)
     print(human_summary(payload))

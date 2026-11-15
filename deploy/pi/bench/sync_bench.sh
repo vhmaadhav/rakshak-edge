@@ -27,6 +27,8 @@ PI_KEY="${PI_KEY:-$HOME/.ssh/pi5}"
 REMOTE_DIR="${RBENCH_REMOTE_DIR:-rakshak-bench}"
 PROTECTED="models/llama32_1b_spinquant"
 SSH_OPTS=(-i "$PI_KEY" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10)
+# Optional: PI_HOST_KEY_ALIAS=pi5.local when PI_HOST is an IP whose host key is stored under the name.
+if [[ -n "${PI_HOST_KEY_ALIAS:-}" ]]; then SSH_OPTS+=(-o "HostKeyAlias=$PI_HOST_KEY_ALIAS"); fi
 
 DRY=0
 DO_CODE=1
@@ -143,7 +145,7 @@ for i in "${!paths[@]}"; do
     continue
   fi
   ssh_pi "mkdir -p '$REMOTE_DIR/$(dirname "$path")'" || { echo "sync_bench: mkdir failed" >&2; exit 3; }
-  scp -q -i "$PI_KEY" -o BatchMode=yes -o IdentitiesOnly=yes "$REPO/$source" "$PI_HOST:$REMOTE_DIR/$path.part" ||
+  scp -q "${SSH_OPTS[@]}" "$REPO/$source" "$PI_HOST:$REMOTE_DIR/$path.part" ||
     { echo "sync_bench: scp failed for $path" >&2; exit 3; }
   ssh_pi "cd '$REMOTE_DIR' && s=\$(sha256sum '$path.part' | cut -c1-64) && [ \"\$s\" = '$sha' ] && mv -f '$path.part' '$path'" ||
     { echo "sync_bench: checksum after transfer failed for $path (left as $path.part)" >&2; exit 3; }

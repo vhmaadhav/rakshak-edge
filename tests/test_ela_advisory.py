@@ -23,6 +23,7 @@ from rakshak.evidence import (
 )
 from rakshak.prompts import build_points_chat_prompt, build_points_user
 from rakshak.rules import EVIDENCE_TYPES, Evidence
+from rakshak.url_model import URL_MODEL_TYPE
 
 HIGH_TEXT = "Dear customer share your OTP to avoid account suspension"
 URL_TEXT = "Your HDFC account is blocked. Verify at http://hdfc-secure-login.xyz/verify"
@@ -322,9 +323,10 @@ def test_every_rank_candidate_passes_the_point_check(lang):
 
 
 def test_lexicon_file_covers_every_evidence_type_in_both_languages():
+    # The rule types, plus the URL model item (rakshak.url_model), which is not a rule type.
     lex = V.load_lexicon()
     for lang in ("en", "hinglish"):
-        assert set(lex[lang]) == set(EVIDENCE_TYPES)
+        assert set(lex[lang]) == set(EVIDENCE_TYPES) | {URL_MODEL_TYPE}
 
 
 def test_template_summary_passes_summary_check():

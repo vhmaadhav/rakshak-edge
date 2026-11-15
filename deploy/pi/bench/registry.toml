@@ -46,7 +46,9 @@ sha256 = "1bbd2c57cb541a7cbc287887ef51976d54240a353655827a511c63ec56213fc7"
 side_scaler = "models/url_student/url_side_scaler.json"
 side_scaler_sha256 = "c6b3fc968b03339a33052fe814a9bb851d3035cb302b06458955c2a5e5b6501e"
 side_scaler_source = "kaggle/out/url_student/output/url_side_scaler.json"
-notes = "Byte char-CNN (wide, raw view, max_len 200) + 29 URL side features standardised with url_side_scaler.json. The export comes from the PhreshPhish-trained unit (kaggle url_student job, export block), NOT the url_domain unit. So: no threshold is registered (the repo's url_domain thresholds belong to a different model), and quality is threshold-free AP and ROC-AUC on phreshphish_test. url_domain_test is an out-of-training-set check."
+# tau_url: smallest calibration threshold with benign FPR <= 1 % on the 5 % PhreshPhish carve (docs/URL_SERVICE_RESULTS.md; Kaggle kernel maadhavvh/rakshak-url-threshold v1).
+threshold = 0.6308487409530461
+notes = "Byte char-CNN (wide, raw view, max_len 200) + 29 URL side features standardised with url_side_scaler.json. The export comes from the PhreshPhish-trained unit (kaggle url_student job, export block), NOT the url_domain unit. The threshold is tau_url (see the comment above; the repo's url_domain thresholds belong to a different model). Quality is threshold-free AP and ROC-AUC on phreshphish_test, and FPR and recall at tau_url in docs/URL_SERVICE_RESULTS.md. url_domain_test is an out-of-training-set check."
 
 [[models]]
 id = "nids_bot_iot_fp32"

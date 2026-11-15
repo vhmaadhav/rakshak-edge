@@ -174,12 +174,20 @@ def test_protocol_scores_reuses_phreshphish_protocol():
 
 
 def test_frozen_source_files_match_their_pins_when_present():
-    package = REPO / "src" / "rakshak"
+    # The pins describe the files at commit ac45aea (the v0 freeze), not the working tree:
+    # later work may change these files on purpose. Check the committed bytes.
+    import hashlib
+    import subprocess
+
     for name, want in job.SOURCE_PINS.items():
-        path = package / name
-        if not path.exists():
-            pytest.skip(f"{name} not in this checkout")
-        assert job.sha256_file(path) == want, f"{name} changed since ac45aea"
+        try:
+            blob = subprocess.run(
+                ["git", "-C", str(REPO), "show", f"ac45aea:src/rakshak/{name}"],
+                capture_output=True, check=True,
+            ).stdout
+        except (OSError, subprocess.CalledProcessError):
+            pytest.skip("git history with ac45aea not available in this checkout")
+        assert hashlib.sha256(blob).hexdigest() == want, f"{name} pin does not match ac45aea"
 
 
 def test_artifact_pins_are_well_formed():

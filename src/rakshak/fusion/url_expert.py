@@ -2,10 +2,10 @@
 
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import numpy as np
-from scipy.special import expit
 
 from rakshak.canonicalize import canonicalize
 from rakshak.models.encoding import apply_standardizer, encode_batch
@@ -14,6 +14,22 @@ from rakshak.url_features import url_features
 URL_TREE = '5131673567fcf4d3be5eda9f43d28194632d2cce7e2d0940fc06a400eede36db'
 URL_HASH = '1bbd2c57cb541a7cbc287887ef51976d54240a353655827a511c63ec56213fc7'
 SCALER_HASH = 'c6b3fc968b03339a33052fe814a9bb851d3035cb302b06458955c2a5e5b6501e'
+
+
+def _expit(logits):
+    """Logistic sigmoid as float32, without scipy (the Pi bench venv has no scipy).
+
+    Per element through ``math.exp`` (the C library on each machine), with the sign-split form so
+    nothing overflows. Used by both the laptop and the Pi, so both run the same arithmetic.
+    """
+    out = np.empty(len(logits), dtype=np.float32)
+    for i, x in enumerate(np.asarray(logits, dtype=np.float64).reshape(-1).tolist()):
+        if x >= 0:
+            out[i] = 1.0 / (1.0 + math.exp(-x))
+        else:
+            e = math.exp(x)
+            out[i] = e / (1.0 + e)
+    return out
 
 
 def frozen_url_folder(root):
@@ -53,9 +69,8 @@ class FrozenURLExpert:
             raise ValueError('unexpected frozen URL input contract')
         self.cache = {}
 
-    def score(self, texts):
-        urls = [canonicalize(str(text)).urls for text in texts]
-        missing = sorted({url for values in urls for url in values} - self.cache.keys())
+    def _fill(self, urls):
+        missing = sorted(set(urls) - self.cache.keys())
         for start in range(0, len(missing), 256):
             values = missing[start:start + 256]
             features = [url_features(url) for url in values]
@@ -65,9 +80,18 @@ class FrozenURLExpert:
                                       np.asarray(self.scaler['std']))
             logits = self.session.run(None, {'raw': encode_batch(values, 200).astype(np.int64),
                                              'side': side})[0].reshape(-1)
-            scores = expit(logits)
+            scores = _expit(logits)
             if len(scores) != len(values) or not np.isfinite(scores).all():
                 raise ValueError('invalid frozen URL output')
             self.cache.update(zip(values, scores.tolist(), strict=True))
+
+    def score_urls(self, urls):
+        """Scores for already-extracted canonical URLs, in the order given (no re-extraction)."""
+        self._fill(urls)
+        return [self.cache[url] for url in urls]
+
+    def score(self, texts):
+        urls = [canonicalize(str(text)).urls for text in texts]
+        self._fill({url for values in urls for url in values})
         return (np.asarray([max(self.cache[url] for url in values) if values else np.nan
                             for values in urls]), np.asarray([bool(values) for values in urls]))
