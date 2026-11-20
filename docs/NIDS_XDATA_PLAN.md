@@ -105,3 +105,40 @@ the best of several arms is reported with that caveat. A failure is reported as 
 - The 5,000-flow calibration head is unlabelled but drawn at random, so its attack share is
   whatever the set contains.
 - Hyperparameter grids are small on purpose. A larger search would need its own pre-registration.
+
+## Amendment (compute budget)
+
+Written before the relaunch of the fold job, after the first aborted run. Recorded here so the
+change is visible. Nothing else in this plan changes: arms, features, threshold rule, metrics and the
+gate are as above.
+
+**Result seen before this amendment.** Exactly one result was seen from the aborted run:
+`unsw_lgbm_a_s0`, MCC -0.414 (FPR 0.58, threshold 0.3175). It was seen while the run was in progress.
+The arms and the gate were not changed after it.
+
+**Why.** The aborted run would have taken about 20 h. The first LightGBM fit took about 45 to 60 s,
+and the job was spending most of its time in thread oversubscription (LightGBM and BLAS defaulted to
+every core on a shared VM under load 7 to 9). Profile numbers after the thread fix, 40k rows, 200
+trees: 5.2 s at 31 leaves, 2.3 s at 15 leaves. The MLP fit is about 2 to 3 s.
+
+**Changes.**
+
+1. Thread caps: `OMP_NUM_THREADS`, `MKL_NUM_THREADS` and `OPENBLAS_NUM_THREADS` are set to 2 at the
+   top of the job, and LightGBM uses `n_jobs=2, force_col_wise=True`. The MLP is sklearn, not torch,
+   so the BLAS cap applies; `torch.set_num_threads` is not used.
+2. Training cap: unchanged, 30,000 benign and 30,000 attack per source (stratified, seed 0).
+3. Evaluation cap (new): validation rows of each source and test rows of the target are capped at
+   100,000 per class (seed 0 subsample of the full sample). The validation and test sets are
+   therefore the same for every arm and seed. The 5,000-flow calibration head is still removed from
+   the target first.
+4. Inner leave-one-source-out uses the same evaluation cap for its validation source.
+5. Bootstrap draws: 100 (was 200). Paired intervals still use the same draws across arms.
+6. Seeds: LightGBM 3 seeds (0, 1, 2), since the per-fit time is well below the 20 s threshold. MLP 3
+   seeds (0, 1, 2).
+
+**Not changed.** Arms a, a1, b, c and d; the features and hygiene rules; the stability-selection rule
+(k=20, min 8); the threshold rule; the hyperparameter grids; the metrics; the gate thresholds (mean
+MCC difference at least 0.10, worst-target difference at least 0.05, paired 95% interval above 0).
+
+**Stop rule.** If a fold runs past the time budget, the run is stopped and reported rather than cut
+further.
