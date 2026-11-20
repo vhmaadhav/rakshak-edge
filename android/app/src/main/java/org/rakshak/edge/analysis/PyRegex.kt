@@ -18,6 +18,8 @@ internal const val SPACE_BODY = "\\t\\n\\x0B\\f\\r\\x1C-\\x20\\x85\\xA0\\p{Z}"
 internal const val SPACE = "[$SPACE_BODY]"
 private const val WORD_B =
     "(?:(?<=[$WORD_BODY])(?![$WORD_BODY])|(?<![$WORD_BODY])(?=[$WORD_BODY]))"
+private const val NOT_WORD_B =
+    "(?:(?<=[$WORD_BODY])(?=[$WORD_BODY])|(?<![$WORD_BODY])(?![$WORD_BODY]))"
 
 /** Rewrites one Python pattern into a java.util.regex pattern. Leading "(?i)" becomes a flag. */
 internal fun pyRe(pattern: String): String {
@@ -40,7 +42,15 @@ internal fun pyRe(pattern: String): String {
                     require(!inClass) { "\\W inside a class is not supported: $pattern" }
                     "[^$WORD_BODY]"
                 }
-                'S', 'D', 'B' -> throw IllegalArgumentException("unsupported \\$n in $pattern")
+                'S' -> {
+                    require(!inClass) { "\\S inside a class is not supported: $pattern" }
+                    "[^$SPACE_BODY]"
+                }
+                'D' -> "\\P{Nd}"
+                'B' -> {
+                    require(!inClass) { "\\B inside a class is not supported: $pattern" }
+                    NOT_WORD_B
+                }
                 else -> null
             }
             out.append(rep ?: "\\$n")

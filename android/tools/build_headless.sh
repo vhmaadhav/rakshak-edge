@@ -5,7 +5,7 @@
 #
 # Disk footprint (estimated, not measured on this VM):
 #   JDK 17 headless ~200 MB | cmdline-tools ~150 MB | platform-tools ~80 MB
-#   platforms;android-36 ~80 MB | build-tools;36.0.0 ~60 MB | Gradle 9.8.0 ~150 MB
+#   platforms;android-37.2 ~80 MB | build-tools;37.0.0 ~60 MB | Gradle 9.8.0 ~150 MB
 #   Gradle caches (AGP, Kotlin, Compose, test deps) 0.7-1.2 GB
 #   ExecuTorch AAR 100-200 MB | ONNX Runtime AAR 50-80 MB
 #   Total roughly 1.6-2.3 GB. Set GRADLE_USER_HOME to a disk with room if needed.
@@ -40,8 +40,11 @@ if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
 fi
 SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 
+# `yes` dies of SIGPIPE when sdkmanager exits; with pipefail that would fail the script (rc 141).
+set +o pipefail
 yes | "$SDKMANAGER" --licenses >/dev/null
-"$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+set -o pipefail
+"$SDKMANAGER" "platform-tools" "platforms;android-37.2" "build-tools;37.0.0"
 
 printf 'sdk.dir=%s\n' "$ANDROID_HOME" > "$ROOT/local.properties"
 

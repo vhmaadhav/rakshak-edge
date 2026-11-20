@@ -3,8 +3,9 @@
 Offline scam-SMS and link checker for Android (package `org.rakshak.edge`, minSdk 28, arm64-v8a).
 Design, parity method, versions and open items: [`docs/ANDROID_APP.md`](../docs/ANDROID_APP.md).
 
-Status: source and tests written, **not compiled and not run**. Nothing here has been built on a
-device or on a build machine yet.
+Status: **builds, and all 27 JVM unit tests pass** (headless, InstaBox VM, 2026-11-20). The 27
+include 8 parity tests over the 318-row Python fixture. **Not run on a device yet.** Details are
+in `docs/ANDROID_APP.md`.
 
 ## 1. Build box (Debian 13, x86_64)
 
@@ -21,16 +22,9 @@ export CMDLINE_TOOLS_ZIP=$HOME/Downloads/commandlinetools-linux-XXXXXXXX_latest.
 
 ### Gradle wrapper (once)
 
-The repository has no `gradle-wrapper.jar`, because it cannot be generated without Gradle. Create
-the wrapper with a Gradle 9.8.0 install (9.6.0 or newer is required by AGP 9.5):
-
-```bash
-cd android
-gradle wrapper --gradle-version 9.8.0
-```
-
-This writes `gradlew`, `gradlew.bat` and `gradle/wrapper/gradle-wrapper.jar`. Commit them if you
-want the wrapper versioned.
+The Gradle 9.8.0 wrapper is committed: `gradlew`, `gradlew.bat` and
+`gradle/wrapper/gradle-wrapper.jar`. The jar's sha256 `238e777f…21abd5` matches Gradle's published
+checksum, and `distributionSha256Sum` pins the distribution zip. Nothing to do here.
 
 ### Build and unit tests
 

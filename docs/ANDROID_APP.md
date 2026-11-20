@@ -1,8 +1,12 @@
 # Android app (Rakshak Edge): architecture, parity and open items
 
-Status (2026-11-20): source, unit tests and build scripts are written under `android/`. **Not
-compiled, not run on a device, no latency numbers.** The first compile will find errors. The
-parity fixture test is the check that matters most, and it has not run yet.
+Status (2026-11-20): **compiles, and all 27 JVM unit tests pass, including the 8 parity tests over
+the 318-row Python fixture.** Built headless on the InstaBox VM (Debian x86_64, JDK 21, Gradle 9.8.0
+wrapper, AGP 9.5.1, platform android-37.2, build-tools 37.0.0) with
+`./gradlew :app:assembleDebug :app:testDebugUnitTest`. Debug APK: 78,719,078 bytes (arm64-v8a only,
+ExecuTorch and ONNX Runtime native libraries included, no student ONNX and no Llama files inside).
+**Not run on a device, no screenshots, no latency numbers.** The parity tests run on the JVM's
+`java.util.regex`, not Android's regex engine.
 
 ## 1. What the app does
 
@@ -94,7 +98,7 @@ Checked on 2026-11-20 (rule: at least 14 days old).
 | `kotlinx-coroutines-android` | 1.10.2 | Maven Central metadata; 1.11.0 exists, date not checked, so the older stable is used. |
 | JUnit | 4.13.2 | Maven Central metadata (test only). |
 | `org.json:json` (test only) | 20251224 | Maven Central metadata. Android's `org.json` is a stub on the JVM. |
-| compileSdk / targetSdk / minSdk | 36 / 36 / 28 | Platform API 36 is stable. AGP 9.5 supports up to API 37. |
+| compileSdk / targetSdk / minSdk | 37.2 / 36 / 28 | The first build failed on 36: Compose BOM 2026.11.01 (`ui-android` 1.13.0) needs compileSdk 37.1 or later, and AndroidX core 1.19.0 and lifecycle 2.11.1 need 37. compileSdk is now `release(37) { minorApiLevel = 2 }`. targetSdk stays 36. |
 
 The AGP 9.x built-in Kotlin support is used: `org.jetbrains.kotlin.android` is **not** applied.
 The Compose compiler plugin is applied at Kotlin 2.4.21. Whether AGP 9.5.1's built-in Kotlin uses
@@ -113,10 +117,21 @@ that KGP version without extra configuration is unverified (see section 5).
 
 ## 5. Not done yet, and risks
 
-- **Not compiled.** Nothing has been through `gradle` yet. Expect compile errors, mainly in the
-  Compose code and in the ExecuTorch and ONNX Runtime API calls below.
+- **Build history (first compile, 2026-11-20).** These three problems were found and fixed:
+  1. `tools/build_headless.sh` exited with rc 141. Under `pipefail`, `yes` dies of SIGPIPE in
+     `yes | sdkmanager --licenses`.
+  2. compileSdk had to move from 36 to 37.2 (section 3).
+  3. `PyRegex.kt` rejected `\S`, `\D` and `\B`, and the verifier's URL pattern uses `\S`. That
+     broke static initialisation of `VerifierKt` and `SlotExplainerKt` and failed 8 tests. Each is
+     now translated: `\S` to "not Python whitespace", `\D` to `\P{Nd}`, and `\B` to "not a
+     word boundary" (outside character classes only). The new test
+     `negated_python_classes_translate` covers them.
+
+  The ExecuTorch and ONNX Runtime calls below compile against the real AARs (1.5.1, 1.31.1), so
+  their signatures are right. Their runtime behaviour is still unchecked. The VM build used
+  `org.gradle.jvmargs=-Xmx1536m` and `org.gradle.workers.max=3` (not committed) to fit the 7 GB VM.
 - **Not run.** No device test, no screenshots, no timing. No latency numbers exist for the app.
-- **Unverified API calls:**
+- **API calls checked only at compile time:**
   - ExecuTorch `LlmModule(String, String, Float)`, `load()`, `resetContext()`, `stop()`,
     `close()` and the 7-argument `generate(prompt, seqLen, callback, echo, temperature, numBos,
     numEos)` are taken from the research brief's javadoc summary. The Java `LlmCallback` shape
@@ -124,9 +139,8 @@ that KGP version without extra configuration is unverified (see section 5).
   - ONNX Runtime `OnnxTensor.createTensor(env, LongBuffer, long[])`, `session.run(map)` and
     `result.get(0).value`, and `env.createSession(byte[], opts)`, are from the ORT Java API as the
     brief describes it. Not checked against javadoc.
-- **AGP built-in Kotlin with KGP 2.4.21.** The root build applies only the Compose plugin at 2.4.21.
-  If AGP 9.5.1 insists on another KGP, add a `buildscript` classpath pin as the AGP 9.0 notes
-  describe.
+- **AGP built-in Kotlin with KGP 2.4.21.** Works as configured: the build compiles with only the
+  Compose plugin applied at 2.4.21.
 - **Android regex engine.** The app avoids `UNICODE_CHARACTER_CLASS` and `Character.getName`, but
   the fixture has not been run on Android's regex.
 - **Model file.** The ONNX student is not in git. Without it, the detector reports a missing asset.

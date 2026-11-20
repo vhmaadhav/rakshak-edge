@@ -85,6 +85,16 @@ class UnitTest {
     }
 
     @Test
+    fun negated_python_classes_translate() {
+        // The verifier's URL pattern uses \S; Python's \S is "not Unicode whitespace".
+        val url = rxOf("""\b(?:https?|hxxps?)://\S+""")
+        assertEquals("https://x.in/a", url.find("go https://x.in/a now")?.value)
+        assertEquals("12", rxOf("""\D(\d+)""").find("a12")?.groupValues?.get(1))
+        assertTrue(rxOf("""o\Bo""").containsMatchIn("foo"))
+        assertFalse(rxOf("""o\Bo""").containsMatchIn("o o"))
+    }
+
+    @Test
     fun scam_state_uses_threshold_then_evidence() {
         val ev = runRules(canonicalize("Your OTP is needed, share it now"))
         assertEquals(ScamState.SCAM, scamStateFor(SCAM_THRESHOLD, SCAM_THRESHOLD, emptyList()))

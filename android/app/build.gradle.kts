@@ -5,7 +5,10 @@ plugins {
 
 android {
     namespace = "org.rakshak.edge"
-    compileSdk = 36
+    // Compose BOM 2026.11.01 / AndroidX core 1.19 need API 37.1 or later to compile against.
+    compileSdk {
+        version = release(37) { minorApiLevel = 2 }
+    }
 
     defaultConfig {
         applicationId = "org.rakshak.edge"
