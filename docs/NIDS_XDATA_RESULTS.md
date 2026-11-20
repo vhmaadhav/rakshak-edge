@@ -84,6 +84,15 @@ Gate detail for `lgbm/c`: mean-MCC difference 0.159 (threshold 0.10); worst-targ
 (threshold 0.05); paired 95% CI of the mean-MCC difference [0.152, 0.161] (excludes 0).
 Gate detail for `mlp/d`: mean-MCC difference 0.110 (passes); worst-target difference -0.181 (fails).
 
+How to read the intervals: as plan section 4 item 7 specifies, the paired bootstrap uses the **seed-0
+model only**, while the mean and worst differences are means over three seeds. So an interval can fail to
+contain its point difference when seed 0 differs from the seed mean. Examples from `metrics.json`:
+`lgbm/b` has a difference of 0.098 and an interval of [0.028, 0.037]; `mlp/b` has 0.057 and [0.110,
+0.116]. The intervals are a seed-0 check on row-sampling noise, not an interval for the 3-seed
+difference. The FPR check (plan section 4 item 8) is reported but is not one of the three gate criteria
+in section 5. That is why `metrics.json` records `"verdict": "PASS: lgbm/c"` even though every target
+fails it.
+
 ### Reference: shipped-style single-source model (a1)
 
 LightGBM 300 trees / 63 leaves trained on CSE-CIC-2018 alone, threshold = max-F1 on CSE's own
