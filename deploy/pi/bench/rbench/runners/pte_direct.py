@@ -171,6 +171,12 @@ class PteDirectRunner:
         gen: list[int] = []
         text = ""
         stop_hit = False
+        # Accounting (hardware-independent): every forward call, and the single-token decode
+        # forwards among them. stop_reason says what ended the loop.
+        forwards = 0
+        decode_forwards = 0
+        prefix_forward = False
+        stop_reason = "zero_budget"
         try:
             if p > 0:
                 if self._prefix_ids == ids[:p]:
@@ -178,24 +184,32 @@ class PteDirectRunner:
                 else:
                     self._prefix_ids = None
                     forward(ids[:p], 0)
+                    forwards += 1
+                    prefix_forward = True
                     self._prefix_ids = ids[:p]
             else:
                 self._prefix_ids = None
             nxt = forward(ids[p:], p)
+            forwards += 1
             t_first = clock()
             pos = len(ids)
             if max_new_tokens > 0:
                 while True:
                     if nxt in self._eos:
+                        stop_reason = "eos"
                         break
                     gen.append(nxt)
                     text = self._decode(gen)
                     if stop_when is not None and stop_when(text):
                         stop_hit = True
+                        stop_reason = "stop_when"
                         break
                     if len(gen) >= max_new_tokens:
+                        stop_reason = "max_new_tokens"
                         break
                     nxt = forward([nxt], pos)
+                    forwards += 1
+                    decode_forwards += 1
                     pos += 1
         except BaseException:
             self._prefix_ids = None
@@ -210,6 +224,10 @@ class PteDirectRunner:
             t0=t0,
             t_first=t_first,
             t_end=t_end,
+            forward_calls=forwards,
+            decode_forwards=decode_forwards,
+            prefix_forward=prefix_forward,
+            stop_reason=stop_reason,
         )
 
 
@@ -223,6 +241,10 @@ def _timing(
     t0: float,
     t_first: float,
     t_end: float,
+    forward_calls: int = 0,
+    decode_forwards: int = 0,
+    prefix_forward: bool = False,
+    stop_reason: str = "",
 ) -> dict[str, Any]:
     """Timing for one generate call. Clock values are seconds (perf_counter units)."""
     reused_len = prefix_tokens if prefix_reused else 0
@@ -237,6 +259,10 @@ def _timing(
         "prefix_reused": prefix_reused,
         "new_tokens": new_tokens,
         "stop_hit": stop_hit,
+        "forward_calls": forward_calls,
+        "decode_forwards": decode_forwards,
+        "prefix_forward": prefix_forward,
+        "stop_reason": stop_reason,
     }
     if prefill_tokens > 0 and ttft > 0:
         out["prefill_tok_s"] = round(prefill_tokens / ttft, 3)

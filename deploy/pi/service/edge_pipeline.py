@@ -32,6 +32,7 @@ from edge_decision import (  # noqa: F401 - scam_state_for and detector_only_pac
     scam_state_for,
     url_model_active,
 )
+from rbench.explainer_candidates import BASELINE, CANDIDATES, run_explainer
 from rbench.slot import HINGLISH_LANG, SLOT_MAX_NEW_TOKENS, generate_slot_advisory
 
 from rakshak.canonicalize import canonicalize
@@ -162,6 +163,8 @@ class EdgeAnalyzer:
         hinglish_mode: str = DEFAULT_HINGLISH_MODE,
         url_scorer: UrlScorer | None = None,
         url_threshold: float | None = None,
+        explainer_candidate: str = BASELINE,
+        explainer_cap: int | None = None,
     ) -> None:
         """``url_scorer`` and ``url_threshold`` together turn the URL model on. With either one
         None (the registry has no threshold for url_student) the URL path is off and the
@@ -171,6 +174,11 @@ class EdgeAnalyzer:
             raise ValueError(
                 f"hinglish_mode must be one of {HINGLISH_MODES}, got {hinglish_mode!r}"
             )
+        if explainer_candidate not in CANDIDATES:
+            raise ValueError(f"explainer_candidate must be one of {list(CANDIDATES)}")
+        # The explainer candidate applies to English only. Hinglish keeps the shipped path.
+        self.explainer_candidate = explainer_candidate
+        self.explainer_cap = explainer_cap
         self.detector = detector
         self.llm = llm
         self.threshold = float(threshold)
@@ -211,7 +219,7 @@ class EdgeAnalyzer:
         template_hinglish = lang_route == HINGLISH_LANG and self.hinglish_mode == "template"
         if template_hinglish:
             gen = template_gen(llm_package, lang_route)
-        else:
+        elif lang_route == HINGLISH_LANG or self.explainer_candidate == BASELINE:
             gen = generate_slot_advisory(
                 self.llm,
                 llm_package,
@@ -220,6 +228,14 @@ class EdgeAnalyzer:
                 guards=True,
                 variant=None if lang_route == HINGLISH_LANG else EDGE_PROMPT_VARIANT,
                 cleanup=True,
+            )
+        else:
+            gen = run_explainer(
+                self.llm,
+                llm_package,
+                lang_route,
+                candidate=self.explainer_candidate,
+                cap=self.explainer_cap,
             )
         t_llm_done = clock()
         calls = gen["calls"]
