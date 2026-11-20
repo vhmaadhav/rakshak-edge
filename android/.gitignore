@@ -1,0 +1,11 @@
+# Build output and local machine files
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+# Models are not committed: copy them in (see README.md and docs/ANDROID_APP.md)
+app/src/main/assets/sms_student.onnx
+*.pte
+tokenizer.model
