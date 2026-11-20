@@ -22,6 +22,7 @@ from rakshak.canonicalize import Canon
 from rakshak.evidence import Action, EvidencePackage, Risk, build_package, choose_action
 from rakshak.rules import Evidence
 from rakshak.url_model import add_url_model_evidence
+from rakshak.url_reputation import default_guard
 
 DETECTOR_ONLY_MODES = ("quiet", "verify")
 DEFAULT_DETECTOR_ONLY_MODE = "quiet"
@@ -53,7 +54,9 @@ def url_model_active(mode: str, threshold: float | None) -> bool:
 # Quiet-mode URL policy. "off": quiet mode ignores URL evidence (shipped default, U2 failed).
 # "corroborated": quiet mode adds it only when the SMS student is over its threshold or a rule
 # fired (docs/URL_SERVICE_PLAN.md, amendment 2026-11-12 night; ships only if U2 and U3 pass).
-URL_QUIET_POLICIES = ("off", "corroborated")
+# "guarded": quiet mode adds it only when the URL is not *established* (popular registrable domain,
+# not a shortener / user-content host / IP); docs/RECALL_V2_PLAN.md, pre-registered 2026-11-20.
+URL_QUIET_POLICIES = ("off", "corroborated", "guarded")
 URL_QUIET_POLICY = "off"
 
 
@@ -67,6 +70,7 @@ def add_url_evidence(
     p_scam: float | None = None,
     p_threshold: float | None = None,
     quiet_policy: str | None = None,
+    guard=None,
 ) -> list[Evidence]:
     """``evidence`` plus the phishing_url_model item. Verify mode: always (when the URL is over
     threshold). Quiet mode: never under policy "off"; under "corroborated", only when rule evidence
@@ -80,6 +84,12 @@ def add_url_evidence(
     if policy == "corroborated":
         student_over = p_scam is not None and p_threshold is not None and p_scam >= p_threshold
         if evidence or student_over:
+            return add_url_model_evidence(evidence, canon, hit, threshold)
+    if policy == "guarded" and hit is not None:
+        g = guard if guard is not None else default_guard()
+        if g is None:
+            raise RuntimeError("url quiet policy 'guarded' needs the reputation list file")
+        if not g.established(hit.url):
             return add_url_model_evidence(evidence, canon, hit, threshold)
     return list(evidence)
 

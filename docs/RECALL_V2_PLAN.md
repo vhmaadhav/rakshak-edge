@@ -86,3 +86,12 @@ decision latency on x86 (Pi parity is a later step).
   an untouched test. Say so in every quote.
 - No row text is printed in the results; only counts, buckets and domains of false positives (domains are not PII).
 - If any gate fails, R3 is reported as failed and quiet mode stays as V1. No gate is changed after scoring.
+
+## Record before scoring (2026-11-20, 04:5x UTC)
+
+- Tranco `V354N` top-100,000 CSV (`https://tranco-list.eu/download/V354N/100000`, 100,000 rows, first row
+  `1,google.com`): sha256 `4b00082641e977a0c613efbcec72f11ae300b681899de3aa5f2edcffcf364e3c`. Not committed (third-party
+  list; re-download by ID). The Pi/phone install step fetches it once and checks this hash.
+- Retrained SMS student (InstaBox, `sms_student` campaign dual-base seed 1, CPU): campaign test F1 0.9757, cal PR-AUC
+  0.9968, ONNX 388,127 bytes, ONNX/torch parity 3.0e-6. Shipped v0 is F1 0.9813; same recipe, different hardware and
+  library versions.
