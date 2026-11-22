@@ -39,7 +39,9 @@ USER_CONTENT_HOSTS = (
 
 TRANCO_LIST_ID = "V354N"
 TRANCO_TOP_N = 100_000
-DEFAULT_LIST_PATH = Path(__file__).parent / "data" / f"tranco_{TRANCO_LIST_ID}_top{TRANCO_TOP_N}.txt"
+DEFAULT_LIST_PATH = (
+    Path(__file__).parent / "data" / f"tranco_{TRANCO_LIST_ID}_top{TRANCO_TOP_N}.txt"
+)
 
 
 def _host_matches(host: str, entries) -> bool:
@@ -68,7 +70,8 @@ def private_registrable(host: str) -> str:
 @dataclass(frozen=True)
 class Reputation:
     established: bool
-    reason: str  # "popular", "not_popular", "shortener", "user_content", "ip", "userinfo", "no_host"
+    # "popular", "not_popular", "shortener", "user_content", "ip", "userinfo", "no_host"
+    reason: str
     registrable: str
 
 
