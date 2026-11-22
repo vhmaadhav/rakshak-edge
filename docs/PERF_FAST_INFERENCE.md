@@ -77,6 +77,61 @@ Tests: `tests/test_{edge_workers,explanation_table,edge_verdict_first}.py`.
 - **1.5 GHz cap.** `rakshak-thermald` throttles the Pi (HOT 68 °C, HARD 73 °C). Without a cooler, sustained load
   hits that cap. The 2.4 GHz numbers need the Active Cooler and the 27 W PSU to repeat.
 
+## Operational limits
+
+Request bounds. They are checked before the body is parsed, on `/analyze`, `/analyze_batch`, `/analyze_url` and
+`/analyze_flows`. The service binds loopback only (`127.0.0.1`, `::1`, `localhost`); any other address is refused.
+
+| Bound | Default | Flag | Answer when exceeded |
+|---|---|---|---|
+| Body size | 20 MiB (the flow cap, `nids_pipeline.MAX_BODY_BYTES`) | `--max-body-bytes N` | 413, decided from the header; the body is not read |
+| Content-Length | required | none | 411 when missing; 411 for `0` on `/analyze_flows`; 400 when not a non-negative integer |
+| Body read deadline | 10 s for the whole body | `--read-timeout S` | 408; a body that stops early is 400 |
+| SMS or batch item length | 2,000 characters | none | 400 |
+| URL length | 2,000 characters | none | 400 |
+| Batch size | 1 to 1,024 messages | none | 400 |
+
+The 20 MiB default is also enough for a full batch of 1,024 messages of 2,000 characters.
+
+Explainer jobs (`--response-mode verdict_first`):
+
+| Limit | Default | Flag | Effect |
+|---|---|---|---|
+| Queue depth | 64 jobs waiting for the LLM | `--explain-queue-depth N` | A job beyond this is refused. The explainer process has one job in flight on top of the queue. |
+| Job and result TTL | 120 s | `--explain-ttl S` | A job still waiting after this is not run. A finished explanation older than this is dropped from the store. |
+| Store size | 4,096 finished explanations | `--explanations-kept N` | Oldest finished explanations are dropped first. Pending jobs are not dropped. |
+
+Fallback. The verdict and the template advisory are always in the `/analyze` or `/analyze_batch` answer. Only the explainer
+sentence depends on the job:
+
+- Accepted: `"explanation": {"status": "pending", "id": ..., "explanation_source": "llm"}`, read at `GET /explanation/<id>`.
+- Queue full: `"explanation": {"status": "fallback", "id": null, "explanation_source": "template", "reason": "overload"}`.
+- Job expired: `GET /explanation/<id>` returns `"status": "expired", "explanation_source": "template", "reason": "expired"`.
+
+Counters, in `GET /health`:
+
+- `http_requests_total` and `http_requests_by_endpoint`: one per HTTP request, whatever the answer.
+- `batch_requests_total`: one per `/analyze_batch` request.
+- `messages_total`: messages scored. One per `/analyze`, and N per batch of N. `/analyze_url` and `/analyze_flows` are not messages.
+- `refused_cooling`: 503 answers for the SoC temperature limit. Still counted per verdict process.
+- Everything above except `refused_cooling` is service-wide (shared between the verdict processes).
+- `requests`: deprecated alias of `http_requests_total`, kept so existing readers keep working. Its old meaning
+  (messages plus URL and flow requests, and batch items counted twice) is gone. Read `http_requests_total` or
+  `messages_total` instead.
+- `explain_jobs.overloaded` and `explain_jobs.expired`: service-wide. Every verdict process adds to one shared set of
+  counters, so with `--workers N` the totals are exact whichever process answers.
+- `explain_jobs.llm`: the explainer process's own counts (`completed`, `failed`, `expired`).
+- `workers`: restarts per supervised process (`llm`, `http0`, ...) and whether it has failed for good.
+- `response_mode_config`: the mode in use, its source (`flag`, `env` or `default`), and the default (`sync`).
+
+Response mode. The default is `sync`, as before. `--response-mode` or `RAKSHAK_RESPONSE_MODE` selects `verdict_first`.
+`GET /health` shows the mode and where it came from.
+
+Worker restarts. A supervised worker that dies with a failure is restarted. Each death and restart is a JSON line in
+the log (`worker_died`, `worker_restarted`) and is counted in `workers`. After 5 restarts of one worker the service
+stops (`worker_failed`). When the explainer process restarts, pending jobs older than the TTL are marked expired. A job
+the explainer was running when it died is lost, and its client sees `expired` once it is older than the TTL.
+
 ## Reproduce
 
 1. Build the table on the Pi: `deploy/pi/bench/build_explanation_table.py --root ~/rakshak-bench --out PATH`.
