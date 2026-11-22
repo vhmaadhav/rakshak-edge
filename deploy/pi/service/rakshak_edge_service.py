@@ -33,7 +33,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing as mp
 import os
+import queue
 import socket
 import socketserver
 import sys
@@ -43,6 +45,7 @@ import traceback
 import uuid
 from collections import OrderedDict
 from concurrent import futures as cf
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -92,7 +95,14 @@ DEFAULT_RESPONSE_MODE = "sync"
 VERDICT_DEVICE_TTL_S = 1.0  # verdict path: temperature re-read at most this often
 MAX_BATCH = 1024  # messages per POST /analyze_batch (answered in chunks of BATCH_CHUNK)
 BATCH_CHUNK = 128
-EXPLANATIONS_KEPT = 4096  # finished explanations kept for GET /explanation/<id>
+EXPLANATIONS_KEPT = 4096  # finished explanations kept for GET /explanation/<id> (the store's cap)
+# Explainer jobs (verdict_first). At most EXPLAIN_QUEUE_DEPTH jobs wait for the LLM; a job that
+# would wait behind a full queue is refused, and its answer is the template, with the reason. A job
+# that waits longer than EXPLAIN_TTL_S, or a finished explanation older than that, is expired.
+EXPLAIN_QUEUE_DEPTH = 64
+EXPLAIN_TTL_S = 120.0
+# A POST body must arrive within this many seconds (408 otherwise).
+DEFAULT_READ_TIMEOUT_S = 10.0
 EGRESS_PROBE = ("1.1.1.1", 443)
 DEFAULT_TEMP_LIMIT = 75.0
 MAX_SMS_CHARS = 2000
@@ -104,6 +114,19 @@ TOKENIZER_PATH = "models/llama32_1b_spinquant/tokenizer.model"
 DETECTOR_MODEL_ID = "sms_student"
 LLM_MODEL_ID = "llama32_1b_spinquant"
 NIDS_ONNX_PATH = "models/nids/student_cse_cic_ids2018_int8.onnx"
+
+
+@dataclass(frozen=True)
+class RequestLimits:
+    """Bounds on what the HTTP layer accepts, checked before parsing. ``max_body_bytes`` is the
+    cap on every POST body; the default is the flow path's cap (nids_pipeline.MAX_BODY_BYTES), which
+    is also large enough for a full batch of MAX_BATCH messages of MAX_SMS_CHARS characters."""
+
+    max_body_bytes: int = MAX_BODY_BYTES
+    read_timeout_s: float = DEFAULT_READ_TIMEOUT_S
+    max_batch: int = MAX_BATCH
+    max_sms_chars: int = MAX_SMS_CHARS
+    max_url_chars: int = MAX_URL_CHARS
 
 
 def netns_report(probe: bool = True) -> dict[str, Any]:
@@ -140,6 +163,67 @@ def rss_mb(which: str = "VmRSS") -> float | None:
     return None
 
 
+# Service-wide counters. Every verdict process of one service adds to the same shared memory
+# (a lock-protected array), so /health reports exact totals whichever process answers.
+COUNTER_SLOTS = (
+    "http_requests_total",
+    "batch_requests_total",
+    "messages_total",
+    "overloaded",
+    "expired",
+)
+ENDPOINT_SLOTS = (
+    "/",
+    "/health",
+    "/analyze",
+    "/analyze_batch",
+    "/analyze_url",
+    "/analyze_flows",
+    "/explanation",
+    "other",
+)
+
+
+class SharedCounters:
+    """Counters in shared memory. Pass ``ctx`` (the spawn context of the supervisor) so the array
+    can be handed to child processes; without it a spawn-context array is made here. The array's
+    own lock makes each increment atomic across processes."""
+
+    def __init__(self, ctx: Any = None, array: Any = None) -> None:
+        if array is None:
+            ctx = ctx or mp.get_context("spawn")
+            array = ctx.Array("q", len(COUNTER_SLOTS) + len(ENDPOINT_SLOTS), lock=True)
+        self._array = array
+
+    def add(self, name: str, n: int = 1) -> None:
+        i = COUNTER_SLOTS.index(name)
+        with self._array.get_lock():
+            self._array[i] += n
+
+    def add_endpoint(self, endpoint: str) -> None:
+        """One HTTP request on ``endpoint`` (unknown names count as "other")."""
+        if endpoint not in ENDPOINT_SLOTS:
+            endpoint = "other"
+        j = len(COUNTER_SLOTS) + ENDPOINT_SLOTS.index(endpoint)
+        with self._array.get_lock():
+            self._array[COUNTER_SLOTS.index("http_requests_total")] += 1
+            self._array[j] += 1
+
+    def get(self, name: str) -> int:
+        with self._array.get_lock():
+            return int(self._array[COUNTER_SLOTS.index(name)])
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._array.get_lock():
+            values = [int(v) for v in self._array[:]]
+        out: dict[str, Any] = {name: values[i] for i, name in enumerate(COUNTER_SLOTS)}
+        base = len(COUNTER_SLOTS)
+        out["http_requests_by_endpoint"] = {
+            ep: values[base + k] for k, ep in enumerate(ENDPOINT_SLOTS) if values[base + k]
+        }
+        return out
+
+
 class Service:
     """Loaded models and the request path. HTTP is a thin layer over this (see Handler)."""
 
@@ -165,6 +249,11 @@ class Service:
         store: Any | None = None,
         verdict_device_fn=None,
         device_ttl: float = VERDICT_DEVICE_TTL_S,
+        response_mode_source: str = "default",
+        explain_queue_depth: int = EXPLAIN_QUEUE_DEPTH,
+        explain_ttl: float = EXPLAIN_TTL_S,
+        explanations_kept: int = EXPLANATIONS_KEPT,
+        counters: SharedCounters | None = None,
     ) -> None:
         """``jobs`` and ``store`` (verdict-first, edge_workers.py): explainer jobs go to the one
         process that holds the LLM, and finished explanations are read from ``store`` (a mapping
@@ -174,6 +263,10 @@ class Service:
                 f"response_mode must be one of {RESPONSE_MODES}, got {response_mode!r}"
             )
         self.response_mode = response_mode
+        self.response_mode_source = response_mode_source  # "flag", "env" or "default"
+        self.explain_queue_depth = int(explain_queue_depth)
+        self.explain_ttl = float(explain_ttl)
+        self.explanations_kept = int(explanations_kept)
         self.analyzer = analyzer
         self.nids = nids
         self.url_check = url_check
@@ -212,7 +305,10 @@ class Service:
         self._explain_futures: list[cf.Future] = []
         self.started = clock()
         self.network: dict[str, Any] = {}
-        self.requests = 0
+        # Counters (health), shared by every verdict process of the service (see SharedCounters).
+        # One HTTP request is counted by the handler, one batch by analyse_batch, one message per
+        # message scored (/analyze: 1; /analyze_batch: its items).
+        self.counters = counters if counters is not None else SharedCounters()
         self.refused = 0
         self._log_lock = threading.Lock()
         # One handle for the life of the process (opening the file per line cost a syscall round
@@ -247,6 +343,15 @@ class Service:
             },
             "hinglish_mode": self.hinglish_mode,
             "response_mode": self.response_mode,
+            # Explicit: the default is sync; the source says whether a flag, the environment
+            # (RAKSHAK_RESPONSE_MODE) or the default chose this mode.
+            "response_mode_config": {
+                "mode": self.response_mode,
+                "source": self.response_mode_source,
+                "default": DEFAULT_RESPONSE_MODE,
+                "flag": "--response-mode",
+                "env": "RAKSHAK_RESPONSE_MODE",
+            },
             "explanation_table": (
                 self.analyzer.explanation_table.stats()
                 if getattr(self.analyzer, "explanation_table", None) is not None
@@ -254,8 +359,10 @@ class Service:
             ),
             "llm_runner": self.llm_runner,
             "llm": self.store.get("_llm") if self.store is not None else None,
-            "requests": self.requests,
+            **self._request_counts(),
             "refused_cooling": self.refused,
+            "explain_jobs": self._explain_jobs_health(),
+            "workers": self.store.get("_workers") if self.store is not None else None,
             "rss_mb": rss_mb(),
             "rss_peak_mb": rss_mb("VmHWM"),
             "device": self.device_fn(),
@@ -265,6 +372,59 @@ class Service:
                 if self.explainer_cache is not None
                 else {"capacity": 0, "size": 0, "hits": 0, "misses": 0}
             ),
+        }
+
+    # ----------------------------------------------------------------- counters
+    def count_http(self, endpoint: str) -> None:
+        """One call per HTTP request, made by the handler whatever the answer."""
+        self.counters.add_endpoint(endpoint)
+
+    def _request_counts(self) -> dict[str, Any]:
+        """The service-wide request counters for /health. ``requests`` is a deprecated alias of
+        http_requests_total, kept so existing readers keep working."""
+        snap = self.counters.snapshot()
+        return {
+            "http_requests_total": snap["http_requests_total"],
+            "http_requests_by_endpoint": snap["http_requests_by_endpoint"],
+            "batch_requests_total": snap["batch_requests_total"],
+            "messages_total": snap["messages_total"],
+            "requests": snap["http_requests_total"],
+        }
+
+    def _count_messages(self, n: int) -> None:
+        """Messages scored: one for /analyze, one per item of /analyze_batch."""
+        self.counters.add("messages_total", n)
+
+    def _overloaded(self, request_id: str) -> dict[str, Any]:
+        """The explainer job queue is full. The answer is the template, and it says why."""
+        self.counters.add("overloaded")
+        self._log(
+            {
+                "event": "explainer_fallback",
+                "request_id": request_id,
+                "reason": "overload",
+                "queue_depth": self.explain_queue_depth,
+                "ts": round(self.clock(), 3),
+            }
+        )
+        return {
+            "status": "fallback",
+            "id": None,
+            "explanation_source": "template",
+            "reason": "overload",
+        }
+
+    def _explain_jobs_health(self) -> dict[str, Any]:
+        """The explainer job queue and store. ``overloaded`` and ``expired`` count this process;
+        ``llm`` holds the explainer process's own counts (completed, failed, expired)."""
+        return {
+            "mode": "llm_process" if self.jobs is not None else "in_process",
+            "queue_depth": self.explain_queue_depth,
+            "ttl_s": self.explain_ttl,
+            "store_max": self.explanations_kept,
+            "overloaded": self.counters.get("overloaded"),
+            "expired": self.counters.get("expired"),
+            "llm": self.store.get("_jobs") if self.store is not None else None,
         }
 
     def analyse(self, text: str, lang: str = "auto") -> tuple[int, dict[str, Any]]:
@@ -284,7 +444,7 @@ class Service:
                 energy_doc = energy.stop()
             wall_ms = round((time.perf_counter() - t0) * 1000.0, 3)
             end = self.device_fn()
-            self.requests += 1
+            self._count_messages(1)
             body = {
                 "request_id": request_id,
                 "input_chars": len(text),
@@ -339,6 +499,7 @@ class Service:
         start = self._verdict_device()
         t0 = time.perf_counter()
         result, pending = self.analyzer.analyse_verdict(text, lang=lang)
+        self._count_messages(1)
         body = self._verdict_item(request_id, len(text), result, pending, start, t0)
         return 200, body
 
@@ -360,8 +521,8 @@ class Service:
                 item["index"] = i
                 items.append(item)
         wall_ms = round((time.perf_counter() - t0) * 1000.0, 3)
-        with self._stats_lock:
-            self.requests += len(texts)
+        self.counters.add("batch_requests_total")
+        self.counters.add("messages_total", len(texts))
         self._log(
             {
                 "event": "analyse_batch",
@@ -393,8 +554,6 @@ class Service:
     ) -> dict[str, Any]:
         explanation = self._schedule_explanation(request_id, pending, start)
         wall_ms = None if t0 is None else round((time.perf_counter() - t0) * 1000.0, 3)
-        with self._stats_lock:
-            self.requests += 1
         body = {
             "request_id": request_id,
             "input_chars": input_chars,
@@ -427,8 +586,10 @@ class Service:
     def _schedule_explanation(
         self, request_id: str, pending: Any, start: dict[str, Any] | None
     ) -> dict[str, Any]:
-        """ready when the answer is final; pending with an id when the explainer job is queued;
-        refused_cooling when the SoC is at the limit (the explainer does not run)."""
+        """ready when the answer is final; pending (with an id) when the explainer job is queued;
+        fallback when the job queue is full (the template answers, with the reason); refused_cooling
+        when the SoC is at the limit (the explainer does not run). The verdict is the same in every
+        case: it is computed before this is called."""
         if pending is None:
             return {"status": "ready", "id": None}
         temp = (start or {}).get("temp_c")
@@ -446,43 +607,95 @@ class Service:
             )
             return {"status": "refused_cooling", "id": None}
         eid = uuid.uuid4().hex[:16]
+        now = time.time()
         if self.jobs is not None:
             # The explainer process holds the LLM: it recomputes the message and writes the entry.
-            self.store[eid] = {"status": "pending", "queued_at": time.time()}
-            self.jobs.put((eid, pending.text, pending.lang_route))
-            return {"status": "pending", "id": eid, "url": f"/explanation/{eid}"}
-        with self._explanations_lock:
-            self._explanations[eid] = {"status": "pending"}
-            while len(self._explanations) > EXPLANATIONS_KEPT:
-                self._explanations.popitem(last=False)
-            self._explain_futures = [f for f in self._explain_futures if not f.done()]
-            self._explain_futures.append(
-                self._explain_pool.submit(self._run_explanation, eid, pending)
-            )
-        return {"status": "pending", "id": eid, "url": f"/explanation/{eid}"}
-
-    def _run_explanation(self, eid: str, pending: Any) -> None:
-        """The background explainer job. It holds self.lock, so the LLM is never used by two
-        requests at once; the verdict path does not wait for it."""
-        try:
-            with self.lock:
-                t0 = time.perf_counter()
-                full = self.analyzer.explain_pending(pending)
-                wall_ms = round((time.perf_counter() - t0) * 1000.0, 3)
-            entry: dict[str, Any] = {
-                "status": "ready",
-                "advisory": full["advisory"],
-                "verifier": full["verifier"],
-                "llm_calls": full["llm_calls"],
-                "timings_ms": full["timings_ms"],
-                "wall_ms": wall_ms,
+            # The queue is bounded: a put beyond its depth is refused, and the entry is withdrawn.
+            self.store[eid] = {"status": "pending", "queued_at": now}
+            try:
+                self.jobs.put_nowait((eid, pending.text, pending.lang_route))
+            except queue.Full:
+                self.store.pop(eid, None)
+                return self._overloaded(request_id)
+            return {
+                "status": "pending",
+                "id": eid,
+                "url": f"/explanation/{eid}",
+                "explanation_source": "llm",
             }
-        except Exception as exc:  # noqa: BLE001 - keep serving; the caller sees status error
-            self._log({"event": "error", "explanation_id": eid, "error": repr(exc)})
-            entry = {"status": "error", "detail": str(exc)}
+        with self._explanations_lock:
+            # One explainer thread: the running job and the waiting ones are the backlog.
+            self._explain_futures = [f for f in self._explain_futures if not f.done()]
+            if len(self._explain_futures) >= self.explain_queue_depth + 1:
+                return self._overloaded(request_id)
+            self._explanations[eid] = {"status": "pending", "queued_at": now}
+            while len(self._explanations) > self.explanations_kept:
+                self._explanations.popitem(last=False)
+            self._explain_futures.append(
+                self._explain_pool.submit(self._run_explanation, eid, pending, now)
+            )
+        return {
+            "status": "pending",
+            "id": eid,
+            "url": f"/explanation/{eid}",
+            "explanation_source": "llm",
+        }
+
+    def _run_explanation(self, eid: str, pending: Any, queued: float) -> None:
+        """The background explainer job. It holds self.lock, so the LLM is never used by two
+        requests at once; the verdict path does not wait for it. A job that waited longer than
+        the TTL is not run: its entry is expired and the template answer stands."""
+        if time.time() - queued > self.explain_ttl:
+            entry: dict[str, Any] = {
+                "status": "expired",
+                "explanation_source": "template",
+                "reason": "expired",
+            }
+            self.counters.add("expired")
+        else:
+            try:
+                with self.lock:
+                    t0 = time.perf_counter()
+                    full = self.analyzer.explain_pending(pending)
+                    wall_ms = round((time.perf_counter() - t0) * 1000.0, 3)
+                entry = {
+                    "status": "ready",
+                    "explanation_source": "llm",
+                    "advisory": full["advisory"],
+                    "verifier": full["verifier"],
+                    "llm_calls": full["llm_calls"],
+                    "timings_ms": full["timings_ms"],
+                    "wall_ms": wall_ms,
+                }
+            except Exception as exc:  # noqa: BLE001 - keep serving; the caller sees status error
+                self._log({"event": "error", "explanation_id": eid, "error": repr(exc)})
+                entry = {"status": "error", "detail": str(exc)}
+        entry.update(queued_at=queued, finished_at=time.time())
         with self._explanations_lock:
             if eid in self._explanations:
                 self._explanations[eid] = entry
+
+    def _stale(self, entry: dict[str, Any]) -> bool:
+        """A pending job queued more than the TTL ago, or a finished one older than the TTL."""
+        now = time.time()
+        if entry.get("status") == "pending":
+            queued = entry.get("queued_at")
+            return queued is not None and now - float(queued) > self.explain_ttl
+        finished = entry.get("finished_at")
+        return finished is not None and now - float(finished) > self.explain_ttl
+
+    def _view(self, eid: str, entry: dict[str, Any]) -> dict[str, Any]:
+        """What GET /explanation/<id> says about an entry. A stale entry reads as expired: the
+        verdict was answered with the template, and that stays the explanation."""
+        if self._stale(entry):
+            return {
+                "id": eid,
+                "status": "expired",
+                "explanation_source": "template",
+                "reason": "expired",
+                "queued_at": entry.get("queued_at"),
+            }
+        return {"id": eid, **entry}
 
     def explanation(self, eid: str, wait: float = 0.0) -> tuple[int, dict[str, Any]]:
         """GET /explanation/<id>. ``wait`` (seconds, query ``?wait=``) holds the answer until the
@@ -493,18 +706,20 @@ class Service:
             while (
                 entry is not None
                 and entry.get("status") == "pending"
+                and not self._stale(entry)
                 and time.monotonic() < deadline
             ):
                 time.sleep(0.02)
                 entry = self.store.get(eid)
             if entry is None:
                 return 404, {"error": "unknown or expired explanation id", "id": eid}
-            return 200, {"id": eid, **entry}
+            return 200, self._view(eid, dict(entry))
         with self._explanations_lock:
             entry = self._explanations.get(eid)
             if entry is None:
                 return 404, {"error": "unknown or expired explanation id", "id": eid}
-            return 200, {"id": eid, **entry}
+            entry = dict(entry)
+        return 200, self._view(eid, entry)
 
     def wait_explanations(self) -> None:
         """Block until every queued explainer job has finished (tests and benchmarks)."""
@@ -552,7 +767,6 @@ class Service:
                 energy_doc = energy.stop()
             wall_ms = round((time.perf_counter() - t0) * 1000.0, 3)
             end = self.device_fn()
-            self.requests += 1
             body = {
                 "request_id": request_id,
                 "input_chars": len(url),
@@ -603,7 +817,6 @@ class Service:
                 energy_doc = energy.stop()
             wall_ms = round((time.perf_counter() - t0) * 1000.0, 3)
             end = self.device_fn()
-            self.requests += 1
             body = {
                 "request_id": request_id,
                 "input_bytes": len(raw),
@@ -645,7 +858,25 @@ def tcp_nodelay(sock: socket.socket) -> None:
         pass
 
 
-def make_handler(service: Service, index_html: bytes):
+ENDPOINTS = ("/", "/health", "/analyze", "/analyze_batch", "/analyze_url", "/analyze_flows")
+
+
+def _endpoint(route: str) -> str:
+    """The metrics name of a route. Unknown paths share one name, so the counts stay bounded."""
+    if route in ENDPOINTS:
+        return route
+    if route.startswith("/explanation/"):
+        return "/explanation"
+    return "other"
+
+
+def make_handler(service: Service, index_html: bytes, limits: RequestLimits | None = None):
+    """The HTTP handler of ``service``. A POST body is checked before it is read: Content-Length
+    must be present (411), a non-negative integer (400) and within ``limits.max_body_bytes`` (413).
+    The body must then arrive within ``limits.read_timeout_s`` (408). Only then is it parsed (400)
+    and its fields validated (400)."""
+    limits = limits or RequestLimits()
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "rakshak-edge/1"
         # Keep-alive: one connection serves many requests (HTTP/1.0 closed it after every reply,
@@ -654,6 +885,9 @@ def make_handler(service: Service, index_html: bytes):
         # Buffered writer: headers and body leave in one write, flushed after the request. Two
         # unbuffered writes let Nagle hold the body until the client's delayed ACK (about 40 ms).
         wbufsize = -1
+        # The socket timeout for reads on this connection: an idle keep-alive connection that
+        # sends nothing for this long is closed. A body has its own deadline (see _read_body).
+        timeout = limits.read_timeout_s
 
         def setup(self):
             super().setup()
@@ -661,14 +895,6 @@ def make_handler(service: Service, index_html: bytes):
 
         def log_message(self, fmt, *args):  # keep stderr for the JSON lines only
             return
-
-        def _drain(self) -> bytes:
-            """Read the request body (Content-Length) so the connection stays in step."""
-            try:
-                length = int(self.headers.get("Content-Length") or 0)
-            except ValueError:
-                length = 0
-            return self.rfile.read(length) if length > 0 else b""
 
         def _send(self, status: int, body: bytes, ctype: str) -> None:
             self.send_response(status)
@@ -685,8 +911,79 @@ def make_handler(service: Service, index_html: bytes):
                 "application/json; charset=utf-8",
             )
 
+        def _reject(self, status: int, doc: dict[str, Any]) -> None:
+            """An error answer that ends the connection: the unread rest of the body is dropped."""
+            self.close_connection = True
+            self._json(status, doc)
+
+        def _content_length(self, *, empty_ok: bool) -> int | None:
+            """The Content-Length, checked before any body byte is read. Answers 411 (missing, or
+            zero when ``empty_ok`` is False), 400 (not a non-negative integer) or 413 (over the
+            cap), and returns None after answering."""
+            value = self.headers.get("Content-Length")
+            if value is None:
+                self._reject(411, {"error": "Content-Length is required"})
+                return None
+            try:
+                length = int(value.strip())
+            except ValueError:
+                length = -1
+            if length < 0:
+                self._reject(400, {"error": "Content-Length must be a non-negative integer"})
+                return None
+            if length == 0 and not empty_ok:
+                self._reject(411, {"error": "Content-Length is required (pcap or JSON body)"})
+                return None
+            if length > limits.max_body_bytes:
+                self._reject(413, {"error": f"body is larger than {limits.max_body_bytes} bytes"})
+                return None
+            return length
+
+        def _read_body(self, length: int) -> bytes | None:
+            """Reads ``length`` bytes. The whole body must arrive within ``read_timeout_s``: each
+            read waits no longer than what is left of that deadline, so a slow sender cannot hold
+            the connection by dripping bytes. 408 on the deadline, 400 when the client closes
+            early. Returns None after answering."""
+            deadline = time.monotonic() + limits.read_timeout_s
+            out = bytearray()
+            try:
+                while len(out) < length:
+                    left = deadline - time.monotonic()
+                    if left <= 0:
+                        raise TimeoutError("body deadline passed")
+                    self.connection.settimeout(left)
+                    chunk = self.rfile.read1(min(65536, length - len(out)))
+                    if not chunk:
+                        break
+                    out += chunk
+            except TimeoutError:  # socket.timeout is the same class since Python 3.10
+                self._reject(
+                    408, {"error": f"request body not received within {limits.read_timeout_s:g} s"}
+                )
+                return None
+            if len(out) != length:
+                self._reject(400, {"error": "body is shorter than Content-Length"})
+                return None
+            return bytes(out)
+
+        def _body(self, *, empty_ok: bool) -> bytes | None:
+            """The checked body of a POST, or None after the error answer has been sent."""
+            length = self._content_length(empty_ok=empty_ok)
+            if length is None:
+                return None
+            return self._read_body(length)
+
+        def _parsed(self, raw: bytes) -> tuple[bool, Any]:
+            """(True, the JSON document), or (False, None) after answering 400."""
+            try:
+                return True, json.loads(raw.decode("utf-8") or "{}")
+            except (ValueError, UnicodeDecodeError, RecursionError):
+                self._json(400, {"error": "body must be JSON"})
+                return False, None
+
         def do_GET(self):  # noqa: N802 - stdlib name
             path = self.path.split("?", 1)[0]
+            service.count_http(_endpoint(path))
             if path == "/":
                 self._send(200, index_html, "text/html; charset=utf-8")
             elif path == "/health":
@@ -707,31 +1004,31 @@ def make_handler(service: Service, index_html: bytes):
 
         def do_POST(self):  # noqa: N802 - stdlib name
             route = self.path.split("?", 1)[0]
+            service.count_http(_endpoint(route))
             if route == "/analyze_flows":
                 self._analyse_flows()
-                return
-            if route == "/analyze_url":
+            elif route == "/analyze_url":
                 self._analyse_url()
-                return
-            if route == "/analyze_batch":
+            elif route == "/analyze_batch":
                 self._analyse_batch()
-                return
-            if route != "/analyze":
-                self._drain()
+            elif route == "/analyze":
+                self._analyse_sms()
+            elif self._body(empty_ok=True) is not None:  # read it, so the connection stays in step
                 self._json(404, {"error": "not found"})
+
+        def _analyse_sms(self) -> None:
+            raw = self._body(empty_ok=True)
+            if raw is None:
                 return
-            try:
-                raw = self._drain()
-                doc = json.loads(raw.decode("utf-8") or "{}")
-            except (ValueError, UnicodeDecodeError):
-                self._json(400, {"error": "body must be JSON"})
+            ok, doc = self._parsed(raw)
+            if not ok:
                 return
             sms = doc.get("sms") if isinstance(doc, dict) else None
             if not isinstance(sms, str) or not sms.strip():
                 self._json(400, {"error": "field 'sms' must be a non-empty string"})
                 return
-            if len(sms) > MAX_SMS_CHARS:
-                self._json(400, {"error": f"sms is longer than {MAX_SMS_CHARS} characters"})
+            if len(sms) > limits.max_sms_chars:
+                self._json(400, {"error": f"sms is longer than {limits.max_sms_chars} characters"})
                 return
             lang = doc.get("lang", "auto")
             if lang not in LANG_REQUESTS:
@@ -751,25 +1048,28 @@ def make_handler(service: Service, index_html: bytes):
             self._json(status, body)
 
         def _analyse_batch(self) -> None:
-            try:
-                raw = self._drain()
-                doc = json.loads(raw.decode("utf-8") or "{}")
-            except (ValueError, UnicodeDecodeError):
-                self._json(400, {"error": "body must be JSON"})
+            raw = self._body(empty_ok=True)
+            if raw is None:
+                return
+            ok, doc = self._parsed(raw)
+            if not ok:
                 return
             texts = doc.get("sms") if isinstance(doc, dict) else None
             if (
                 not isinstance(texts, list)
-                or not 1 <= len(texts) <= MAX_BATCH
+                or not 1 <= len(texts) <= limits.max_batch
                 or not all(isinstance(t, str) and t.strip() for t in texts)
             ):
                 self._json(
                     400,
-                    {"error": f"field 'sms' must be a list of 1 to {MAX_BATCH} non-empty strings"},
+                    {
+                        "error": "field 'sms' must be a list of 1 to "
+                        f"{limits.max_batch} non-empty strings"
+                    },
                 )
                 return
-            if any(len(t) > MAX_SMS_CHARS for t in texts):
-                self._json(400, {"error": f"sms is longer than {MAX_SMS_CHARS} characters"})
+            if any(len(t) > limits.max_sms_chars for t in texts):
+                self._json(400, {"error": f"sms is longer than {limits.max_sms_chars} characters"})
                 return
             lang = doc.get("lang", "auto")
             if lang not in LANG_REQUESTS:
@@ -786,18 +1086,18 @@ def make_handler(service: Service, index_html: bytes):
             self._json(status, body)
 
         def _analyse_url(self) -> None:
-            try:
-                raw = self._drain()
-                doc = json.loads(raw.decode("utf-8") or "{}")
-            except (ValueError, UnicodeDecodeError):
-                self._json(400, {"error": "body must be JSON"})
+            raw = self._body(empty_ok=True)
+            if raw is None:
+                return
+            ok, doc = self._parsed(raw)
+            if not ok:
                 return
             url = doc.get("url") if isinstance(doc, dict) else None
             if not isinstance(url, str) or not url.strip():
                 self._json(400, {"error": "field 'url' must be a non-empty string"})
                 return
-            if len(url) > MAX_URL_CHARS:
-                self._json(400, {"error": f"url is longer than {MAX_URL_CHARS} characters"})
+            if len(url) > limits.max_url_chars:
+                self._json(400, {"error": f"url is longer than {limits.max_url_chars} characters"})
                 return
             try:
                 status, body = service.analyse_url(url)
@@ -810,16 +1110,9 @@ def make_handler(service: Service, index_html: bytes):
             self._json(status, body)
 
         def _analyse_flows(self) -> None:
-            length = int(self.headers.get("Content-Length") or 0)
-            if length <= 0:
-                self.close_connection = True
-                self._json(411, {"error": "Content-Length is required (pcap or JSON body)"})
+            raw = self._body(empty_ok=False)
+            if raw is None:
                 return
-            if length > MAX_BODY_BYTES:
-                self.close_connection = True  # the body is not read, so the connection ends here
-                self._json(413, {"error": f"body is larger than {MAX_BODY_BYTES} bytes"})
-                return
-            raw = self.rfile.read(length)
             try:
                 status, body = service.analyse_flows(raw)
             except FlowRequestError as exc:
@@ -845,12 +1138,18 @@ class ReusePortHTTPServer(ThreadingHTTPServer):
 
 
 def serve(
-    service: Service, host: str, port: int, index_html: bytes, *, reuse_port: bool = False
+    service: Service,
+    host: str,
+    port: int,
+    index_html: bytes,
+    *,
+    reuse_port: bool = False,
+    limits: RequestLimits | None = None,
 ) -> ThreadingHTTPServer:
     if host not in ("127.0.0.1", "::1", "localhost"):
         raise SystemExit("refusing to bind a non-loopback address; the service is local only")
     cls = ReusePortHTTPServer if reuse_port else ThreadingHTTPServer
-    server = cls((host, port), make_handler(service, index_html))
+    server = cls((host, port), make_handler(service, index_html, limits))
     server.daemon_threads = True
     return server
 
@@ -859,12 +1158,14 @@ class ThreadingUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamSe
     daemon_threads = True
 
 
-def serve_unix(service: Service, path: str, index_html: bytes) -> ThreadingUnixServer:
+def serve_unix(
+    service: Service, path: str, index_html: bytes, limits: RequestLimits | None = None
+) -> ThreadingUnixServer:
     """The same HTTP API on a Unix socket. Unix sockets are files, so they work across network
     namespaces: the eval client and socket_bridge.py reach the service this way."""
     if os.path.exists(path):
         os.unlink(path)
-    server = ThreadingUnixServer(path, make_handler(service, index_html))
+    server = ThreadingUnixServer(path, make_handler(service, index_html, limits))
     os.chmod(path, 0o600)
     return server
 
@@ -1071,6 +1372,21 @@ def _env_llm_runner_default() -> str:
     return raw
 
 
+def _resolve_response_mode(flag: str | None) -> tuple[str, str]:
+    """The response mode and where it came from: --response-mode, then RAKSHAK_RESPONSE_MODE, then
+    the default. The default is sync, as before; only the source is new (health shows it)."""
+    if flag is not None:
+        return flag, "flag"
+    raw = os.environ.get("RAKSHAK_RESPONSE_MODE", "")
+    if raw == "":
+        return DEFAULT_RESPONSE_MODE, "default"
+    if raw not in RESPONSE_MODES:
+        raise SystemExit(
+            f"RAKSHAK_RESPONSE_MODE: expected one of {', '.join(RESPONSE_MODES)}, got {raw!r}"
+        )
+    return raw, "env"
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--root", default=str(Path.home() / "rakshak-bench"))
@@ -1127,10 +1443,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--response-mode",
         choices=RESPONSE_MODES,
-        default=os.environ.get("RAKSHAK_RESPONSE_MODE", DEFAULT_RESPONSE_MODE),
-        help="sync (default): /analyze waits for the explainer; verdict_first: /analyze returns "
-        "the verdict at once and the explainer comes from a table or GET /explanation/<id>. "
-        "Env RAKSHAK_RESPONSE_MODE.",
+        default=None,
+        help="sync (the default when neither this flag nor RAKSHAK_RESPONSE_MODE is set): "
+        "/analyze waits for the explainer; verdict_first: /analyze returns the verdict at once "
+        "and the explainer comes from a table or GET /explanation/<id>. The mode in use and its "
+        "source are in GET /health (response_mode_config).",
     )
     p.add_argument(
         "--batch-onnx",
@@ -1216,7 +1533,43 @@ def main(argv: list[str] | None = None) -> int:
         help="verdict_first: comma-separated CPUs for the explainer process, e.g. 3 "
         "(default: any).",
     )
+    p.add_argument(
+        "--max-body-bytes",
+        type=_positive_int,
+        default=MAX_BODY_BYTES,
+        help="cap on every POST body (/analyze, /analyze_batch, /analyze_url, /analyze_flows); "
+        "larger is 413, a missing Content-Length is 411. Default: the flow cap, 20 MiB.",
+    )
+    p.add_argument(
+        "--read-timeout",
+        type=float,
+        default=DEFAULT_READ_TIMEOUT_S,
+        help="seconds a POST body may take to arrive; slower is 408. Default 10.",
+    )
+    p.add_argument(
+        "--explain-queue-depth",
+        type=_positive_int,
+        default=EXPLAIN_QUEUE_DEPTH,
+        help="verdict_first: explainer jobs that may wait for the LLM. A job beyond this is "
+        "refused and answered with the template (reason overload). Default 64.",
+    )
+    p.add_argument(
+        "--explain-ttl",
+        type=float,
+        default=EXPLAIN_TTL_S,
+        help="verdict_first: seconds a job may wait, and a finished explanation may be kept, "
+        "before it expires (answered with the template, reason expired). Default 120.",
+    )
+    p.add_argument(
+        "--explanations-kept",
+        type=_positive_int,
+        default=EXPLANATIONS_KEPT,
+        help="finished explanations kept for GET /explanation/<id> (the store's size cap). "
+        "Default 4096.",
+    )
     args = p.parse_args(argv)
+    args.response_mode, args.response_mode_source = _resolve_response_mode(args.response_mode)
+    limits = RequestLimits(max_body_bytes=args.max_body_bytes, read_timeout_s=args.read_timeout)
     root = Path(args.root)
     if args.response_mode == "verdict_first" and args.llm_process:
         from edge_workers import serve_verdict
@@ -1279,13 +1632,17 @@ def main(argv: list[str] | None = None) -> int:
         llm_runner=args.llm_runner,
         url_check=lambda text: check_url(text, url_scorer, url_threshold),
         response_mode=args.response_mode,
+        response_mode_source=args.response_mode_source,
+        explain_queue_depth=args.explain_queue_depth,
+        explain_ttl=args.explain_ttl,
+        explanations_kept=args.explanations_kept,
     )
     index_html = (HERE / "index.html").read_bytes()
     service.network = netns_report()
-    server = serve(service, args.host, args.port, index_html)
+    server = serve(service, args.host, args.port, index_html, limits=limits)
     unix_server = None
     if args.unix_socket:
-        unix_server = serve_unix(service, args.unix_socket, index_html)
+        unix_server = serve_unix(service, args.unix_socket, index_html, limits)
         threading.Thread(target=unix_server.serve_forever, name="unix", daemon=True).start()
     service._log(
         {
@@ -1302,6 +1659,10 @@ def main(argv: list[str] | None = None) -> int:
             "explainer_cache": args.explainer_cache,
             "llm_runner": args.llm_runner,
             "temp_limit_c": args.temp_limit,
+            "response_mode": args.response_mode,
+            "response_mode_source": args.response_mode_source,
+            "max_body_bytes": limits.max_body_bytes,
+            "read_timeout_s": limits.read_timeout_s,
             "network": service.network,
         }
     )

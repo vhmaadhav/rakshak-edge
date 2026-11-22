@@ -69,6 +69,9 @@ class StubService:
     def health(self):
         return {"status": "ok"}
 
+    def count_http(self, endpoint):
+        return
+
     def explanation(self, eid):
         return 404, {"error": "unknown", "id": eid}
 
@@ -211,7 +214,8 @@ def test_job_loop_keeps_only_the_last_explanations():
             return {"advisory": {}, "verifier": {}, "llm_calls": [], "timings_ms": {}}
 
     edge_workers._job_loop(Quick(), q, store, kept=2)
-    assert sorted(store) == ["id3", "id4"]
+    # Keys starting with "_" are the job counts, not explanations.
+    assert sorted(k for k in store if not k.startswith("_")) == ["id3", "id4"]
 
 
 def test_featurize_with_precomputed_canon_and_rules_is_identical_and_skips_recompute(monkeypatch):

@@ -960,6 +960,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     opts.inter_op_num_threads = 1
     opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    if hasattr(ort, "disable_telemetry_events"):
+        ort.disable_telemetry_events()  # no telemetry from a bench run; older builds lack it
     t0 = time.perf_counter()
     session = ort.InferenceSession(
         str(args.model), sess_options=opts, providers=["CPUExecutionProvider"]
