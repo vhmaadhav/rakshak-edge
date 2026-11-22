@@ -107,7 +107,11 @@ held-out 15%, scored on the other targets (3 seeds):
 The single-source reference is comparable to the multi-source baselines on BoT and ToN, and it is
 better than the multi-source LightGBM on UNSW. It is context only and is not part of the gate.
 
-## Model size and latency (seed 0, target fold; single flow, one thread)
+## Model size and latency (seed 0, target fold; single flow)
+
+Threads: the MLP INT8 ONNX session ran with 4 intra-op threads (`--threads` is parsed by the job but not
+passed to the scorer) and LightGBM with `n_jobs=2`. These are not single-thread numbers; the Pi path
+should be re-measured at its own thread setting before quoting them.
 
 | arm | size | p50 latency |
 |---|---|---|
