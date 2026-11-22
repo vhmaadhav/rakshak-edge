@@ -8,7 +8,7 @@
   armbc2.py clients C PER HITS  C keep-alive clients (4 processes), PER requests each, /analyze.
   armbc2.py uds N HITS          N sequential /analyze over the Unix socket run/edge.sock.
 """
-import os, http.client, json, multiprocessing as mp, random, socket, sys, threading, time
+import os, http.client, json, multiprocessing as mp, socket, sys, threading, time
 from pathlib import Path
 
 P = Path(os.environ.get("PERF_DIR", "/home/hermoine/rakshak-perf"))
@@ -88,7 +88,7 @@ def drain():
     ids = [r["id"] for r in recs if r["id"]]
     if ids:
         get(c, f"/explanation/{ids[-1]}?wait=900")
-    st, walls, e2e, e2e_inproc = {}, [], [], []
+    st, walls, e2e = {}, [], []
     for r in recs:
         if r["id"]:
             doc = get(c, f"/explanation/{r['id']}")
@@ -100,7 +100,6 @@ def drain():
                 r["e2e"] = r["rtt"] + q
                 e2e.append(r["e2e"])
     REC.write_text(json.dumps(recs, ensure_ascii=False))
-    miss = [r for r in recs if r["id"]]
     hits = [r for r in recs if not r["id"]]
     return {"explanation_status_counts": st, "llm_wall_ms": summ(walls),
             "e2e_miss_rtt_plus_queue_llm_ms": summ(e2e),

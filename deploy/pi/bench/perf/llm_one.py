@@ -1,5 +1,5 @@
 """One isolated explainer call on the NEW service (verdict_first, table off for this message). stdlib only."""
-import http.client, json, sys, time
+import http.client, json, sys
 from pathlib import Path
 text = json.loads(Path(sys.argv[1]).read_text())[0]
 out = sys.argv[2]
@@ -9,7 +9,7 @@ d = json.loads(c.getresponse().read())
 ex = d["explanation"]
 res = {"text": text[:60], "verdict_status": ex["status"]}
 if ex.get("id"):
-    c.request("GET", f"/explanation/{ex["id"]}?wait=900")
+    c.request("GET", f"/explanation/{ex['id']}?wait=900")
     doc = json.loads(c.getresponse().read())
     res["doc"] = doc
     res["llm_wall_ms"] = doc.get("wall_ms")
