@@ -675,10 +675,24 @@ footer p+p{margin-top:4px}
   var VIEWS = ["home", "check", "proof"];
   var SUBS = ["sms", "link", "net"];
   var LANGS = ["auto", "en", "hinglish"];
+  /* Keys are the detector's evidence types (src/rakshak/verifier.py _TYPE_PHRASE). */
   var PHRASE = {
-    kyc_update_request: "Fake KYC update scam",
-    account_block_threat: "Account-block pressure scam",
-    url_in_message: "Suspicious link in message"
+    credential_request: "Asks for an OTP, PIN or password",
+    upi_collect_or_pay: "UPI collect or payment request",
+    kyc_block_urgency: "Fake KYC or block-threat scam",
+    account_suspension: "Fake account-suspension notice",
+    prize_lottery: "Prize or lottery scam",
+    apk_install: "Asks you to install an app",
+    remote_access_app: "Asks for a remote-access app",
+    electricity_disconnect: "Electricity disconnection scam",
+    parcel_customs: "Parcel or customs fee scam",
+    job_task_scam: "Task or job earnings scam",
+    investment_returns: "Guaranteed-returns investment scam",
+    digital_arrest: "Fake police or agency threat",
+    brand_domain_mismatch: "Link does not match the brand",
+    shortened_url: "Shortened link in message",
+    suspicious_url: "Suspicious link in message",
+    phishing_url_model: "Link the URL model scores as risky"
   };
 
   /* Session state: in memory only, cleared on reload. */
@@ -1074,13 +1088,21 @@ footer p+p{margin-top:4px}
     renderSigns();
     buildPreview($("smsPreview"), text, evidence);
 
+    var ex = isObj(d.explanation) ? d.explanation : null;
+    var pendingUrl = ex && ex.status === "pending" && typeof ex.url === "string" ? ex.url : null;
+    var llmOk = verifiedLlmPoints(arr(adv.points));
     $("advSummary").textContent = sv(sum.text);
     $("advSource").textContent = sum.source === "llm"
       ? "Written by Llama. The verifier passed it."
       : skipped ? "Template text. The explainer is not run for LOW risk."
+      : pendingUrl ? "Template text for now. Llama's sentences are being written and checked."
+      : ex && ex.status && ex.status !== "ready" ? "Template text. " + explainNote(ex)
+      : llmOk > 0 ? "The summary is template text. Llama wrote " + llmOk + " point(s) that the verifier passed, shown in the receipt below."
       : "Template text. Llama's wording was rejected or not used.";
     $("advFoot").textContent = skipped
       ? "measured: explainer not run · total " + fmt(tm.total, 0) + " ms"
+      : ex && !arr(tm.llm_calls).length
+      ? "measured on this Pi: verdict in " + fmt(tm.total, 0) + " ms · explanation is separate (verdict-first)"
       : "measured on this Pi: llm " + fmt(tm.llm_total, 0) + " ms · " + arr(tm.llm_calls).length + " call(s) · " +
         (isNum(tm.llm_cached) && tm.llm_cached > 0 ? tm.llm_cached + " cached" : "0 cached") + " · total " + fmt(tm.total, 0) + " ms";
 
@@ -1102,17 +1124,69 @@ footer p+p{margin-top:4px}
     var dev = isObj(d.device) ? d.device : null;
     $("smsDeviceCard").hidden = !dev;
     if (dev) {
-      var st = isObj(dev.start) ? dev.start : {}, en = isObj(dev.end) ? dev.end : {};
-      var en2 = isObj(dev.energy) ? dev.energy : {};
-      tiles($("smsDevice"), [
-        ["SoC temp", fmt(st.temp_c) + " → " + fmt(en.temp_c) + " °C", "start → end"],
-        ["Throttled", sv(st.throttled) + " → " + sv(en.throttled), "start → end"],
-        ["Energy", fmt(en2.energy_j, 2) + " J", sv(en2.method)],
-        ["Mean power", fmt(en2.mean_w, 2) + " W", "this request"],
-        ["Service RSS", fmt(dev.rss_mb, 0) + " MB", "resident memory"]
-      ]);
+      var st = isObj(dev.start) ? dev.start : {};
+      var en = isObj(dev.end) ? dev.end : null, en2 = isObj(dev.energy) ? dev.energy : null;
+      /* A verdict-first response has only the start reading and RSS: show what exists. */
+      var tl = [
+        en ? ["SoC temp", fmt(st.temp_c) + " → " + fmt(en.temp_c) + " °C", "start → end"]
+           : ["SoC temp", fmt(st.temp_c) + " °C", "at request start"],
+        en ? ["Throttled", sv(st.throttled) + " → " + sv(en.throttled), "start → end"]
+           : ["Throttled", sv(st.throttled), "at request start"]
+      ];
+      if (en2) {
+        tl.push(["Energy", fmt(en2.energy_j, 2) + " J", sv(en2.method)]);
+        tl.push(["Mean power", fmt(en2.mean_w, 2) + " W", "this request"]);
+      }
+      tl.push(["Service RSS", fmt(dev.rss_mb, 0) + " MB", "resident memory"]);
+      tiles($("smsDevice"), tl);
     }
     animateIn(res);
+    explToken++;
+    if (pendingUrl) pollExplanation(pendingUrl, explToken, 0);
+  }
+
+  /* Verdict-first: the verdict arrives at once; the explanation is fetched by id until it is ready. */
+  var explToken = 0;
+  function verifiedLlmPoints(points) {
+    return points.filter(function (p) {
+      return isObj(p) && p.source === "llm" && isObj(p.check) && p.check.ok === true;
+    }).length;
+  }
+  function explainNote(ex) {
+    if (ex.status === "refused_cooling") return "The Pi was too hot to run the explainer.";
+    if (ex.status === "expired") return "The explainer job expired; the template answer stands.";
+    if (ex.status === "error") return "The explainer failed; the template answer stands.";
+    return ex.reason ? "The explainer was not used (" + ex.reason + ")." : "The explainer was not used.";
+  }
+  function pollExplanation(url, token, tries) {
+    if (token !== explToken) return;            /* a newer check replaced this one */
+    fetch(url).then(parseResp).then(function (r) {
+      if (token !== explToken) return;
+      var b = isObj(r.body) ? r.body : {};
+      if (r.status === 200 && b.status === "pending" && tries < 180) {
+        setTimeout(function () { pollExplanation(url, token, tries + 1); }, 700);
+        return;
+      }
+      showExplanation(r.status, b);
+    }, function () {
+      if (token === explToken) $("advSource").textContent = "Template text. The explanation could not be fetched from the service.";
+    });
+  }
+  function showExplanation(status, b) {
+    if (status === 200 && b.status === "ready" && isObj(b.advisory)) {
+      var pts = arr(b.advisory.points);
+      var ver = isObj(b.verifier) ? b.verifier : {};
+      renderReceipt(pts, arr(ver.g2_rejected));
+      var ok = verifiedLlmPoints(pts);
+      $("advSource").textContent = ok > 0
+        ? "The summary is template text. Llama wrote " + ok + " point(s) that the verifier passed, shown in the receipt below."
+        : "Template text. Llama's wording was rejected or not used.";
+      $("advFoot").textContent = "measured on this Pi: llm " + fmt(b.wall_ms, 0) + " ms · " + arr(b.llm_calls).length + " call(s) · in the background after the verdict";
+    } else if (status === 404) {
+      $("advSource").textContent = "Template text. The explanation is no longer available.";
+    } else {
+      $("advSource").textContent = "Template text. " + explainNote(b);
+    }
   }
 
   /* ---------- Link ---------- */
@@ -1261,7 +1335,7 @@ footer p+p{margin-top:4px}
           c.status.textContent = "";
         }
       } else {
-        if (r.status === 503) banner("bad", c.hot(b));
+        if (r.status === 503 && b.error === "cooling") banner("bad", c.hot(b));
         else banner("bad", b.error || ("request failed (" + r.status + ")"));
         c.status.textContent = "";
       }
@@ -1529,16 +1603,16 @@ footer p+p{margin-top:4px}
     } else {
       var loOnly = !!ifaces && ifaces.length === 1 && ifaces[0] === "lo";
       var noRoutes = routes === 0;
-      var sealed = (loOnly || noRoutes) && probe.indexOf("failed") === 0;
+      var sealed = loOnly && noRoutes && probe.indexOf("failed") === 0;
       if (sealed) {
         title.className = "seal-title ok";
         title.textContent = "Sealed";
-        note.textContent = "No outbound route and the connect probe failed, as the service reports it on this Pi.";
+        note.textContent = "Only the loopback interface, no route, and the connect probe failed, as the service reports it on this Pi.";
         radar.className = "radar";
       } else {
         title.className = "seal-title warn";
         title.textContent = "Not isolated";
-        note.textContent = "The Pi reports a route or a working probe, so it is not sealed. Shown exactly as reported.";
+        note.textContent = "The Pi reports another interface, a route or a working probe, so it is not sealed. Shown exactly as reported.";
         radar.className = "radar warn";
       }
     }
@@ -1554,7 +1628,7 @@ footer p+p{margin-top:4px}
       return;
     }
     var ec = isObj(H.explainer_cache) ? H.explainer_cache : {};
-    var dom = typeof H.detector_only_mode === "string" ? H.detector_only_mode : (H.detector_only_mode ? "on" : "off");
+    var dom = sv(H.detector_only_mode);
     kv($("modelKv"), [
       ["Explainer runner", sv(H.llm_runner)],
       ["Detector only mode", dom],
@@ -1588,7 +1662,6 @@ footer p+p{margin-top:4px}
           chipT.className = "chip " + (limit !== null && H.device.temp_c >= limit ? "chip-bad" : "chip-ok");
           chipT.hidden = false;
         }
-        if (H.detector_only_mode === true) $("chipLlm").textContent = "Explainer off (detector only)";
         refreshVisible();
       })
       .catch(function () {
