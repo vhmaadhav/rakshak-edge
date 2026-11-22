@@ -22,7 +22,8 @@ Stdlib HTTP on 127.0.0.1 only. In sync mode requests run one at a time (a lock).
 verdict_first mode the verdict path takes no lock and the explainer runs as a background job under
 that lock (--response-mode, --explanation-table, POST /analyze_batch, GET /explanation/<id>).
 Before each request the SoC temperature is read: at or above ``--temp-limit`` (75 C) the
-service answers 503 "cooling" and does not run the explainer. Each request is logged as one JSON line (stderr and ``--log``).
+service answers 503 "cooling" and does not run the explainer. Each request is logged as one
+JSON line (stderr and ``--log``).
 
 Start and stop: deploy/pi/service/start_service.sh and stop_service.sh (they run the service in
 ``unshare -rn``, so it has no network). ``--ready-fifo`` is set by start_service.sh only.
