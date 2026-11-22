@@ -2,11 +2,21 @@ package org.rakshak.edge
 
 import android.content.Context
 import java.io.FileNotFoundException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.rakshak.edge.analysis.Risk
 import org.rakshak.edge.llm.LlmExplainer
 import org.rakshak.edge.llm.ModelFiles
 import org.rakshak.edge.ml.StudentDetector
+import org.rakshak.edge.perf.InferenceTiming
+import org.rakshak.edge.perf.measure
 
 /**
  * Holds the detector and the explainer for the app's lifetime. Both load on first use, on a
@@ -15,6 +25,11 @@ import org.rakshak.edge.ml.StudentDetector
 class Engine(private val context: Context) : AutoCloseable {
     private var detector: StudentDetector? = null
     private var explainer: LlmExplainer? = null
+    private val detectorLock = Mutex()
+    private val explainerLock = Mutex()
+
+    @Volatile
+    private var closed = false
 
     /** Load error for the detector, if any (shown on screen). */
     @Volatile
@@ -36,32 +51,84 @@ class Engine(private val context: Context) : AutoCloseable {
         }
     }
 
-    suspend fun check(text: String): Result<Analysis> = withContext(Dispatchers.Default) {
-        val d = loadDetector() ?: return@withContext Result.failure(
-            IllegalStateException(detectorError ?: "detector unavailable"),
-        )
-        runCatching { Analyzer.analyse(text, d) }
-    }
-
-    fun explainerInstalled(): Boolean = ModelFiles.installed(context)
-
-    /** Runs the Llama explainer on top of [analysis]. Falls back to the template on any error. */
-    suspend fun explain(analysis: Analysis): Result<Analysis> = withContext(Dispatchers.Default) {
-        runCatching {
-            val llm = explainer ?: run {
-                val model = ModelFiles.modelFile(context) ?: error("no external files directory")
-                val tok = ModelFiles.tokenizerFile(context) ?: error("no external files directory")
-                LlmExplainer(model.absolutePath, tok.absolutePath).also { it.load(); explainer = it }
+    suspend fun check(text: String, timing: InferenceTiming? = null): Result<Analysis> = withContext(Dispatchers.Default) {
+        detectorLock.withLock {
+            try {
+                ensureOpen()
+                Result.success(if (detector == null && timing?.parallelSetup == true) {
+                    checkWithParallelSetup(text, timing)
+                } else {
+                    Analyzer.analyse(text, detectorFor(timing).scorer(timing), timing = timing)
+                })
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Result.failure(error)
             }
-            Analyzer.explain(analysis, llm)
         }
     }
 
+    private suspend fun checkWithParallelSetup(text: String, timing: InferenceTiming): Analysis = coroutineScope {
+        val prepared = async { Analyzer.prepare(text, timing) }
+        val scorer = detectorFor(timing).scorer(timing)
+        Analyzer.analyse(text, prepared.await(), scorer, timing = timing)
+    }
+
+    private fun detectorFor(timing: InferenceTiming?): StudentDetector =
+        detector ?: timing.measure("detector_load") { loadDetector() } ?: error(detectorError ?: "Detector unavailable")
+
+    fun explainerInstalled(): Boolean = ModelFiles.installed(context)
+
+    /** Runs Llama without discarding the advisory already on screen if generation fails. */
+    suspend fun explain(analysis: Analysis, timing: InferenceTiming? = null): Result<Analysis> =
+        withContext(Dispatchers.Default) {
+            explainerLock.withLock {
+                try {
+                    ensureOpen()
+                    if (analysis.detectorOnly || analysis.lang == "hinglish" || analysis.pkg.risk == Risk.LOW) {
+                        return@withLock Result.success(analysis)
+                    }
+                    val llm = explainer ?: timing.measure("llm_load") { loadExplainer() }
+                    val onVerified = timing?.let { it::pointVerified }
+                    Result.success(Analyzer.explain(analysis, llm.generator(timing), onVerified))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Result.failure(error)
+                }
+            }
+        }
+
+    private fun loadExplainer(): LlmExplainer {
+        val model = ModelFiles.modelFile(context) ?: error("No external files directory")
+        val tokenizer = ModelFiles.tokenizerFile(context) ?: error("No external files directory")
+        val llm = LlmExplainer(model.absolutePath, tokenizer.absolutePath)
+        try {
+            llm.load()
+        } catch (error: Exception) {
+            llm.close()
+            throw error
+        }
+        explainer = llm
+        return llm
+    }
+
+    private fun ensureOpen() {
+        kotlin.check(!closed) { "Inference engine is closed" }
+    }
+
     override fun close() {
-        detector?.close()
-        explainer?.close()
-        detector = null
-        explainer = null
+        closed = true
+        CoroutineScope(Dispatchers.Default).launch {
+            detectorLock.withLock {
+                detector?.close()
+                detector = null
+            }
+            explainerLock.withLock {
+                explainer?.close()
+                explainer = null
+            }
+        }
     }
 
     companion object {

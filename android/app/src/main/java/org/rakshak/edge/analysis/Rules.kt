@@ -3,6 +3,8 @@ package org.rakshak.edge.analysis
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import org.rakshak.edge.perf.InferenceTiming
+import org.rakshak.edge.perf.measure
 
 /**
  * Port of src/rakshak/rules.py: the evidence rules over a canonicalised message, in the same
@@ -49,7 +51,7 @@ private fun overlaps(a: Span, b: Span): Boolean = a.start < b.end && b.start < a
 
 private const val SENTENCE_MAX = 400
 private val SENTENCE_BREAKS = charArrayOf('.', '!', '?', '\n', '|', '।')
-private val SENTENCE_END = rxOf("""(?<![0-9])[.!?;|](?=\s|$)|\n|\r|।""")
+private val SENTENCE_END = rxOf("""(?<![0-9])[.!?;|](?=\s|$)|\n|\r|।""", label = "sentence_end")
 
 // ---------------------------------------------------------------------------
 // Credential request: needs negation handling so "Do not share your OTP" does not fire.
@@ -68,12 +70,14 @@ private const val CRED_VERBS =
 private val CRED_PAIR_RX = rxOf(
     "(?:\\b$CRED_VERBS\\b.{0,30}\\b$CRED_TERMS\\b)|(?:\\b$CRED_TERMS\\b.{0,30}\\b$CRED_VERBS\\b)",
     ci = true,
+    label = "credential_request/pair",
 )
-private val CRED_VERB_ONLY_RX = rxOf("\\b$CRED_VERBS\\b", ci = true)
+private val CRED_VERB_ONLY_RX = rxOf("\\b$CRED_VERBS\\b", ci = true, label = "credential_request/verb")
 private val NEGATION_RX = rxOf(
     "\\b(?:not|never|don'?t|dont|do not|nahi|nahin|nhi|mat|kabhi|kisi ko na|na)\\b|" +
         "(?<![\\p{L}\\p{M}])(?:नहीं|न|मत|कभी)(?![\\p{L}\\p{M}])",
     ci = true,
+    label = "credential_request/negation",
 )
 
 private fun credentialRequest(canon: Canon): List<RawHit> {
@@ -144,8 +148,8 @@ private fun sentencePairs(
     return out
 }
 
-private fun patternRule(type: String, pattern: String, weight: Double): (Canon) -> List<RawHit> {
-    val rx = rxOf(pattern, ci = true)
+private fun patternRule(type: String, pattern: String, weight: Double, label: String = type): (Canon) -> List<RawHit> {
+    val rx = rxOf(pattern, ci = true, label = label)
     return { canon ->
         rx.findAll(canon.normalized).map {
             RawHit(type, it.range.first, it.range.last + 1, it.value, weight)
@@ -162,10 +166,10 @@ private fun pairedRule(
     guard: String? = null,
     gap: Int = 120,
 ): (Canon) -> List<RawHit> {
-    val rx = rxOf(pattern, ci = true)
-    val subj = rxOf(subject, ci = true)
-    val trig = rxOf(trigger, ci = true)
-    val grd = guard?.let { rxOf(it, ci = true) }
+    val rx = rxOf(pattern, ci = true, label = "$type/full")
+    val subj = rxOf(subject, ci = true, label = "$type/subject")
+    val trig = rxOf(trigger, ci = true, label = "$type/trigger")
+    val grd = guard?.let { rxOf(it, ci = true, label = "$type/guard") }
     return { canon ->
         val text = canon.normalized
         val flat = rx.findAll(text).map { Span(it.range.first, it.range.last + 1) }.toList()
@@ -325,7 +329,10 @@ private val RULES: List<(Canon) -> List<RawHit>> = listOf(
     patternRule("investment_returns", INVESTMENT_PATTERN, 0.8),
     patternRule("digital_arrest", DIGITAL_ARREST_PATTERN, 0.9),
     // Bare authority mentions are weak on their own; news and benign reports mention police.
-    patternRule("digital_arrest", """(?:\bcbi\b|\bpolice\b|\bcrime branch\b|सीबीआई|पुलिस)""", 0.5),
+    patternRule(
+        "digital_arrest", """(?:\bcbi\b|\bpolice\b|\bcrime branch\b|सीबीआई|पुलिस)""", 0.5,
+        label = "digital_arrest/authority",
+    ),
     // Generic urgency: weak on its own and never mapped to an action.
     patternRule("urgency", URGENCY_PATTERN, 0.4),
 )
@@ -362,15 +369,19 @@ private fun domainRules(canon: Canon): List<RawHit> {
 }
 
 /** run_rules: every rule in order, then the domain rules. Ids are E1..En in emission order. */
-fun runRules(canon: Canon): List<Evidence> {
+fun runRules(canon: Canon): List<Evidence> = runRules(canon, null)
+
+internal fun runRules(canon: Canon, timing: InferenceTiming?): List<Evidence> {
     val raw = ArrayList<RawHit>()
-    for (rule in RULES) raw.addAll(rule(canon))
-    raw.addAll(domainRules(canon))
+    timing.measure("rules_text_match") {
+        for (rule in RULES) raw.addAll(rule(canon))
+    }
+    raw.addAll(timing.measure("rules_domain") { domainRules(canon) })
     return raw.mapIndexed { i, h -> Evidence("E${i + 1}", h.type, h.start, h.end, h.text, h.weight) }
 }
 
 /** rule_flags: 1.0 for every evidence type that fires, in EVIDENCE_TYPES order. */
-fun ruleFlags(canon: Canon): FloatArray {
-    val fired = runRules(canon).map { it.type }.toHashSet()
+fun ruleFlags(evidence: List<Evidence>): FloatArray {
+    val fired = evidence.mapTo(HashSet()) { it.type }
     return FloatArray(EVIDENCE_TYPES.size) { i -> if (EVIDENCE_TYPES[i] in fired) 1f else 0f }
 }

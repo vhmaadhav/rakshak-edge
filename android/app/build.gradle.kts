@@ -16,6 +16,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField("boolean", "INFERENCE_BENCHMARK", "false")
         // ExecuTorch and ONNX Runtime native libraries are arm64 only in this build.
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -23,6 +24,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 
@@ -34,6 +36,12 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+        }
+        create("benchmark") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".benchmark"
+            signingConfig = signingConfigs.getByName("debug")
+            buildConfigField("boolean", "INFERENCE_BENCHMARK", "true")
         }
     }
 

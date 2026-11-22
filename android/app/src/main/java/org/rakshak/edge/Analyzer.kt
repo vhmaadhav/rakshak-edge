@@ -13,6 +13,7 @@ import org.rakshak.edge.analysis.chooseAction
 import org.rakshak.edge.analysis.collapseByType
 import org.rakshak.edge.analysis.detectLang
 import org.rakshak.edge.analysis.isDetectorOnly
+import org.rakshak.edge.analysis.ruleFlags
 import org.rakshak.edge.analysis.RemediationItem
 import org.rakshak.edge.analysis.remediationFor
 import org.rakshak.edge.analysis.routeLang
@@ -25,10 +26,13 @@ import org.rakshak.edge.llm.Advisory
 import org.rakshak.edge.llm.PointView
 import org.rakshak.edge.llm.SlotExplainer
 import org.rakshak.edge.llm.TokenGenerator
+import org.rakshak.edge.perf.InferenceTiming
+import org.rakshak.edge.perf.measure
+import org.rakshak.edge.perf.measureRules
 
 /** The student score for one message. The ONNX implementation is ml.StudentDetector. */
-interface StudentScorer {
-    fun score(text: String, canon: Canon): Double
+fun interface StudentScorer {
+    fun score(text: String, canon: Canon, side: FloatArray): Double
 }
 
 /** Everything the screen shows for one message, before or after the explainer. */
@@ -51,15 +55,42 @@ data class Analysis(
 private const val DETECTOR_ONLY_QUIET_EN = "No specific scam pattern was found in this message."
 private const val DETECTOR_ONLY_QUIET_HI = "Is message mein koi specific scam pattern nahi mila."
 
+internal data class PreparedMessage(val canon: Canon, val evidence: List<Evidence>, val flags: FloatArray)
+
 /**
  * The decision and the template advisory for one message. No model is called here; [explain]
  * adds the Llama sentences on top.
  */
 object Analyzer {
-    fun analyse(text: String, scorer: StudentScorer, threshold: Double = SCAM_THRESHOLD): Analysis {
-        val canon = canonicalize(text)
-        val score = scorer.score(text, canon)
-        val evidence = runRules(canon)
+    fun analyse(
+        text: String,
+        scorer: StudentScorer,
+        threshold: Double = SCAM_THRESHOLD,
+        timing: InferenceTiming? = null,
+    ): Analysis {
+        return analyse(text, prepare(text, timing), scorer, threshold, timing)
+    }
+
+    internal fun prepare(text: String, timing: InferenceTiming?): PreparedMessage {
+        val canon = timing.measure("canonicalize") { canonicalize(text) }
+        val evidence = timing.measureRules { runRules(canon, timing) }
+        val flags = timing.measure("rule_flags") { ruleFlags(evidence) }
+        return PreparedMessage(canon, evidence, flags)
+    }
+
+    internal fun analyse(
+        text: String,
+        prepared: PreparedMessage,
+        scorer: StudentScorer,
+        threshold: Double = SCAM_THRESHOLD,
+        timing: InferenceTiming? = null,
+    ): Analysis {
+        val (canon, evidence, flags) = prepared
+        val score = scorer.score(text, canon, flags)
+        return timing.measure("decision") { decide(text, canon, score, evidence, threshold) }
+    }
+
+    private fun decide(text: String, canon: Canon, score: Double, evidence: List<Evidence>, threshold: Double): Analysis {
         val state = scamStateFor(score, threshold, evidence)
         val pkg = buildPackage(canon, evidence, state)
         val action = chooseAction(pkg)
@@ -96,8 +127,12 @@ object Analyzer {
      * Adds the explainer sentences. Quiet-mode detector-only messages and Hinglish messages
      * (template mode, the Pi default) make no model call and keep the template advisory.
      */
-    suspend fun explain(analysis: Analysis, generator: TokenGenerator?): Analysis {
+    suspend fun explain(
+        analysis: Analysis,
+        generator: TokenGenerator?,
+        onVerifiedPoint: (() -> Unit)? = null,
+    ): Analysis {
         if (analysis.detectorOnly || analysis.lang == "hinglish") return analysis
-        return analysis.copy(advisory = SlotExplainer.advise(analysis.pkg, generator))
+        return analysis.copy(advisory = SlotExplainer.advise(analysis.pkg, generator, onVerifiedPoint))
     }
 }

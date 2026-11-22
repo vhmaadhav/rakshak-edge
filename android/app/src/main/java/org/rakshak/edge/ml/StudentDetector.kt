@@ -10,7 +10,8 @@ import org.rakshak.edge.StudentScorer
 import org.rakshak.edge.analysis.Canon
 import org.rakshak.edge.analysis.MAX_LEN
 import org.rakshak.edge.analysis.encodeBytes
-import org.rakshak.edge.analysis.ruleFlags
+import org.rakshak.edge.perf.InferenceTiming
+import org.rakshak.edge.perf.measure
 
 /**
  * The SMS student (dual-view char-CNN) on ONNX Runtime. Inputs, as exported by
@@ -23,19 +24,22 @@ import org.rakshak.edge.analysis.ruleFlags
 class StudentDetector private constructor(
     private val env: OrtEnvironment,
     private val session: OrtSession,
-) : StudentScorer, AutoCloseable {
+) : AutoCloseable {
 
-    override fun score(text: String, canon: Canon): Double {
+    fun scorer(timing: InferenceTiming?): StudentScorer = StudentScorer { text, canon, side ->
+        timing.measure("onnx_total") { runStudent(text, canon, side, timing) }
+    }
+
+    private fun runStudent(text: String, canon: Canon, side: FloatArray, timing: InferenceTiming?): Double {
         val raw = encodeBytes(text)
         val canonIds = encodeBytes(canon.normalized)
-        val side = ruleFlags(canon)
         val seqShape = longArrayOf(1, MAX_LEN.toLong())
         val sideShape = longArrayOf(1, side.size.toLong())
         return OnnxTensor.createTensor(env, LongBuffer.wrap(raw), seqShape).use { rawT ->
             OnnxTensor.createTensor(env, LongBuffer.wrap(canonIds), seqShape).use { canonT ->
                 OnnxTensor.createTensor(env, FloatBuffer.wrap(side), sideShape).use { sideT ->
                     val inputs = mapOf<String, OnnxTensor>("raw" to rawT, "canon" to canonT, "side" to sideT)
-                    session.run(inputs).use { result ->
+                    timing.measure("onnx_run") { session.run(inputs) }.use { result ->
                         val logit = when (val value = result.get(0).value) {
                             is FloatArray -> value[0]
                             else -> error("unexpected logit type: ${value?.javaClass}")
