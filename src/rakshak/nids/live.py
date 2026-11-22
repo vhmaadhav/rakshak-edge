@@ -14,6 +14,7 @@ Mapping conventions (not checked against the NF-*-v2 CSVs, so verify them on Kag
 
 from __future__ import annotations
 
+import importlib.util
 import math
 from collections import deque
 from collections.abc import Iterator, Mapping
@@ -186,6 +187,11 @@ def featurize_flow(flow: Mapping[str, Any]) -> np.ndarray:
 def flow_from_nfstream(obj: Any) -> dict[str, Any]:
     """Copy the nfstream attributes this module reads from an NFlow object into a dict."""
     return {key: getattr(obj, key, None) for key in NFSTREAM_KEYS}
+
+
+def nfstream_available() -> bool:
+    """True when the optional nfstream package can be imported. Does not import it."""
+    return importlib.util.find_spec("nfstream") is not None
 
 
 def iter_nfstream(
