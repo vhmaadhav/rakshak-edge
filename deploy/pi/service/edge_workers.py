@@ -87,6 +87,7 @@ def llm_main(cfg: dict[str, Any], jobs: Any, store: Any, ready: Any) -> None:
             URL_MODEL_ID,
             _DetectorAdapter,
         )
+        from rbench.explainer_candidates import BASELINE
 
         root = Path(cfg["root"])
         detector_runner, llm, threshold, info = svc.load_models(
@@ -109,6 +110,8 @@ def llm_main(cfg: dict[str, Any], jobs: Any, store: Any, ready: Any) -> None:
             hinglish_mode=cfg["hinglish_mode"],
             url_scorer=url_scorer,
             url_threshold=url_threshold,
+            explainer_candidate=cfg.get("explainer_candidate", BASELINE),
+            explainer_cap=cfg.get("explainer_cap"),
         )
         info["placement"] = {"nice": int(cfg["llm_nice"]), "cpus": cfg.get("llm_cpus")}
         store["_llm"] = {"status": "ready", "pid": os.getpid(), "models": info}
@@ -503,6 +506,8 @@ def cfg_from_args(args, root: Path) -> dict[str, Any]:
         "batch_onnx": args.batch_onnx,
         "detector_only_mode": args.detector_only_mode,
         "hinglish_mode": args.hinglish_mode,
+        "explainer_candidate": args.explainer_candidate,
+        "explainer_cap": args.explainer_cap,
         "explanation_table": args.explanation_table,
         "nids_alert": args.nids_alert,
         "nids_uncertain": args.nids_uncertain,

@@ -29,4 +29,4 @@ stop_one() {
 
 stop_one "$ROOT/run/edge_bridge.pid" "relay"
 stop_one "$ROOT/run/edge_service.pid" "service"
-rm -f "$ROOT/run/edge.sock"
+rm -f "$ROOT/run/edge.sock" "$ROOT"/run/edge.sock.*

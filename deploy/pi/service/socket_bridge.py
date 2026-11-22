@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import glob
 import itertools
+import os
 import socket
 import threading
 
@@ -39,9 +40,13 @@ def _pipe(src: socket.socket, dst: socket.socket) -> None:
 
 def upstream_paths(unix_path: str) -> list[str]:
     """The service sockets to relay to: ``<unix_path>.<n>`` (one per verdict worker, sorted) when
-    they exist, otherwise ``<unix_path>`` itself."""
+    they exist, and ``<unix_path>`` itself when it exists or when nothing else does. A stale
+    ``<unix_path>.<n>`` left by a killed multi-worker service therefore cannot hide the socket of
+    a later single-worker service: the connect loop skips a path that does not accept."""
     found = sorted(glob.glob(unix_path + ".*"), key=lambda p: (len(p), p))
-    return found or [unix_path]
+    if os.path.exists(unix_path) or not found:
+        found.append(unix_path)
+    return found
 
 
 _RR = itertools.count()

@@ -7,10 +7,9 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.security.DigestInputStream
 import java.security.MessageDigest
+import org.rakshak.edge.io.moveReplacing
 import org.rakshak.edge.llm.ModelFiles
 
 /**
@@ -185,7 +184,7 @@ class ModelImporter(
                 return ImportResult.HashMismatch(expected, actual)
             }
             val target = File(targetDir, spec.fileName)
-            Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            moveReplacing(tmp.toPath(), target.toPath())
             return ImportResult.Verified(target)
         } catch (e: IOException) {
             return ImportResult.Rejected("the copy failed: ${e.message}")

@@ -4,12 +4,11 @@ import android.content.Context
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 import org.rakshak.edge.analysis.Tier
+import org.rakshak.edge.io.moveReplacing
 
 /**
  * Retention and storage policy. Defaults keep 30 days and at most 200 records, and store no
@@ -167,7 +166,7 @@ class HistoryStore(
                 out.write(bytes)
                 out.fd.sync()
             }
-            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            moveReplacing(tmp.toPath(), file.toPath())
         } finally {
             tmp.delete()
         }

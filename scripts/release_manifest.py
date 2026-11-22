@@ -226,10 +226,14 @@ def android_artifacts(registry: Path, repo: Path) -> list[dict[str, Any]]:
             for model in tomllib.load(f).get("models", []):
                 pins[model["id"]] = model
     sms_pin = pins.get(ANDROID_SMS_REGISTRY_ID, {})
+    # Resolve the asset paths under the repo that was asked for, not the checkout this script is in.
+    assets = repo / ANDROID_ASSETS.relative_to(REPO)
+    sms_asset = assets / ANDROID_SMS_ASSET.name
+    json_dir = assets / ANDROID_JSON_DIR.name
     out = [
         artifact_record(
             name="android_sms_student",
-            path=ANDROID_SMS_ASSET,
+            path=sms_asset,
             repo=repo,
             device="android",
             modality="sms",
@@ -237,7 +241,7 @@ def android_artifacts(registry: Path, repo: Path) -> list[dict[str, Any]]:
             pinned_bytes=sms_pin.get("bytes"),
         )
     ]
-    json_files = sorted(ANDROID_JSON_DIR.glob("*.json")) if ANDROID_JSON_DIR.is_dir() else []
+    json_files = sorted(json_dir.glob("*.json")) if json_dir.is_dir() else []
     if not json_files:
         out.append(
             {
@@ -245,7 +249,7 @@ def android_artifacts(registry: Path, repo: Path) -> list[dict[str, Any]]:
                 "role": "data",
                 "device": "android",
                 "modality": "data",
-                "path": display_path(ANDROID_JSON_DIR, repo),
+                "path": display_path(json_dir, repo),
                 "status": "missing",
                 "sha256": None,
                 "bytes": None,

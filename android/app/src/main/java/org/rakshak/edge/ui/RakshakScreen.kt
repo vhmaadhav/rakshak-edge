@@ -322,7 +322,7 @@ private fun RakshakContent(engine: Engine, shared: SharedMessage?) {
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Header()
-            StatusChips(offline = offline)
+            StatusChips(offline = offline, permissionsKnown = permissions != null)
             when (selectedTab) {
                 TAB_HOME -> HomeTab(
                     history = history,
@@ -425,7 +425,7 @@ private fun Header() {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StatusChips(offline: Boolean) {
+private fun StatusChips(offline: Boolean, permissionsKnown: Boolean) {
     val c = LocalRakshakColors.current
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -433,6 +433,8 @@ private fun StatusChips(offline: Boolean) {
     ) {
         if (offline) {
             Chip("● OFFLINE", c.low)
+        } else if (!permissionsKnown) {
+            Chip("Permissions could not be read", c.muted)
         } else {
             Chip("INTERNET permission requested", c.medium)
         }

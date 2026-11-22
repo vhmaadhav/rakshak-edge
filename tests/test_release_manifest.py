@@ -251,3 +251,16 @@ def test_usage_error_when_nothing_to_record(tmp_path: Path) -> None:
     assert (
         rm.main(["--repo", str(tmp_path), "--no-discover", "--out-dir", str(tmp_path / "o")]) == 2
     )
+
+
+def test_android_artifacts_read_the_repo_that_was_asked_for(tmp_path: Path) -> None:
+    """--repo must point the Android asset lookup at that checkout, not at this one."""
+    assets = tmp_path / "android" / "app" / "src" / "main" / "assets"
+    model = write(assets / "sms_student.onnx", b"model-bytes")
+    data = write(assets / "rakshak" / "brands.json", b"{}")
+    records = rm.android_artifacts(tmp_path / "no_registry.toml", tmp_path)
+    by_name = {r["name"]: r for r in records}
+    assert by_name["android_sms_student"]["sha256"] == sha(b"model-bytes")
+    assert by_name["android_sms_student"]["path"] == model.relative_to(tmp_path).as_posix()
+    assert by_name["android_brands"]["sha256"] == sha(b"{}")
+    assert by_name["android_brands"]["path"] == data.relative_to(tmp_path).as_posix()
