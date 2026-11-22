@@ -33,6 +33,7 @@ from edge_decision import (  # noqa: F401 - scam_state_for and detector_only_pac
     url_model_active,
 )
 from explanation_table import ExplanationTable, table_gen
+from rbench.explainer_candidates import BASELINE, CANDIDATES, run_explainer
 from rbench.slot import HINGLISH_LANG, SLOT_MAX_NEW_TOKENS, generate_slot_advisory
 
 from rakshak.canonicalize import canonicalize
@@ -189,6 +190,8 @@ class EdgeAnalyzer:
         url_scorer: UrlScorer | None = None,
         url_threshold: float | None = None,
         explanation_table: ExplanationTable | None = None,
+        explainer_candidate: str = BASELINE,
+        explainer_cap: int | None = None,
     ) -> None:
         """``url_scorer`` and ``url_threshold`` together turn the URL model on. With either one
         None (the registry has no threshold for url_student) the URL path is off and the
@@ -201,6 +204,11 @@ class EdgeAnalyzer:
             raise ValueError(
                 f"hinglish_mode must be one of {HINGLISH_MODES}, got {hinglish_mode!r}"
             )
+        if explainer_candidate not in CANDIDATES:
+            raise ValueError(f"explainer_candidate must be one of {list(CANDIDATES)}")
+        # The explainer candidate applies to English only. Hinglish keeps the shipped path.
+        self.explainer_candidate = explainer_candidate
+        self.explainer_cap = explainer_cap
         self.detector = detector
         self.llm = llm
         self.threshold = float(threshold)
@@ -290,6 +298,14 @@ class EdgeAnalyzer:
         lang = d.lang_route
         if lang == HINGLISH_LANG and self.hinglish_mode == "template":
             return template_gen(llm_package, lang)
+        if lang != HINGLISH_LANG and self.explainer_candidate != BASELINE:
+            return run_explainer(
+                self.llm,
+                llm_package,
+                lang,
+                candidate=self.explainer_candidate,
+                cap=self.explainer_cap,
+            )
         return generate_slot_advisory(
             self.llm,
             llm_package,

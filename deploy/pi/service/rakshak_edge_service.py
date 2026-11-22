@@ -61,6 +61,7 @@ from edge_decision import (  # noqa: E402
     URL_EVIDENCE_MODE,
 )
 from edge_device import EnergyWindow, read_snapshot  # noqa: E402
+from rbench.explainer_candidates import BASELINE, CANDIDATES  # noqa: E402
 from edge_pipeline import (  # noqa: E402
     DEFAULT_HINGLISH_MODE,
     HINGLISH_MODES,
@@ -1144,6 +1145,21 @@ def main(argv: list[str] | None = None) -> int:
         "explainer sentence is a background job. Env RAKSHAK_EXPLANATION_TABLE.",
     )
     p.add_argument(
+        "--explainer-candidate",
+        choices=list(CANDIDATES),
+        default=os.environ.get("RAKSHAK_EXPLAINER_CANDIDATE", BASELINE),
+        help="English explainer path: baseline (shipped) or a speed candidate from "
+        "docs/EXPLAINER_SPEED_PLAN.md. Not the default unless docs/EXPLAINER_SPEED_RESULTS.md "
+        "says the gates passed. Env RAKSHAK_EXPLAINER_CANDIDATE.",
+    )
+    p.add_argument(
+        "--explainer-cap",
+        type=_non_negative_int,
+        default=None,
+        help="per-call token cap for the candidate (tight caps are set from the baseline, see "
+        "docs/EXPLAINER_SPEED_RESULTS.md); unset uses the candidate's own cap.",
+    )
+    p.add_argument(
         "--explainer-cache",
         type=_non_negative_int,
         default=_env_cache_default(),
@@ -1233,6 +1249,8 @@ def main(argv: list[str] | None = None) -> int:
         url_scorer=url_scorer,
         url_threshold=url_threshold,
         explanation_table=table,
+        explainer_candidate=args.explainer_candidate,
+        explainer_cap=args.explainer_cap,
     )
     try:
         nids_scorer, nids_info = load_nids(root)

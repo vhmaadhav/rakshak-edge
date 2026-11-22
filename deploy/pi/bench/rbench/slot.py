@@ -73,6 +73,12 @@ HINGLISH_SYSTEM = (
 HINGLISH_PREFIX = "Yeh message"  # assistant prefix for the Hinglish explainer
 # The lead of a clean point, by language. strip_echo and the echo tests use it.
 POINT_LEAD = {"en": "This message ", "hinglish": "Yeh message "}
+# Explainer speed candidates (docs/EXPLAINER_SPEED_PLAN.md). The length rule sits in the system
+# turn, so it is part of the reused prefix and costs no newly prefilled tokens per call.
+DESCRIBE_SHORT_SYSTEM = DESCRIBE_SYSTEM.replace(
+    "Output only the sentence.", "Keep it under 15 words. Output only the sentence."
+)
+DEFAULT_USER_SUFFIX = "Write the sentence for this fact."
 PROMPT_VARIANTS: dict[str, dict[str, Any]] = {
     # prefix "This message"; describe system text
     "describe": {"system": DESCRIBE_SYSTEM, "keyword": False},
@@ -80,6 +86,10 @@ PROMPT_VARIANTS: dict[str, dict[str, Any]] = {
     "describe_kw": {"system": DESCRIBE_SYSTEM, "keyword": True},
     # prefix "This message"; shorter restate-only system text
     "describe_plain": {"system": PLAIN_SYSTEM, "keyword": False},
+    # candidate C1: describe_kw with the length rule in the system turn
+    "describe_kw_short": {"system": DESCRIBE_SHORT_SYSTEM, "keyword": True},
+    # candidate C3: describe_kw_short with the trailing instruction removed from the user turn
+    "describe_kw_trim": {"system": DESCRIBE_SHORT_SYSTEM, "keyword": True, "suffix": ""},
 }
 # slot_kw: a shorter system text, because the keyword prefix adds tokens to the same prompt budget.
 SLOT_KW_SYSTEM = (
@@ -159,7 +169,8 @@ def variant_prompt(evidence, variant: str, lang: str = SLOT_LANG) -> tuple[str, 
     if lang != SLOT_LANG:
         raise ValueError("slot mode is English only")
     prefix = variant_prefix(evidence, variant, lang)
-    user = f"FACT: {fact_text(evidence, lang)}\n\nWrite the sentence for this fact."
+    suffix = PROMPT_VARIANTS[variant].get("suffix", DEFAULT_USER_SUFFIX)
+    user = f"FACT: {fact_text(evidence, lang)}" + (f"\n\n{suffix}" if suffix else "")
     return prefix, _chat(PROMPT_VARIANTS[variant]["system"], user, prefix)
 
 
@@ -348,11 +359,53 @@ def generate_slot_advisory(
                 "decode_tok_s": timing.get("decode_tok_s"),
                 "wall_ms": timing.get("wall_ms"),
                 "stop_hit": timing.get("stop_hit"),
+                "forward_calls": timing.get("forward_calls"),
+                "decode_forwards": timing.get("decode_forwards"),
+                "prefix_forward": timing.get("prefix_forward"),
+                "prefix_tokens": timing.get("prefix_tokens"),
+                "stop_reason": timing.get("stop_reason"),
                 "generated": generated,
                 "status": status,
                 "cached": bool(timing.get("cached", False)),
             }
         )
+    return _finish_points(
+        package,
+        lang,
+        risk,
+        raw_points,
+        statuses,
+        calls,
+        prefixes,
+        mode=(
+            HINGLISH_LANG
+            if lang == HINGLISH_LANG
+            else variant
+            if variant is not None
+            else ("slot_kw" if keyword_prefix else "slot")
+        ),
+        cleanup=cleanup,
+    )
+
+
+def _finish_points(
+    package: EvidencePackage,
+    lang: str,
+    risk: Any,
+    raw_points: list[str],
+    statuses: list[str],
+    calls: list[dict[str, Any]],
+    prefixes: list[str],
+    *,
+    mode: str,
+    cleanup: bool,
+) -> dict[str, Any]:
+    """Cleanup, assembly, scoring and the template fallback for one advisory's point sentences.
+
+    Shared by the per-item path (generate_slot_advisory) and the batched candidate
+    (rbench.explainer_candidates), so both are checked by the same verifier and fallback.
+    ``raw_points[i]`` is the model's sentence for evidence item i, or "" when it was rejected.
+    """
     cleanup_rec: list[dict[str, Any]] | None = None
     if cleanup:
         cleanup_rec = [
@@ -400,13 +453,7 @@ def generate_slot_advisory(
         "output": final_output,
         "adv": adv,
         "calls": calls,
-        "mode": (
-            HINGLISH_LANG
-            if lang == HINGLISH_LANG
-            else variant
-            if variant is not None
-            else ("slot_kw" if keyword_prefix else "slot")
-        ),
+        "mode": mode,
         "skipped": False,
         "prefixes": prefixes,
         "point_checks": point_checks,
