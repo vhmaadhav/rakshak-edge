@@ -14,6 +14,8 @@ It only relays bytes between loopback and the socket. It makes no outbound conne
 from __future__ import annotations
 
 import argparse
+import glob
+import itertools
 import socket
 import threading
 
@@ -35,13 +37,40 @@ def _pipe(src: socket.socket, dst: socket.socket) -> None:
                 pass
 
 
+def upstream_paths(unix_path: str) -> list[str]:
+    """The service sockets to relay to: ``<unix_path>.<n>`` (one per verdict worker, sorted) when
+    they exist, otherwise ``<unix_path>`` itself."""
+    found = sorted(glob.glob(unix_path + ".*"), key=lambda p: (len(p), p))
+    return found or [unix_path]
+
+
+_RR = itertools.count()
+_RR_LOCK = threading.Lock()
+
+
+def _connect(unix_path: str) -> socket.socket | None:
+    """A connection to the next socket in round-robin order; the others are tried in turn when a
+    worker's socket does not accept (for example a worker that is restarting)."""
+    paths = upstream_paths(unix_path)
+    with _RR_LOCK:
+        start = next(_RR)
+    for k in range(len(paths)):
+        path = paths[(start + k) % len(paths)]
+        upstream = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            upstream.connect(path)
+            return upstream
+        except OSError:
+            upstream.close()
+    return None
+
+
 def _handle(client: socket.socket, unix_path: str) -> None:
-    upstream = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    try:
-        upstream.connect(unix_path)
-    except OSError:
+    # Small responses must not wait for Nagle: the relay forwards each chunk as it arrives.
+    client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    upstream = _connect(unix_path)
+    if upstream is None:
         client.close()
-        upstream.close()
         return
     back = threading.Thread(target=_pipe, args=(upstream, client), daemon=True)
     back.start()
@@ -55,6 +84,7 @@ def serve(host: str, port: int, unix_path: str) -> None:
     if host not in ("127.0.0.1", "localhost"):
         raise SystemExit("socket_bridge: listen on loopback only")
     listener = socket.create_server((host, port))
+    # Keep-alive clients reuse one connection per session, so the relay thread is per connection.
     try:
         while True:
             client, _ = listener.accept()

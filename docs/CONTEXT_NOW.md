@@ -1,5 +1,7 @@
 # Rakshak-Edge: where things stand (2026-11-15)
 
+Fast-inference work (verdict-first, explanation table, Pi numbers): see docs/PERF_FAST_INFERENCE.md.
+
 Pulled from the local repo, GitHub, Kaggle, HF and agent-wire. Nothing was changed while gathering this.
 **Phase 1 is due 2026-11-23 (8 days).** Phase 2 is 2027-02-05; finals are 2027-02-15/16.
 

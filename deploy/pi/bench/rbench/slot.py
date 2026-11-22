@@ -238,7 +238,17 @@ def duplicate_points(points: list[str]) -> list[int | None]:
         dup_of = None
         if norm:
             for j, prev in kept:
-                if norm == prev or difflib.SequenceMatcher(None, norm, prev).ratio() >= _DUP_RATIO:
+                if norm == prev:
+                    dup_of = j
+                    break
+                # ratio() <= quick_ratio() <= real_quick_ratio(): a bound below the threshold
+                # rules the pair out without the full matching, and the answer is the same.
+                sm = difflib.SequenceMatcher(None, norm, prev)
+                if (
+                    sm.real_quick_ratio() >= _DUP_RATIO
+                    and sm.quick_ratio() >= _DUP_RATIO
+                    and sm.ratio() >= _DUP_RATIO
+                ):
                     dup_of = j
                     break
             if dup_of is None:

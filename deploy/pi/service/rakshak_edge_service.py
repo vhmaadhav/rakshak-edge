@@ -18,7 +18,9 @@ and latency benchmarks must use 0 (docs/EDGE_PIPELINE.md, "Explainer cache").
 since 2026-11-11; ``runner`` is the previous TextLLMRunner path, kept for comparison
 (docs/EDGE_PIPELINE.md, "Prefix reuse (direct runner)").
 
-Stdlib HTTP on 127.0.0.1 only. Requests run one at a time (a lock). Before each request the
+Stdlib HTTP on 127.0.0.1 only. In sync mode requests run one at a time (a lock). In
+verdict_first mode the verdict path takes no lock and the explainer runs as a background job under
+that lock (--response-mode, --explanation-table, POST /analyze_batch, GET /explanation/<id>). Before each request the
 SoC temperature is read: at or above ``--temp-limit`` (75 C) the service answers 503 "cooling" and
 does not run the explainer. Each request is logged as one JSON line (stderr and ``--log``).
 
@@ -38,6 +40,8 @@ import threading
 import time
 import traceback
 import uuid
+from collections import OrderedDict
+from concurrent import futures as cf
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -77,6 +81,16 @@ from nids_pipeline import (  # noqa: E402
 
 DEFAULT_PORT = 8770
 DEFAULT_HOST = "127.0.0.1"
+# Response mode (docs/EDGE_PIPELINE.md, "Verdict first"). sync: /analyze returns the verdict and
+# the explainer text together, after the LLM (the default; unchanged). verdict_first: /analyze
+# returns the verdict at once and the explainer text is a table lookup or a background job,
+# read from GET /explanation/<id>.
+RESPONSE_MODES = ("sync", "verdict_first")
+DEFAULT_RESPONSE_MODE = "sync"
+VERDICT_DEVICE_TTL_S = 1.0  # verdict path: temperature re-read at most this often
+MAX_BATCH = 1024  # messages per POST /analyze_batch (answered in chunks of BATCH_CHUNK)
+BATCH_CHUNK = 128
+EXPLANATIONS_KEPT = 4096  # finished explanations kept for GET /explanation/<id>
 EGRESS_PROBE = ("1.1.1.1", 443)
 DEFAULT_TEMP_LIMIT = 75.0
 MAX_SMS_CHARS = 2000
@@ -144,7 +158,20 @@ class Service:
         explainer_cache: Any | None = None,
         llm_runner: str = "runner",
         url_check: Any | None = None,
+        response_mode: str = DEFAULT_RESPONSE_MODE,
+        jobs: Any | None = None,
+        store: Any | None = None,
+        verdict_device_fn=None,
+        device_ttl: float = VERDICT_DEVICE_TTL_S,
     ) -> None:
+        """``jobs`` and ``store`` (verdict-first, edge_workers.py): explainer jobs go to the one
+        process that holds the LLM, and finished explanations are read from ``store`` (a mapping
+        shared with that process). Without them the explainer runs in this process, as before."""
+        if response_mode not in RESPONSE_MODES:
+            raise ValueError(
+                f"response_mode must be one of {RESPONSE_MODES}, got {response_mode!r}"
+            )
+        self.response_mode = response_mode
         self.analyzer = analyzer
         self.nids = nids
         self.url_check = url_check
@@ -159,20 +186,46 @@ class Service:
         self.device_fn = device_fn
         self.energy_factory = energy_factory
         self.clock = clock
-        self.lock = threading.Lock()
+        self.jobs = jobs
+        self.store = store
+        # The verdict path reads the SoC temperature (the cooling check) at most once per
+        # ``device_ttl`` seconds: the full snapshot costs three vcgencmd subprocesses, about 30 ms,
+        # and that was the whole HTTP overhead of round 1. The sync path still reads everything.
+        if verdict_device_fn is None:
+            if device_fn is read_snapshot:  # the default: temperature only, see above
+                verdict_device_fn = lambda: read_snapshot(  # noqa: E731
+                    throttled_fn=lambda: None, power_fn=lambda: None
+                )
+            else:  # a caller's own device reader is used as it is
+                verdict_device_fn = device_fn
+        self.verdict_device_fn = verdict_device_fn
+        self.device_ttl = float(device_ttl)
+        self._device_cache: tuple[float, dict[str, Any]] | None = None
+        self._device_lock = threading.Lock()
+        self.lock = threading.Lock()  # the LLM, and the sync path: one explainer at a time
+        self._stats_lock = threading.Lock()
+        self._explanations_lock = threading.Lock()
+        self._explanations: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self._explain_pool = cf.ThreadPoolExecutor(max_workers=1, thread_name_prefix="explain")
+        self._explain_futures: list[cf.Future] = []
         self.started = clock()
         self.network: dict[str, Any] = {}
         self.requests = 0
         self.refused = 0
         self._log_lock = threading.Lock()
+        # One handle for the life of the process (opening the file per line cost a syscall round
+        # trip per message). Line-buffered, so each record is on disk when its request returns.
+        self._log_handle = (
+            open(self.log_path, "a", encoding="utf-8", buffering=1) if log_path else None
+        )
 
     def _log(self, record: dict[str, Any]) -> None:
         line = json.dumps(record, ensure_ascii=False, sort_keys=True)
-        if self.log_path is None:
+        if self._log_handle is None:
             print(line, file=sys.stderr, flush=True)
             return
-        with self._log_lock, open(self.log_path, "a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
+        with self._log_lock:
+            self._log_handle.write(line + "\n")
 
     def health(self) -> dict[str, Any]:
         return {
@@ -191,7 +244,14 @@ class Service:
                 "evidence_visible": self.detector_only_mode == URL_EVIDENCE_MODE,
             },
             "hinglish_mode": self.hinglish_mode,
+            "response_mode": self.response_mode,
+            "explanation_table": (
+                self.analyzer.explanation_table.stats()
+                if getattr(self.analyzer, "explanation_table", None) is not None
+                else None
+            ),
             "llm_runner": self.llm_runner,
+            "llm": self.store.get("_llm") if self.store is not None else None,
             "requests": self.requests,
             "refused_cooling": self.refused,
             "rss_mb": rss_mb(),
@@ -258,6 +318,195 @@ class Service:
                 }
             )
             return 200, body
+
+    # ------------------------------------------------------- verdict-first path
+    def _verdict_device(self) -> dict[str, Any]:
+        """The device snapshot for the verdict path: a cached temperature (see __init__)."""
+        now = time.monotonic()
+        with self._device_lock:
+            if self._device_cache is None or now - self._device_cache[0] >= self.device_ttl:
+                self._device_cache = (now, self.verdict_device_fn())
+            return dict(self._device_cache[1])
+
+    def analyse_verdict(self, text: str, lang: str = "auto") -> tuple[int, dict[str, Any]]:
+        """POST /analyze in verdict-first mode. The verdict is returned without the LLM. The
+        explainer text is in the answer when a table covers the message, and otherwise comes from
+        a background job (``explanation.status`` is "pending", read it at GET /explanation/<id>).
+        The verdict path takes no lock; only the explainer does."""
+        request_id = uuid.uuid4().hex[:12]
+        start = self._verdict_device()
+        t0 = time.perf_counter()
+        result, pending = self.analyzer.analyse_verdict(text, lang=lang)
+        body = self._verdict_item(request_id, len(text), result, pending, start, t0)
+        return 200, body
+
+    def analyse_batch(self, texts: list[str], lang: str = "auto") -> tuple[int, dict[str, Any]]:
+        """POST /analyze_batch: N messages in one detector call. Each item is a verdict-first
+        result (see analyse_verdict) and equals the single-message result."""
+        request_id = uuid.uuid4().hex[:12]
+        start = self._verdict_device()
+        t0 = time.perf_counter()
+        items = []
+        for c0 in range(0, len(texts), BATCH_CHUNK):
+            chunk = texts[c0 : c0 + BATCH_CHUNK]
+            pairs = self.analyzer.analyse_verdict_batch(chunk, lang=lang)
+            for j, (text, (result, pending)) in enumerate(zip(chunk, pairs, strict=True)):
+                i = c0 + j
+                item = self._verdict_item(
+                    f"{request_id}-{i}", len(text), result, pending, None, None, log=False
+                )
+                item["index"] = i
+                items.append(item)
+        wall_ms = round((time.perf_counter() - t0) * 1000.0, 3)
+        with self._stats_lock:
+            self.requests += len(texts)
+        self._log(
+            {
+                "event": "analyse_batch",
+                "request_id": request_id,
+                "ts": round(self.clock(), 3),
+                "count": len(texts),
+                "wall_ms": wall_ms,
+                "temp_start_c": start.get("temp_c"),
+            }
+        )
+        return 200, {
+            "request_id": request_id,
+            "count": len(items),
+            "items": items,
+            "wall_ms": wall_ms,
+            "device": {"start": start, "rss_mb": rss_mb(), "rss_peak_mb": rss_mb("VmHWM")},
+        }
+
+    def _verdict_item(
+        self,
+        request_id: str,
+        input_chars: int,
+        result: dict[str, Any],
+        pending: Any,
+        start: dict[str, Any] | None,
+        t0: float | None,
+        *,
+        log: bool = True,
+    ) -> dict[str, Any]:
+        explanation = self._schedule_explanation(request_id, pending, start)
+        wall_ms = None if t0 is None else round((time.perf_counter() - t0) * 1000.0, 3)
+        with self._stats_lock:
+            self.requests += 1
+        body = {
+            "request_id": request_id,
+            "input_chars": input_chars,
+            **result,
+            "explanation": explanation,
+            "wall_ms": wall_ms,
+        }
+        if start is not None:
+            body["device"] = {"start": start, "rss_mb": rss_mb(), "rss_peak_mb": rss_mb("VmHWM")}
+        if not log:
+            return body
+        self._log(
+            {
+                "event": "analyse_verdict",
+                "request_id": request_id,
+                "ts": round(self.clock(), 3),
+                "risk": result["decision"]["risk"],
+                "action": result["decision"]["action"],
+                "mode": result["advisory"]["mode"],
+                "path": result["advisory"].get("path"),
+                "detector_only": result["decision"].get("detector_only"),
+                "lang": result["advisory"].get("lang"),
+                "total_ms": result["timings_ms"]["total"],
+                "explanation": explanation["status"],
+                "wall_ms": wall_ms,
+            }
+        )
+        return body
+
+    def _schedule_explanation(
+        self, request_id: str, pending: Any, start: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        """ready when the answer is final; pending with an id when the explainer job is queued;
+        refused_cooling when the SoC is at the limit (the explainer does not run)."""
+        if pending is None:
+            return {"status": "ready", "id": None}
+        temp = (start or {}).get("temp_c")
+        if temp is not None and temp >= self.temp_limit:
+            with self._stats_lock:
+                self.refused += 1
+            self._log(
+                {
+                    "event": "refused_cooling",
+                    "request_id": request_id,
+                    "temp_c": temp,
+                    "limit_c": self.temp_limit,
+                    "ts": round(self.clock(), 3),
+                }
+            )
+            return {"status": "refused_cooling", "id": None}
+        eid = uuid.uuid4().hex[:16]
+        if self.jobs is not None:
+            # The explainer process holds the LLM: it recomputes the message and writes the entry.
+            self.store[eid] = {"status": "pending", "queued_at": time.time()}
+            self.jobs.put((eid, pending.text, pending.lang_route))
+            return {"status": "pending", "id": eid, "url": f"/explanation/{eid}"}
+        with self._explanations_lock:
+            self._explanations[eid] = {"status": "pending"}
+            while len(self._explanations) > EXPLANATIONS_KEPT:
+                self._explanations.popitem(last=False)
+            self._explain_futures = [f for f in self._explain_futures if not f.done()]
+            self._explain_futures.append(
+                self._explain_pool.submit(self._run_explanation, eid, pending)
+            )
+        return {"status": "pending", "id": eid, "url": f"/explanation/{eid}"}
+
+    def _run_explanation(self, eid: str, pending: Any) -> None:
+        """The background explainer job. It holds self.lock, so the LLM is never used by two
+        requests at once; the verdict path does not wait for it."""
+        try:
+            with self.lock:
+                t0 = time.perf_counter()
+                full = self.analyzer.explain_pending(pending)
+                wall_ms = round((time.perf_counter() - t0) * 1000.0, 3)
+            entry: dict[str, Any] = {
+                "status": "ready",
+                "advisory": full["advisory"],
+                "verifier": full["verifier"],
+                "llm_calls": full["llm_calls"],
+                "timings_ms": full["timings_ms"],
+                "wall_ms": wall_ms,
+            }
+        except Exception as exc:  # noqa: BLE001 - keep serving; the caller sees status error
+            self._log({"event": "error", "explanation_id": eid, "error": repr(exc)})
+            entry = {"status": "error", "detail": str(exc)}
+        with self._explanations_lock:
+            if eid in self._explanations:
+                self._explanations[eid] = entry
+
+    def explanation(self, eid: str, wait: float = 0.0) -> tuple[int, dict[str, Any]]:
+        """GET /explanation/<id>. ``wait`` (seconds, query ``?wait=``) holds the answer until the
+        job has finished, for benchmarks; the default answers at once."""
+        if self.store is not None:
+            entry = self.store.get(eid)
+            deadline = time.monotonic() + max(0.0, min(wait, 900.0))
+            while (
+                entry is not None
+                and entry.get("status") == "pending"
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.02)
+                entry = self.store.get(eid)
+            if entry is None:
+                return 404, {"error": "unknown or expired explanation id", "id": eid}
+            return 200, {"id": eid, **entry}
+        with self._explanations_lock:
+            entry = self._explanations.get(eid)
+            if entry is None:
+                return 404, {"error": "unknown or expired explanation id", "id": eid}
+            return 200, {"id": eid, **entry}
+
+    def wait_explanations(self) -> None:
+        """Block until every queued explainer job has finished (tests and benchmarks)."""
+        cf.wait(list(self._explain_futures))
 
     def _cooling_refusal(self, request_id: str, start: dict[str, Any]) -> tuple[int, dict] | None:
         """503 "cooling" when the SoC is at or above the limit (the caller holds the lock)."""
@@ -386,12 +635,38 @@ class Service:
             return 200, body
 
 
+def tcp_nodelay(sock: socket.socket) -> None:
+    """Turn off Nagle on a TCP connection. A Unix socket has no such option; that is ignored."""
+    try:
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    except OSError:
+        pass
+
+
 def make_handler(service: Service, index_html: bytes):
     class Handler(BaseHTTPRequestHandler):
         server_version = "rakshak-edge/1"
+        # Keep-alive: one connection serves many requests (HTTP/1.0 closed it after every reply,
+        # and each request paid a new connect, a new relay thread and a new Unix connect).
+        protocol_version = "HTTP/1.1"
+        # Buffered writer: headers and body leave in one write, flushed after the request. Two
+        # unbuffered writes let Nagle hold the body until the client's delayed ACK (about 40 ms).
+        wbufsize = -1
+
+        def setup(self):
+            super().setup()
+            tcp_nodelay(self.connection)
 
         def log_message(self, fmt, *args):  # keep stderr for the JSON lines only
             return
+
+        def _drain(self) -> bytes:
+            """Read the request body (Content-Length) so the connection stays in step."""
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            return self.rfile.read(length) if length > 0 else b""
 
         def _send(self, status: int, body: bytes, ctype: str) -> None:
             self.send_response(status)
@@ -414,6 +689,17 @@ def make_handler(service: Service, index_html: bytes):
                 self._send(200, index_html, "text/html; charset=utf-8")
             elif path == "/health":
                 self._json(200, service.health())
+            elif path.startswith("/explanation/"):
+                wait = 0.0
+                query = self.path.partition("?")[2]
+                for part in query.split("&"):
+                    if part.startswith("wait="):
+                        try:
+                            wait = float(part[len("wait=") :])
+                        except ValueError:
+                            wait = 0.0
+                status, doc = service.explanation(path[len("/explanation/") :], wait)
+                self._json(status, doc)
             else:
                 self._json(404, {"error": "not found"})
 
@@ -425,12 +711,15 @@ def make_handler(service: Service, index_html: bytes):
             if route == "/analyze_url":
                 self._analyse_url()
                 return
+            if route == "/analyze_batch":
+                self._analyse_batch()
+                return
             if route != "/analyze":
+                self._drain()
                 self._json(404, {"error": "not found"})
                 return
             try:
-                length = int(self.headers.get("Content-Length") or 0)
-                raw = self.rfile.read(length) if length > 0 else b""
+                raw = self._drain()
                 doc = json.loads(raw.decode("utf-8") or "{}")
             except (ValueError, UnicodeDecodeError):
                 self._json(400, {"error": "body must be JSON"})
@@ -447,7 +736,10 @@ def make_handler(service: Service, index_html: bytes):
                 self._json(400, {"error": f"field 'lang' must be one of {list(LANG_REQUESTS)}"})
                 return
             try:
-                status, body = service.analyse(sms, lang=lang)
+                if service.response_mode == "verdict_first":
+                    status, body = service.analyse_verdict(sms, lang=lang)
+                else:
+                    status, body = service.analyse(sms, lang=lang)
             except Exception as exc:  # noqa: BLE001 - report, keep serving
                 service._log(
                     {"event": "error", "error": repr(exc), "trace": traceback.format_exc(limit=6)}
@@ -456,10 +748,44 @@ def make_handler(service: Service, index_html: bytes):
                 return
             self._json(status, body)
 
+        def _analyse_batch(self) -> None:
+            try:
+                raw = self._drain()
+                doc = json.loads(raw.decode("utf-8") or "{}")
+            except (ValueError, UnicodeDecodeError):
+                self._json(400, {"error": "body must be JSON"})
+                return
+            texts = doc.get("sms") if isinstance(doc, dict) else None
+            if (
+                not isinstance(texts, list)
+                or not 1 <= len(texts) <= MAX_BATCH
+                or not all(isinstance(t, str) and t.strip() for t in texts)
+            ):
+                self._json(
+                    400,
+                    {"error": f"field 'sms' must be a list of 1 to {MAX_BATCH} non-empty strings"},
+                )
+                return
+            if any(len(t) > MAX_SMS_CHARS for t in texts):
+                self._json(400, {"error": f"sms is longer than {MAX_SMS_CHARS} characters"})
+                return
+            lang = doc.get("lang", "auto")
+            if lang not in LANG_REQUESTS:
+                self._json(400, {"error": f"field 'lang' must be one of {list(LANG_REQUESTS)}"})
+                return
+            try:
+                status, body = service.analyse_batch(texts, lang=lang)
+            except Exception as exc:  # noqa: BLE001 - report, keep serving
+                service._log(
+                    {"event": "error", "error": repr(exc), "trace": traceback.format_exc(limit=6)}
+                )
+                self._json(500, {"error": "batch analysis failed", "detail": str(exc)})
+                return
+            self._json(status, body)
+
         def _analyse_url(self) -> None:
             try:
-                length = int(self.headers.get("Content-Length") or 0)
-                raw = self.rfile.read(length) if length > 0 else b""
+                raw = self._drain()
                 doc = json.loads(raw.decode("utf-8") or "{}")
             except (ValueError, UnicodeDecodeError):
                 self._json(400, {"error": "body must be JSON"})
@@ -484,9 +810,11 @@ def make_handler(service: Service, index_html: bytes):
         def _analyse_flows(self) -> None:
             length = int(self.headers.get("Content-Length") or 0)
             if length <= 0:
+                self.close_connection = True
                 self._json(411, {"error": "Content-Length is required (pcap or JSON body)"})
                 return
             if length > MAX_BODY_BYTES:
+                self.close_connection = True  # the body is not read, so the connection ends here
                 self._json(413, {"error": f"body is larger than {MAX_BODY_BYTES} bytes"})
                 return
             raw = self.rfile.read(length)
@@ -506,10 +834,21 @@ def make_handler(service: Service, index_html: bytes):
     return Handler
 
 
-def serve(service: Service, host: str, port: int, index_html: bytes) -> ThreadingHTTPServer:
+class ReusePortHTTPServer(ThreadingHTTPServer):
+    """A TCP server whose port several worker processes can share (SO_REUSEPORT): the kernel
+    spreads new connections across the processes that listen on it."""
+
+    allow_reuse_port = True
+    daemon_threads = True
+
+
+def serve(
+    service: Service, host: str, port: int, index_html: bytes, *, reuse_port: bool = False
+) -> ThreadingHTTPServer:
     if host not in ("127.0.0.1", "::1", "localhost"):
         raise SystemExit("refusing to bind a non-loopback address; the service is local only")
-    server = ThreadingHTTPServer((host, port), make_handler(service, index_html))
+    cls = ReusePortHTTPServer if reuse_port else ThreadingHTTPServer
+    server = cls((host, port), make_handler(service, index_html))
     server.daemon_threads = True
     return server
 
@@ -646,15 +985,61 @@ def load_models(
 
 
 class _DetectorAdapter:
-    """Wraps rbench's SmsRunner as the pipeline's Detector (probability of scam)."""
+    """Wraps rbench's SmsRunner as the pipeline's Detector (probability of scam).
 
-    def __init__(self, runner) -> None:
+    ``batch_onnx`` False (default): a batch is featurised once, then each row runs through ONNX
+    on its own. A batched session.run is not bit-identical to single-row runs (float32 accumulation
+    order differs by about 1e-7 on the stand-in model), and that can move a score across the
+    threshold. True: one session.run for the whole batch (--batch-onnx), for use after the
+    real-model flip check has passed.
+    """
+
+    def __init__(self, runner, batch_onnx: bool = False) -> None:
         self.runner = runner
+        self.batch_onnx = bool(batch_onnx)
 
     def score(self, text: str) -> float:
         feed = self.runner.make_feed({"text": text})
         prob, _logit = self.runner.score(self.runner.run(feed))
         return float(prob)
+
+    def score_prepared(self, texts: list[str], canons: list, canon_rules: list) -> list[float]:
+        """score_many with the canonicalisation and canonical rule evidence already computed for
+        each text (the verdict path computes them once per message)."""
+        return self.score_many(texts, canons=canons, canon_rules=canon_rules)
+
+    def score_many(
+        self,
+        texts: list[str],
+        *,
+        canons: list | None = None,
+        canon_rules: list | None = None,
+    ) -> list[float]:
+        """One featurisation for the whole list. The ONNX runs: one batched run when batch_onnx,
+        otherwise one run per row (bit-identical to score)."""
+        if not texts:
+            return []
+        feed = self.runner.make_feed_batch(
+            [{"text": t} for t in texts], canons=canons, canon_rules=canon_rules
+        )
+        if self.batch_onnx:
+            return [float(p) for p in self.runner.score_batch(self.runner.run(feed))]
+        out = []
+        for i in range(len(texts)):
+            row = {name: value[i : i + 1] for name, value in feed.items()}
+            prob, _logit = self.runner.score(self.runner.run(row))
+            out.append(float(prob))
+        return out
+
+
+def _positive_int(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected an integer, got {text!r}") from exc
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be 1 or more")
+    return value
 
 
 def _non_negative_int(text: str) -> int:
@@ -738,6 +1123,27 @@ def main(argv: list[str] | None = None) -> int:
         "(the 2026-11-06 behaviour, for comparison). Env RAKSHAK_NET_MODEL_MODE.",
     )
     p.add_argument(
+        "--response-mode",
+        choices=RESPONSE_MODES,
+        default=os.environ.get("RAKSHAK_RESPONSE_MODE", DEFAULT_RESPONSE_MODE),
+        help="sync (default): /analyze waits for the explainer; verdict_first: /analyze returns "
+        "the verdict at once and the explainer comes from a table or GET /explanation/<id>. "
+        "Env RAKSHAK_RESPONSE_MODE.",
+    )
+    p.add_argument(
+        "--batch-onnx",
+        action="store_true",
+        default=os.environ.get("RAKSHAK_BATCH_ONNX", "") == "1",
+        help="score a /analyze_batch list with one ONNX run (faster; not bit-identical to single "
+        "runs, so use only after the real-model flip check). Env RAKSHAK_BATCH_ONNX=1.",
+    )
+    p.add_argument(
+        "--explanation-table",
+        default=os.environ.get("RAKSHAK_EXPLANATION_TABLE") or None,
+        help="built explanation table (deploy/pi/bench/build_explanation_table.py); absent: every "
+        "explainer sentence is a background job. Env RAKSHAK_EXPLANATION_TABLE.",
+    )
+    p.add_argument(
         "--explainer-cache",
         type=_non_negative_int,
         default=_env_cache_default(),
@@ -753,8 +1159,52 @@ def main(argv: list[str] | None = None) -> int:
         "comparison); direct-noreuse (own loop, whole prompt each call; for A/B). Env "
         "RAKSHAK_LLM_RUNNER, default direct.",
     )
+    p.add_argument(
+        "--llm-process",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="verdict_first only: run the explainer in its own process (edge_workers.py), niced "
+        "and optionally pinned. --no-llm-process keeps the explainer in the verdict process "
+        "(the round-1 layout, for comparison).",
+    )
+    p.add_argument(
+        "--workers",
+        type=_positive_int,
+        default=1,
+        help="verdict_first only: verdict processes sharing the port (SO_REUSEPORT), each with "
+        "its own detector; 1 serves in the supervisor process.",
+    )
+    p.add_argument(
+        "--onnx-threads",
+        type=_positive_int,
+        default=1,
+        help="ONNX intra-op threads of each verdict process (verdict_first; default 1).",
+    )
+    p.add_argument(
+        "--device-ttl",
+        type=float,
+        default=1.0,
+        help="verdict_first: seconds between SoC temperature reads on the verdict path (the "
+        "cooling check). Default 1.0.",
+    )
+    p.add_argument(
+        "--llm-nice",
+        type=_non_negative_int,
+        default=10,
+        help="verdict_first: nice increment of the explainer process (0 = none). Default 10.",
+    )
+    p.add_argument(
+        "--llm-cpus",
+        default=None,
+        help="verdict_first: comma-separated CPUs for the explainer process, e.g. 3 "
+        "(default: any).",
+    )
     args = p.parse_args(argv)
     root = Path(args.root)
+    if args.response_mode == "verdict_first" and args.llm_process:
+        from edge_workers import serve_verdict
+
+        return serve_verdict(args, root)
     from edge_pipeline import EdgeAnalyzer
     from explainer_cache import CachedGenerator
 
@@ -771,14 +1221,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     url_scorer, url_threshold, url_info = load_url_model(root)
     info[URL_MODEL_ID] = url_info
+    from explanation_table import ExplanationTable
+
+    table = ExplanationTable.load(args.explanation_table) if args.explanation_table else None
     analyzer = EdgeAnalyzer(
-        _DetectorAdapter(detector_runner),
+        _DetectorAdapter(detector_runner, batch_onnx=args.batch_onnx),
         explainer_cache if explainer_cache is not None else llm,
         threshold,
         detector_only_mode=args.detector_only_mode,
         hinglish_mode=args.hinglish_mode,
         url_scorer=url_scorer,
         url_threshold=url_threshold,
+        explanation_table=table,
     )
     try:
         nids_scorer, nids_info = load_nids(root)
@@ -805,6 +1259,7 @@ def main(argv: list[str] | None = None) -> int:
         explainer_cache=explainer_cache,
         llm_runner=args.llm_runner,
         url_check=lambda text: check_url(text, url_scorer, url_threshold),
+        response_mode=args.response_mode,
     )
     index_html = (HERE / "index.html").read_bytes()
     service.network = netns_report()

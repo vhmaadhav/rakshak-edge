@@ -15,7 +15,14 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from rakshak.canonicalize import Canon, canonicalize, extract_urls
-from rakshak.models.encoding import MAX_LEN, N_RULES, encode_batch, ngram_ids, rule_flags
+from rakshak.models.encoding import (
+    MAX_LEN,
+    N_RULES,
+    encode_batch,
+    ngram_ids,
+    rule_flags,
+    rule_flags_from,
+)
 
 VIEWS = ("raw", "canon")
 VARIANTS = ("raw", "canon", "dual")
@@ -103,15 +110,36 @@ def with_side_extra(fz: Featurized, extra: np.ndarray) -> Featurized:
 
 
 def featurize(texts: Sequence[str], *, buckets: int | None = None,
-              max_len: int = MAX_LEN) -> Featurized:
-    """Both views, rule flags and (when ``buckets`` is given) hashed n-grams for each message."""
+              max_len: int = MAX_LEN, canons: Sequence[Canon] | None = None,
+              canon_rules: Sequence[Sequence] | None = None,
+              raw_side: bool = True) -> Featurized:
+    """Both views, rule flags and (when ``buckets`` is given) hashed n-grams for each message.
+
+    ``canons`` and ``canon_rules`` let a caller that already canonicalised the texts and ran the
+    rules on the canonical view (for example the edge verdict path) pass them in, so each is
+    computed once per message. The results are the same as when they are computed here.
+    ``raw_side=False`` leaves ``side_raw`` at zeros: the serving path never reads it (the SMS
+    student takes only the canonical rule flags), so the raw-view rules are skipped there.
+    """
     texts = list(texts)
-    canons = [canonicalize(t) for t in texts]
-    raw_canons = [Canon(original=t, normalized=t, urls=extract_urls(t)) for t in texts]
-    side_raw = np.stack([rule_flags(c) for c in raw_canons]) if texts else np.zeros(
-        (0, N_RULES), np.float32)
-    side_canon = np.stack([rule_flags(c) for c in canons]) if texts else np.zeros(
-        (0, N_RULES), np.float32)
+    if canons is None:
+        canons = [canonicalize(t) for t in texts]
+    elif len(canons) != len(texts):
+        raise ValueError("canons and texts differ in length")
+    if canon_rules is None:
+        side_canon = np.stack([rule_flags(c) for c in canons]) if texts else np.zeros(
+            (0, N_RULES), np.float32)
+    else:
+        if len(canon_rules) != len(texts):
+            raise ValueError("canon_rules and texts differ in length")
+        side_canon = np.stack([rule_flags_from(r) for r in canon_rules]) if texts else np.zeros(
+            (0, N_RULES), np.float32)
+    if raw_side:
+        raw_canons = [Canon(original=t, normalized=t, urls=extract_urls(t)) for t in texts]
+        side_raw = np.stack([rule_flags(c) for c in raw_canons]) if texts else np.zeros(
+            (0, N_RULES), np.float32)
+    else:
+        side_raw = np.zeros((len(texts), N_RULES), np.float32)
     canon_texts = [c.normalized for c in canons]
     out = Featurized(
         texts=texts,

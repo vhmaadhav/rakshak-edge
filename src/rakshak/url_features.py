@@ -177,14 +177,17 @@ def _split(url: str) -> tuple[str, str, str, str, bool]:
     return (*_best_effort_split(url), True)
 
 
+@lru_cache(maxsize=4096)
 def _extract(host: str):
-    """tldextract result for ``host``, or None when tldextract rejects the string."""
+    """tldextract result for ``host``, or None when tldextract rejects the string. Cached: the
+    result is a pure function of the host and the extractor is fixed (no suffix-list fetch)."""
     try:
         return _EXTRACTOR(host)
     except (ValueError, UnicodeError):
         return None
 
 
+@lru_cache(maxsize=4096)
 def _registered(host: str) -> str:
     ext = _extract(host) if host else None
     return (ext.top_domain_under_public_suffix or "") if ext else ""
