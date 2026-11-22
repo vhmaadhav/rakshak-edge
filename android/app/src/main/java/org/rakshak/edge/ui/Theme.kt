@@ -11,7 +11,10 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import org.rakshak.edge.analysis.Tier
 
-/** Semantic colours from the flash UI design brief, beyond what a Material colour scheme holds. */
+/**
+ * Semantic colours for the v2 graphite theme. One signature accent (indigo). Cyan is reserved
+ * for sealed or verified states. [glass] is the translucent surface used by the nav and hero.
+ */
 class RakshakColors(
     val isDark: Boolean,
     val bg: Color,
@@ -25,21 +28,23 @@ class RakshakColors(
     val high: Color,
     val medium: Color,
     val low: Color,
+    val glass: Color,
 )
 
 val DarkRakshakColors = RakshakColors(
     isDark = true,
-    bg = Color(0xFF0A0E17),
-    surface = Color(0xFF121826),
-    surface2 = Color(0xFF18203A),
-    line = Color(0xFF263049),
-    text = Color(0xFFE8ECF4),
-    muted = Color(0xFF8C97AD),
-    accent = Color(0xFF6C7BFF),
-    accent2 = Color(0xFF22D3EE),
-    high = Color(0xFFFF4D5E),
-    medium = Color(0xFFFFB020),
-    low = Color(0xFF22C55E),
+    bg = Color(0xFF0B0D12),
+    surface = Color(0xFF13161D),
+    surface2 = Color(0xFF1A1E27),
+    line = Color(0xFF262B36),
+    text = Color(0xFFF2F4F8),
+    muted = Color(0xFF8A93A6),
+    accent = Color(0xFF7C8CFF),
+    accent2 = Color(0xFF2EE6D6),
+    high = Color(0xFFFF5B5B),
+    medium = Color(0xFFFFB547),
+    low = Color(0xFF3DDC84),
+    glass = Color(0xD113161D),
 )
 
 val LightRakshakColors = RakshakColors(
@@ -51,10 +56,11 @@ val LightRakshakColors = RakshakColors(
     text = Color(0xFF111827),
     muted = Color(0xFF5B6475),
     accent = Color(0xFF4A55E0),
-    accent2 = Color(0xFF0891B2),
+    accent2 = Color(0xFF0E7490),
     high = Color(0xFFD92D3F),
-    medium = Color(0xFFB7791F),
+    medium = Color(0xFFB45309),
     low = Color(0xFF15803D),
+    glass = Color(0xDBFFFFFF),
 )
 
 val LocalRakshakColors = staticCompositionLocalOf<RakshakColors> { DarkRakshakColors }
@@ -64,6 +70,13 @@ fun tierColor(tier: Tier, colors: RakshakColors): Color = when (tier) {
     Tier.SCAM -> colors.high
     Tier.VERIFY -> colors.medium
     Tier.SAFE -> colors.low
+}
+
+/** The risk word shown with the colour, so risk is never carried by colour alone. */
+fun tierWord(tier: Tier): String = when (tier) {
+    Tier.SCAM -> "SCAM"
+    Tier.VERIFY -> "VERIFY"
+    Tier.SAFE -> "SAFE"
 }
 
 private fun schemeFor(c: RakshakColors): ColorScheme =

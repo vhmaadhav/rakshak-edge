@@ -6,34 +6,34 @@
 <meta name="description" content="Rakshak Edge: on-device threat detection on Raspberry Pi 5. Nothing leaves this device.">
 <title>Rakshak edge pipeline</title>
 <style>
-/* ---------- tokens (light first, dark below) ---------- */
+/* ---------- tokens: graphite + electric indigo; cyan = sealed/verified ---------- */
 :root{
   --bg:#F5F7FB; --surface:#FFFFFF; --surface-2:#EEF1F8; --line:#D9DFEA;
   --text:#111827; --muted:#5B6475;
-  --accent:#4A55E0; --accent-2:#0891B2; --on-accent:#FFFFFF;
+  --accent:#4A55E0; --seal:#0891B2; --on-accent:#FFFFFF;
   --high:#D92D3F; --med:#B7791F; --med-ink:#8A5A0E; --low:#15803D; --low-ink:#15803D;
   --s1:#4A55E0; --s2:#0891B2; --s3:#7C3AED; --s4:#B7791F; --s5:#15803D;
-  --banner-bad:#FDEAEA; --banner-warn:#FFF3D6;
+  --banner-bad:#FDEAEA; --banner-warn:#FFF3D6; --aur:#4A55E0;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#0A0E17; --surface:#121826; --surface-2:#18203A; --line:#263049;
-    --text:#E8ECF4; --muted:#8C97AD;
-    --accent:#6C7BFF; --accent-2:#22D3EE; --on-accent:#0A0E17;
-    --high:#FF4D5E; --med:#FFB020; --med-ink:#FFB020; --low:#22C55E; --low-ink:#22C55E;
-    --s1:#6C7BFF; --s2:#22D3EE; --s3:#A78BFA; --s4:#FFB020; --s5:#22C55E;
-    --banner-bad:#3D1719; --banner-warn:#3A2C10;
+    --bg:#0B0D12; --surface:#13161D; --surface-2:#1A1E27; --line:#262B36;
+    --text:#F2F4F8; --muted:#8A93A6;
+    --accent:#7C8CFF; --seal:#2EE6D6; --on-accent:#0B0D12;
+    --high:#FF5B5B; --med:#FFB547; --med-ink:#FFB547; --low:#3DDC84; --low-ink:#3DDC84;
+    --s1:#7C8CFF; --s2:#2EE6D6; --s3:#A78BFA; --s4:#FFB547; --s5:#3DDC84;
+    --banner-bad:#3D1719; --banner-warn:#3A2C10; --aur:#7C8CFF;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#0A0E17; --surface:#121826; --surface-2:#18203A; --line:#263049;
-  --text:#E8ECF4; --muted:#8C97AD;
-  --accent:#6C7BFF; --accent-2:#22D3EE; --on-accent:#0A0E17;
-  --high:#FF4D5E; --med:#FFB020; --med-ink:#FFB020; --low:#22C55E; --low-ink:#22C55E;
-  --s1:#6C7BFF; --s2:#22D3EE; --s3:#A78BFA; --s4:#FFB020; --s5:#22C55E;
-  --banner-bad:#3D1719; --banner-warn:#3A2C10;
+  --bg:#0B0D12; --surface:#13161D; --surface-2:#1A1E27; --line:#262B36;
+  --text:#F2F4F8; --muted:#8A93A6;
+  --accent:#7C8CFF; --seal:#2EE6D6; --on-accent:#0B0D12;
+  --high:#FF5B5B; --med:#FFB547; --med-ink:#FFB547; --low:#3DDC84; --low-ink:#3DDC84;
+  --s1:#7C8CFF; --s2:#2EE6D6; --s3:#A78BFA; --s4:#FFB547; --s5:#3DDC84;
+  --banner-bad:#3D1719; --banner-warn:#3A2C10; --aur:#7C8CFF;
   color-scheme: dark;
 }
 
@@ -42,18 +42,30 @@
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);
-  font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;hyphens:auto}
-body::before{content:"";position:fixed;left:0;right:0;top:0;height:360px;pointer-events:none;z-index:0;
-  background:radial-gradient(60% 100% at 50% 0%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 72%)}
-.wrap{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:16px;min-width:0}
+  font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;hyphens:auto;overflow-x:hidden}
+.aurora{position:fixed;left:-20%;right:-20%;top:-10%;height:75vh;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(38% 52% at 28% 22%,color-mix(in srgb,var(--aur) 28%,transparent),transparent 72%),
+    radial-gradient(34% 48% at 74% 8%,color-mix(in srgb,var(--accent) 20%,transparent),transparent 72%);
+  animation:drift 24s ease-in-out infinite alternate}
+@keyframes drift{from{transform:translate3d(-2%,0,0)}to{transform:translate3d(3%,3%,0)}}
+.wrap{position:relative;z-index:1;max-width:880px;margin:0 auto;padding:16px 16px 112px;min-width:0}
+@media (min-width:640px){.wrap{padding-bottom:48px}}
 h1{font-size:20px;line-height:1.2;margin:0;font-weight:800;letter-spacing:-.01em;overflow-wrap:anywhere}
 h2{font-size:14px;margin:0 0 10px;font-weight:700;letter-spacing:.01em}
+h3{margin:0;font-weight:800}
 p{margin:0}
 .tagline{margin:2px 0 0;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
 .muted{color:var(--muted)}
 .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
 .note{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
-:focus-visible{outline:3px solid var(--accent-2);outline-offset:2px}
+:focus-visible{outline:3px solid var(--seal);outline-offset:2px}
+.glass{background:color-mix(in srgb,var(--surface) 64%,transparent);
+  -webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%);
+  border:1px solid color-mix(in srgb,var(--line) 85%,transparent)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:16px;min-width:0}
+.view{min-width:0}
+.view > * + *{margin-top:12px}
 
 /* ---------- header ---------- */
 .top{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
@@ -64,28 +76,47 @@ p{margin:0}
   border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:12px;font-weight:600;overflow-wrap:anywhere}
 .chip-ok{color:var(--text)}
 .chip-bad{color:var(--high);border-color:var(--high)}
-.chip-warn{color:var(--med-ink);border-color:var(--med)}
-.pip{width:8px;height:8px;border-radius:50%;background:var(--low);flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--low) 25%,transparent)}
+.pip{width:8px;height:8px;border-radius:50%;background:var(--seal);flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--seal) 25%,transparent)}
+.topnav{display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px;margin-top:16px;border-radius:16px;max-width:400px}
+.nav-a{min-height:44px;display:flex;align-items:center;justify-content:center;border-radius:12px;color:var(--muted);
+  text-decoration:none;font-weight:700;font-size:14px;position:relative;z-index:1}
+.nav-a[aria-current="page"]{background:var(--surface-2);color:var(--text);box-shadow:inset 0 -3px 0 var(--accent)}
+@media (min-width:640px){.topnav{display:grid}}
 
-/* ---------- tabs ---------- */
-.tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:16px;padding:4px;
-  background:var(--surface);border:1px solid var(--line);border-radius:14px}
-.tab{min-height:44px;margin:0;border:0;border-radius:10px;background:transparent;color:var(--muted);
+/* floating bottom nav (phones) with a sliding pill */
+.bottomnav{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));max-width:440px;
+  height:64px;border-radius:999px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:4px;z-index:5;--idx:0;
+  box-shadow:0 14px 40px -18px color-mix(in srgb,var(--aur) 70%,transparent)}
+.bottomnav .nav-a{min-height:0;height:100%;font-size:13px}
+.bottomnav .nav-a[aria-current="page"]{background:transparent;box-shadow:none;color:var(--text)}
+.pill{position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px) / 3);border-radius:999px;z-index:0;
+  background:color-mix(in srgb,var(--accent) 24%,transparent);border:1px solid color-mix(in srgb,var(--accent) 55%,transparent);
+  transform:translateX(calc(var(--idx) * 100%));transition:transform .45s cubic-bezier(.2,.8,.2,1)}
+@media (min-width:640px){.bottomnav{display:none}}
+
+/* ---------- tabs (Check sub-tabs) ---------- */
+.tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin:0;padding:4px;
+  background:var(--surface);border:1px solid var(--line);border-radius:16px}
+.tab{min-height:44px;margin:0;border:0;border-radius:12px;background:transparent;color:var(--muted);
   font:700 14px/1 system-ui,sans-serif;padding:0 8px;cursor:pointer}
 .tab[aria-selected="true"]{background:var(--surface-2);color:var(--text);box-shadow:inset 0 -3px 0 var(--accent)}
 
 /* ---------- surfaces ---------- */
-.panel{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.panel{display:flex;flex-direction:column;gap:12px}
+.panel > * + *{margin-top:0}
 .results{display:flex;flex-direction:column;gap:12px;min-width:0;--rc:var(--muted)}
+.results > *{min-width:0}
 .r-HIGH{--rc:var(--high)}
 .r-MEDIUM,.r-UNCERTAIN{--rc:var(--med)}
 .r-LOW{--rc:var(--low)}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;min-width:0}
 .hero{display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;min-width:0;
-  background:var(--surface);border:1px solid color-mix(in srgb,var(--rc) 45%,var(--line));border-radius:20px;
+  background:color-mix(in srgb,var(--surface) 70%,transparent);
+  -webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%);
+  border:1px solid color-mix(in srgb,var(--rc) 45%,var(--line));border-radius:24px;
   padding:20px 16px;box-shadow:0 18px 50px -28px color-mix(in srgb,var(--rc) 85%,transparent)}
 .hero-text{min-width:0;width:100%;display:flex;flex-direction:column;gap:10px}
-.action{font-size:clamp(17px,4.6vw,21px);font-weight:800;line-height:1.3;overflow-wrap:anywhere}
+.headline{font-size:clamp(22px,6.4vw,28px);font-weight:800;line-height:1.15;overflow-wrap:anywhere;color:var(--rc)}
+.action{font-size:clamp(16px,4.4vw,19px);font-weight:700;line-height:1.35;overflow-wrap:anywhere}
 .verdict{font-size:clamp(24px,7vw,30px);font-weight:800;line-height:1.1;overflow-wrap:anywhere}
 .verdict.ok{color:var(--low-ink)} .verdict.warn{color:var(--med-ink)} .verdict.bad{color:var(--high)}
 @media (min-width:560px){
@@ -104,21 +135,41 @@ p{margin:0}
 .tag-muted{color:var(--muted)}
 .tag-llm{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 60%,var(--line))}
 .tag-tpl{color:var(--muted)}
-.tag-ok{color:var(--low-ink);border-color:color-mix(in srgb,var(--low) 60%,var(--line))}
+.tag-ok{color:var(--seal);border-color:color-mix(in srgb,var(--seal) 60%,var(--line))}
 .tag-bad{color:var(--high);border-color:color-mix(in srgb,var(--high) 60%,var(--line))}
 .ev-head{display:flex;flex-wrap:wrap;gap:6px}
 .snip-label{margin-top:8px}
 .snip{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--text);
   background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:4px;
   white-space:pre-wrap;overflow-wrap:anywhere}
-.preview{font-size:15px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface-2);
-  border-radius:12px;padding:12px;min-height:44px}
-mark.hit{background:color-mix(in srgb,var(--rc) 30%,transparent);color:inherit;border-radius:4px;padding:0 2px;
-  box-shadow:inset 0 -2px 0 var(--rc)}
+.preview{font-size:15px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface-2);
+  border-radius:16px;padding:14px;min-height:44px}
+mark.hit{background:color-mix(in srgb,var(--rc) 30%,transparent);color:inherit;border-radius:6px;padding:0 3px;
+  box-shadow:inset 0 -2px 0 var(--rc);cursor:pointer;transition:background .2s}
+mark.hit:hover{background:color-mix(in srgb,var(--rc) 45%,transparent)}
+mark.hit:focus-visible{outline:2px solid var(--rc);outline-offset:2px}
+.signs{display:flex;flex-direction:column;gap:8px}
+.sign{display:flex;flex-direction:column;gap:6px;min-width:0;padding:10px 12px;border-radius:16px;
+  background:var(--surface-2);border:1px solid color-mix(in srgb,var(--rc) 45%,var(--line));scroll-margin:120px}
+.sign.flash{animation:flash 1.2s ease-out}
+@keyframes flash{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--rc) 75%,transparent)}100%{box-shadow:0 0 0 14px transparent}}
+.sign-t{font-weight:700;overflow-wrap:anywhere}
+.more{margin-top:10px;min-height:44px}
 .pt-head{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .pt-text{margin-top:6px;overflow-wrap:anywhere}
 .llm{margin-top:8px}
 .problem{font-size:13px;color:var(--high);margin-top:6px;overflow-wrap:anywhere}
+.foot{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted);margin-top:12px;
+  padding-top:10px;border-top:1px dashed var(--line);overflow-wrap:anywhere}
+.why-tags{margin-bottom:10px}
+
+/* verifier receipt */
+.rcpt{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;padding:12px 0;border-top:1px dashed var(--line)}
+.rcpt:first-of-type{border-top:0;padding-top:0}
+.glyph{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:14px;
+  background:var(--surface-2);color:var(--muted)}
+.rcpt-ok .glyph{background:color-mix(in srgb,var(--seal) 18%,transparent);color:var(--seal)}
+.rcpt-bad .glyph{background:color-mix(in srgb,var(--high) 18%,transparent);color:var(--high)}
 
 /* ---------- pipeline ---------- */
 .pipe{list-style:none;margin:4px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));position:relative}
@@ -136,7 +187,7 @@ mark.hit{background:color-mix(in srgb,var(--rc) 30%,transparent);color:inherit;b
 
 /* ---------- device tiles ---------- */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
-.tile{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
+.tile{background:var(--surface-2);border:1px solid var(--line);border-radius:16px;padding:12px 14px;min-width:0}
 .tile-v{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;margin-top:2px}
 .tile-s{font-size:12px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
 
@@ -147,33 +198,40 @@ mark.hit{background:color-mix(in srgb,var(--rc) 30%,transparent);color:inherit;b
 .rem-steps{margin:6px 0 0;padding-left:20px}
 .rem-steps li{margin:4px 0;overflow-wrap:anywhere}
 
-/* ---------- ring gauge ---------- */
-.ring{--ring:clamp(128px,40vw,168px);position:relative;width:var(--ring);height:var(--ring);flex:none}
+/* ---------- ring gauge (verdicts) ---------- */
+.ring{--ring:clamp(132px,40vw,168px);position:relative;width:var(--ring);height:var(--ring);flex:none}
 .ring svg{width:100%;height:100%;display:block;overflow:visible}
 .ring-track{fill:none;stroke:var(--line);stroke-width:10}
 .ring-fg{fill:none;stroke:var(--rc,var(--muted));stroke-width:10;stroke-linecap:round;
-  stroke-dasharray:314.16;stroke-dashoffset:314.16;transition:stroke-dashoffset .6s ease-out}
+  stroke-dasharray:314.16;stroke-dashoffset:314.16;transition:stroke-dashoffset .8s cubic-bezier(.2,.8,.2,1)}
 .ring-tick{stroke:var(--text);stroke-width:2.5;stroke-linecap:round}
-.ring-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:0 14px;text-align:center}
+.ring-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0 14px;text-align:center}
 .ring-word{font-weight:800;font-size:clamp(20px,6vw,26px);letter-spacing:.04em;color:var(--rc);line-height:1;overflow-wrap:anywhere}
+.ring-num{font-size:15px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
 .ring-sub{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 
 /* ---------- inputs and buttons ---------- */
 textarea,input[type="text"]{display:block;width:100%;min-width:0;margin-top:6px;font:16px/1.4 system-ui,sans-serif;color:var(--text);
-  background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+  background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
 textarea{min-height:112px;resize:vertical}
 input[type="file"]{max-width:100%;font:14px system-ui,sans-serif;color:var(--text)}
-.dropzone{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px dashed var(--line);border-radius:12px;background:var(--surface-2)}
-.btn{min-height:44px;padding:0 18px;border:0;border-radius:12px;background:var(--accent);color:var(--on-accent);
-  font:700 15px/1 system-ui,sans-serif;cursor:pointer;margin:0}
+.dropzone{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px dashed var(--line);border-radius:14px;background:var(--surface-2)}
+.btn{min-height:44px;padding:0 18px;border:0;border-radius:14px;background:var(--accent);color:var(--on-accent);
+  font:700 15px/1 system-ui,sans-serif;cursor:pointer;margin:0;display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
 .btn[disabled]{opacity:.6;cursor:progress}
 .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.btn-sm{min-height:40px;padding:0 14px;font-size:14px}
 .samples{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .sample{min-height:44px;margin:0;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);
   color:var(--text);font:600 13px/1.2 system-ui,sans-serif;cursor:pointer;text-align:left;max-width:100%}
+.seg-ctl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px;margin-top:6px;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:14px}
+.seg-b{min-height:40px;margin:0;border:0;border-radius:10px;background:transparent;color:var(--muted);
+  font:700 13px/1 system-ui,sans-serif;cursor:pointer;padding:0 6px}
+.seg-b[aria-pressed="true"]{background:var(--surface);color:var(--text);box-shadow:inset 0 -3px 0 var(--accent)}
 .counter{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:6px;text-align:right}
 .actions{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-top:12px}
-.banner{display:none;border-radius:12px;padding:10px 12px;font-weight:600;border:1px solid var(--line);overflow-wrap:anywhere}
+.banner{display:none;border-radius:14px;padding:10px 12px;font-weight:600;border:1px solid var(--line);overflow-wrap:anywhere}
 .banner.show{display:block}
 .banner.bad{background:var(--banner-bad);color:var(--high);border-color:var(--high)}
 .banner.warn{background:var(--banner-warn);color:var(--med-ink);border-color:var(--med)}
@@ -189,7 +247,62 @@ input[type="file"]{max-width:100%;font:14px system-ui,sans-serif;color:var(--tex
 .pipe-skel .node{animation:none}
 .pipe-skel .dot{background:var(--line);animation:pulse 1.1s ease-in-out infinite;animation-delay:calc(var(--i,0) * .15s)}
 .pipe-skel .lbl{color:transparent;background:var(--surface-2);border-radius:4px;height:10px;width:100%}
-.skel-status{display:flex;align-items:center;gap:10px}
+
+/* ---------- Home: guard rings ---------- */
+.home-hero{display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center;padding:20px 16px;border-radius:24px;
+  box-shadow:0 22px 60px -30px color-mix(in srgb,var(--aur) 80%,transparent)}
+.guards{width:172px;height:172px;flex:none;position:relative}
+.guards svg{width:100%;height:100%;display:block;overflow:visible}
+.g-track{fill:none;stroke:var(--line);stroke-width:9}
+.g-fg{fill:none;stroke:var(--accent);stroke-width:9;stroke-linecap:butt;stroke-dasharray:100;stroke-dashoffset:100;
+  transition:stroke-dashoffset .9s cubic-bezier(.2,.8,.2,1)}
+.g-link{stroke:var(--accent)}
+.g-net{stroke:var(--seal)}
+.guards-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.guards-num{font-size:36px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.guards-sub{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
+.hero-text2{min-width:0;display:flex;flex-direction:column;gap:8px;align-items:center}
+.status-title{font-size:clamp(28px,8.5vw,36px);font-weight:800;letter-spacing:-.02em;line-height:1.1;overflow-wrap:anywhere}
+.status-title.ok{color:var(--seal)}
+.status-title.bad{color:var(--high)}
+.status-title.unk{color:var(--muted)}
+.status-sub{font-weight:700;font-size:15px}
+.glegend{list-style:none;margin:0;padding:14px 16px;display:grid;gap:10px}
+.glegend li{display:grid;grid-template-columns:12px minmax(0,1fr);gap:10px;align-items:start;font-size:14px;overflow-wrap:anywhere}
+.gdot{width:12px;height:12px;border-radius:50%;margin-top:5px;border:2px solid var(--muted);background:transparent}
+.gdot.on{background:var(--seal);border-color:var(--seal)}
+.gdot.off{border-color:var(--muted)}
+.gname{font-weight:700}
+.counters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (min-width:560px){.counters{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.counters .tile-v{font-size:24px}
+.feed{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.feed-item{width:100%;min-height:56px;display:grid;grid-template-columns:12px minmax(0,1fr);gap:12px;align-items:center;
+  text-align:left;background:var(--surface-2);border:1px solid var(--line);border-radius:16px;padding:10px 14px;
+  color:var(--text);font:inherit;cursor:pointer}
+.feed-item:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--line))}
+.feed-dot{width:10px;height:10px;border-radius:50%;background:var(--rc,var(--muted))}
+.feed-t{overflow-wrap:anywhere;font-weight:600}
+.feed-m{font-size:12px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+.cta{align-self:stretch}
+
+/* ---------- Proof: air gap ---------- */
+.airgap-top{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;min-width:0}
+@media (min-width:560px){.airgap-top{flex-direction:row;text-align:left}}
+.radar{--sweep:var(--seal);width:128px;height:128px;flex:none;position:relative}
+.radar.warn{--sweep:var(--med)}
+.radar svg{width:100%;height:100%;display:block;overflow:visible}
+.rd-ring{fill:none;stroke:var(--line);stroke-width:1}
+.rd-dot{fill:var(--sweep)}
+.sweep{transform-box:view-box;transform-origin:60px 60px;animation:spin 4s linear infinite}
+.sweep-wedge{fill:var(--sweep);opacity:.22}
+.sweep-line{stroke:var(--sweep);stroke-width:1.5}
+.airgap-txt{min-width:0;display:flex;flex-direction:column;gap:6px;width:100%}
+.seal-title{font-size:clamp(28px,8vw,34px);font-weight:800;line-height:1.1;margin:0;overflow-wrap:anywhere}
+.seal-title.ok{color:var(--seal)}
+.seal-title.warn{color:var(--med-ink)}
+.seal-title.unk{color:var(--muted)}
+.explain{font-size:15px;line-height:1.6}
 
 /* ---------- alerts (network) ---------- */
 .alert{display:flex;flex-direction:column;gap:10px;min-width:0}
@@ -200,16 +313,19 @@ input[type="file"]{max-width:100%;font:14px system-ui,sans-serif;color:var(--tex
 @keyframes lit{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @keyframes shim{from{background-position:200% 0}to{background-position:-200% 0}}
 @keyframes pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
+@keyframes spin{to{transform:rotate(360deg)}}
 .rise{animation:rise .55s ease-out both;animation-delay:var(--d,0ms)}
+.view:not([hidden]){animation:rise .4s ease-out both}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none !important;transition:none !important}
 }
 
-footer{margin:22px 0 10px;color:var(--muted);font-size:12.5px;text-align:center;overflow-wrap:anywhere}
+footer{margin:24px 0 10px;color:var(--muted);font-size:12.5px;text-align:center;overflow-wrap:anywhere}
 footer p+p{margin-top:4px}
 </style>
 </head>
 <body>
+<div class="aurora" aria-hidden="true"></div>
 <div class="wrap">
 
   <header>
@@ -224,8 +340,13 @@ footer p+p{margin-top:4px}
           <p class="tagline">On-device threat detection. Nothing leaves this device.</p>
         </div>
       </div>
-      <button id="themeBtn" class="btn btn-ghost" type="button" aria-label="Switch theme">Theme</button>
+      <button id="themeBtn" class="btn btn-ghost btn-sm" type="button" aria-label="Switch theme">Theme</button>
     </div>
+    <nav class="topnav glass" id="topnav" aria-label="Main">
+      <a class="nav-a" href="#home" data-nav="home">Home</a>
+      <a class="nav-a" href="#check/sms" data-nav="check">Check</a>
+      <a class="nav-a" href="#proof" data-nav="proof">Proof</a>
+    </nav>
     <div class="chips" aria-label="Device and service status">
       <span class="chip chip-ok"><i class="pip" aria-hidden="true"></i>OFFLINE</span>
       <span class="chip">Raspberry Pi 5</span>
@@ -236,204 +357,303 @@ footer p+p{margin-top:4px}
     </div>
   </header>
 
-  <nav class="tabs" role="tablist" aria-label="Checks">
-    <button class="tab" id="tab-sms" role="tab" type="button" aria-selected="true" aria-controls="panel-sms">SMS</button>
-    <button class="tab" id="tab-link" role="tab" type="button" aria-selected="false" aria-controls="panel-link" tabindex="-1">Link</button>
-    <button class="tab" id="tab-net" role="tab" type="button" aria-selected="false" aria-controls="panel-net" tabindex="-1">Network</button>
-  </nav>
+  <main>
+    <div id="banner" class="banner" role="status" aria-live="polite"></div>
 
-  <div id="banner" class="banner" role="status" aria-live="polite"></div>
-
-  <!-- ================= SMS ================= -->
-  <section id="panel-sms" class="panel" role="tabpanel" aria-labelledby="tab-sms">
-    <div class="card">
-      <label for="sms" class="label">Message text</label>
-      <textarea id="sms" maxlength="2000" placeholder="Paste an SMS to check"></textarea>
-      <div class="counter" id="smsCount">0 / 2000</div>
-      <div class="label" style="margin-top:6px">Try a synthetic sample</div>
-      <div class="samples">
-        <button class="sample" type="button" data-sample="kyc">Try: KYC scam</button>
-        <button class="sample" type="button" data-sample="otp">Try: OTP bank alert</button>
-        <button class="sample" type="button" data-sample="hinglish">Try: Hinglish job scam</button>
-        <button class="sample" type="button" data-sample="delivery">Try: safe delivery SMS</button>
-      </div>
-      <div class="actions">
-        <button id="go" class="btn" type="button">Analyse</button>
-        <span id="status" class="muted" role="status"></span>
-      </div>
-    </div>
-
-    <div class="card" id="smsSkel" hidden aria-hidden="true">
-      <div class="skel-hero">
-        <div class="shim skel-ring"></div>
-        <div class="skel-text">
-          <div class="shim skel-line w60"></div>
-          <div class="shim skel-line"></div>
-          <div class="shim skel-line w80"></div>
+    <!-- ================= HOME ================= -->
+    <section id="view-home" class="view" aria-label="Home">
+      <div class="home-hero glass">
+        <div class="guards" id="guards" role="img" aria-label="Guard status"></div>
+        <div class="hero-text2">
+          <div class="label">Status</div>
+          <h2 class="status-title unk" id="homeTitle">Checking the service…</h2>
+          <p class="status-sub" id="homeSub"></p>
+          <p class="note">Nothing leaves this device.</p>
         </div>
       </div>
-      <ol class="pipe pipe-skel" style="margin-top:18px">
-        <li class="node" style="--i:0"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
-        <li class="node" style="--i:1"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
-        <li class="node" style="--i:2"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
-        <li class="node" style="--i:3"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
-        <li class="node" style="--i:4"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
-      </ol>
-    </div>
 
-    <div id="smsRes" class="results" hidden>
-      <section class="hero" aria-label="SMS verdict">
-        <div class="ring" id="smsRing"></div>
-        <div class="hero-text">
-          <div class="label">Action</div>
-          <p class="action" id="smsAction"></p>
-          <div class="kv" id="smsKv"></div>
+      <ul class="glegend card" id="glegend" aria-label="Guards"></ul>
+
+      <div class="counters" aria-label="This session">
+        <div class="tile"><div class="label">Checked</div><div class="tile-v" id="cChecked">0</div><div class="tile-s">this session</div></div>
+        <div class="tile"><div class="label">Flagged</div><div class="tile-v" id="cFlagged">0</div><div class="tile-s">high or medium, this session</div></div>
+        <div class="tile"><div class="label">Median ms</div><div class="tile-v" id="cMedian">n/a</div><div class="tile-s">measured, this session</div></div>
+        <div class="tile"><div class="label">Requests</div><div class="tile-v" id="cReq">n/a</div><div class="tile-s">since service start (/health)</div></div>
+      </div>
+
+      <section class="card">
+        <h2>Recent this session</h2>
+        <p class="note" id="feedEmpty">No checks yet this session. Results show up here, kept in memory only, and clear on reload.</p>
+        <ul class="feed" id="feed"></ul>
+      </section>
+
+      <a class="btn cta" href="#check/sms">Check a message</a>
+    </section>
+
+    <!-- ================= CHECK ================= -->
+    <section id="view-check" class="view" aria-label="Check" hidden>
+      <nav class="tabs" role="tablist" aria-label="Check type">
+        <button class="tab" id="tab-sms" role="tab" type="button" aria-selected="true" aria-controls="panel-sms">SMS</button>
+        <button class="tab" id="tab-link" role="tab" type="button" aria-selected="false" aria-controls="panel-link" tabindex="-1">Link</button>
+        <button class="tab" id="tab-net" role="tab" type="button" aria-selected="false" aria-controls="panel-net" tabindex="-1">Network</button>
+      </nav>
+
+      <!-- SMS -->
+      <section id="panel-sms" class="panel" role="tabpanel" aria-labelledby="tab-sms">
+        <div class="card">
+          <label for="sms" class="label">Message text</label>
+          <textarea id="sms" maxlength="2000" placeholder="Paste an SMS to check"></textarea>
+          <div class="counter" id="smsCount">0 / 2000</div>
+          <div class="label" style="margin-top:6px">Try a synthetic sample</div>
+          <div class="samples">
+            <button class="sample" type="button" data-sample="kyc">Try: KYC scam</button>
+            <button class="sample" type="button" data-sample="otp">Try: OTP bank alert</button>
+            <button class="sample" type="button" data-sample="hinglish">Try: Hinglish job scam</button>
+            <button class="sample" type="button" data-sample="delivery">Try: safe delivery SMS</button>
+          </div>
+          <div class="label" style="margin-top:14px">Reply language</div>
+          <div class="seg-ctl" role="group" aria-label="Reply language">
+            <button class="seg-b" type="button" data-lang="auto" aria-pressed="true">Auto</button>
+            <button class="seg-b" type="button" data-lang="en" aria-pressed="false">English</button>
+            <button class="seg-b" type="button" data-lang="hinglish" aria-pressed="false">Hinglish</button>
+          </div>
+          <div class="actions">
+            <button id="go" class="btn" type="button">Analyse</button>
+            <span id="status" class="muted" role="status"></span>
+          </div>
         </div>
+
+        <div class="card" id="smsSkel" hidden aria-hidden="true">
+          <div class="skel-hero">
+            <div class="shim skel-ring"></div>
+            <div class="skel-text">
+              <div class="shim skel-line w60"></div>
+              <div class="shim skel-line"></div>
+              <div class="shim skel-line w80"></div>
+            </div>
+          </div>
+          <ol class="pipe pipe-skel" style="margin-top:18px">
+            <li class="node" style="--i:0"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
+            <li class="node" style="--i:1"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
+            <li class="node" style="--i:2"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
+            <li class="node" style="--i:3"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
+            <li class="node" style="--i:4"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
+          </ol>
+        </div>
+
+        <div id="smsRes" class="results" hidden>
+          <section class="hero" aria-label="SMS verdict">
+            <div class="ring" id="smsRing"></div>
+            <div class="hero-text">
+              <div class="label">Verdict</div>
+              <h3 class="headline" id="smsHead"></h3>
+              <p class="action" id="smsAction"></p>
+              <div class="kv" id="smsKv"></div>
+            </div>
+          </section>
+
+          <section class="card">
+            <h2>Warning signs</h2>
+            <div class="signs" id="signs"></div>
+            <button class="btn btn-ghost more" id="signsMore" type="button" aria-expanded="false" hidden></button>
+          </section>
+
+          <section class="card">
+            <h2>Message</h2>
+            <div class="preview" id="smsPreview"></div>
+            <p class="note" style="margin-top:10px">Tap a highlight to jump to its warning sign.</p>
+          </section>
+
+          <section class="card" id="whyCard">
+            <h2>Why this verdict</h2>
+            <div class="tags why-tags">
+              <span class="tag tag-llm">Llama 3.2 1B</span>
+              <span class="tag">ExecuTorch</span>
+              <span class="tag">on this Pi</span>
+            </div>
+            <p class="pt-text" id="advSummary"></p>
+            <p class="note" id="advSource" style="margin-top:8px"></p>
+            <p class="foot" id="advFoot"></p>
+          </section>
+
+          <section class="card">
+            <h2>Verifier receipt</h2>
+            <p class="note" id="rcptSum"></p>
+            <div style="margin-top:8px" id="rcpt"></div>
+            <div style="margin-top:12px" id="g2"></div>
+          </section>
+
+          <section class="card" id="smsRemCard">
+            <h2>What to do now</h2>
+            <div id="smsRem"></div>
+            <p class="note" style="margin-top:12px">Pre-checked steps, not written by the AI.</p>
+          </section>
+
+          <section class="card">
+            <h2>Pipeline</h2>
+            <ol class="pipe" id="smsPipe" aria-label="Pipeline stages"></ol>
+            <div class="bar" id="smsBar" role="img" aria-label="Share of measured time per stage"></div>
+            <ul class="legend" id="smsLegend"></ul>
+            <p class="note calls" id="smsCalls"></p>
+          </section>
+
+          <section class="card" id="smsDeviceCard">
+            <h2>Device</h2>
+            <div class="tiles" id="smsDevice"></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- LINK -->
+      <section id="panel-link" class="panel" role="tabpanel" aria-labelledby="tab-link" hidden>
+        <div class="card">
+          <h2>Check a link</h2>
+          <p class="note">Paste one link. The URL model scores it and the domain rules run on this Pi. The link is not opened.</p>
+          <label for="linkText" class="label" style="display:block;margin-top:12px">Link</label>
+          <input id="linkText" type="text" maxlength="2000" placeholder="Paste the link here" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <div class="samples">
+            <button class="sample" type="button" data-link-sample="1">Try: synthetic phishing link</button>
+          </div>
+          <div class="actions">
+            <button id="linkGo" class="btn" type="button">Check link</button>
+            <span id="linkStatus" class="muted" role="status"></span>
+          </div>
+        </div>
+
+        <div class="card" id="linkSkel" hidden aria-hidden="true">
+          <div class="skel-hero">
+            <div class="shim skel-ring"></div>
+            <div class="skel-text">
+              <div class="shim skel-line w60"></div>
+              <div class="shim skel-line w80"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="linkRes" class="results" hidden>
+          <section class="hero" aria-label="Link verdict">
+            <div class="ring" id="linkRing"></div>
+            <div class="hero-text">
+              <div class="label">Verdict</div>
+              <p class="verdict" id="linkVerdict"></p>
+              <div class="kv" id="linkKv"></div>
+            </div>
+          </section>
+          <section class="card">
+            <h2>Rule evidence</h2>
+            <div class="stack" id="linkEv"></div>
+          </section>
+          <section class="card" id="linkRemCard">
+            <h2>What to do now</h2>
+            <div id="linkRem"></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- NETWORK -->
+      <section id="panel-net" class="panel" role="tabpanel" aria-labelledby="tab-net" hidden>
+        <div class="card">
+          <h2>Analyse a pcap</h2>
+          <p class="note">Upload a classic .pcap (up to 20 MB). Flows are built and scored on this Pi. The file is not sent anywhere else. Synthetic test captures come from make_test_pcaps.py.</p>
+          <div class="dropzone" style="margin-top:12px">
+            <input id="pcapFile" type="file" accept=".pcap,application/vnd.tcpdump.pcap,application/octet-stream" aria-label="Choose a pcap file">
+            <span class="note" id="pcapName"></span>
+          </div>
+          <div class="actions">
+            <button id="netGo" class="btn" type="button">Analyse pcap</button>
+            <span id="netStatus" class="muted" role="status"></span>
+          </div>
+        </div>
+
+        <div class="card" id="netSkel" hidden aria-hidden="true">
+          <div class="skel-hero">
+            <div class="shim skel-ring"></div>
+            <div class="skel-text">
+              <div class="shim skel-line w60"></div>
+              <div class="shim skel-line w80"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="netRes" class="results" hidden>
+          <section class="hero" aria-label="Network verdict">
+            <div class="ring" id="netRing"></div>
+            <div class="hero-text">
+              <div class="label">Overall</div>
+              <p class="verdict" id="netState"></p>
+              <div class="kv" id="netKv"></div>
+            </div>
+          </section>
+          <section class="card" id="netAlertsCard">
+            <h2>Host alerts</h2>
+            <div class="stack" id="netAlerts"></div>
+            <p class="note" id="netNone"></p>
+          </section>
+          <section class="card" id="netRemCard">
+            <h2>What to do now</h2>
+            <div id="netRem"></div>
+          </section>
+          <section class="card">
+            <h2>Timings and device</h2>
+            <div class="kv" id="netTimes"></div>
+            <div class="tiles" id="netDevice" style="margin-top:12px"></div>
+          </section>
+        </div>
+      </section>
+    </section>
+
+    <!-- ================= PROOF ================= -->
+    <section id="view-proof" class="view" aria-label="Proof" hidden>
+      <section class="card" aria-labelledby="airH">
+        <div class="airgap-top">
+          <div class="radar" id="radar" aria-hidden="true">
+            <svg viewBox="0 0 120 120" focusable="false">
+              <circle class="rd-ring" cx="60" cy="60" r="56"/>
+              <circle class="rd-ring" cx="60" cy="60" r="38"/>
+              <circle class="rd-ring" cx="60" cy="60" r="20"/>
+              <line class="rd-ring" x1="60" y1="4" x2="60" y2="116"/>
+              <line class="rd-ring" x1="4" y1="60" x2="116" y2="60"/>
+              <g class="sweep">
+                <path class="sweep-wedge" d="M60 60 L60 4 A56 56 0 0 1 99.6 20.4 Z"/>
+                <line class="sweep-line" x1="60" y1="60" x2="60" y2="4"/>
+              </g>
+              <circle class="rd-dot" cx="60" cy="60" r="3"/>
+            </svg>
+          </div>
+          <div class="airgap-txt">
+            <div class="label" id="airH">Air-gap proof</div>
+            <h2 class="seal-title unk" id="sealTitle" role="status">Checking…</h2>
+            <p class="note" id="sealNote"></p>
+          </div>
+        </div>
+        <div class="kv" id="airKv" style="margin-top:16px"></div>
       </section>
 
       <section class="card">
-        <h2>Message and rule evidence</h2>
-        <div class="preview" id="smsPreview"></div>
-        <div class="stack" id="smsEv" style="margin-top:12px"></div>
-      </section>
-
-      <section class="card" id="smsRemCard">
-        <h2>What to do</h2>
-        <div id="smsRem"></div>
-      </section>
-
-      <section class="card" id="advCard">
-        <h2>Advisory</h2>
-        <div class="label">Summary</div>
-        <p id="advSummary" class="pt-text" style="margin-top:4px"></p>
-        <p id="advSource" class="note" style="margin-top:6px"></p>
-        <div class="stack" id="advPoints" style="margin-top:12px"></div>
-        <p id="advG2" class="note" style="margin-top:12px"></p>
-      </section>
-
-      <section class="card" id="smsPipeCard">
-        <h2>Pipeline</h2>
-        <ol class="pipe" id="smsPipe" aria-label="Pipeline stages"></ol>
-        <div class="bar" id="smsBar" role="img" aria-label="Share of measured time per stage"></div>
-        <ul class="legend" id="smsLegend"></ul>
-        <p class="note calls" id="smsCalls"></p>
-      </section>
-
-      <section class="card" id="smsDeviceCard">
-        <h2>Device</h2>
-        <div class="tiles" id="smsDevice"></div>
-      </section>
-    </div>
-  </section>
-
-  <!-- ================= LINK ================= -->
-  <section id="panel-link" class="panel" role="tabpanel" aria-labelledby="tab-link" hidden>
-    <div class="card">
-      <h2>Check a link</h2>
-      <p class="note">Paste one link. The URL model scores it and the domain rules run on this Pi. The link is not opened.</p>
-      <p class="note" style="margin-top:6px">Links inside SMS are checked in verify mode; use Check a link for any link.</p>
-      <label for="linkText" class="label" style="display:block;margin-top:12px">Link</label>
-      <input id="linkText" type="text" maxlength="2000" placeholder="Paste the link here" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <div class="samples">
-        <button class="sample" type="button" data-link-sample="1">Try: synthetic phishing link</button>
-      </div>
-      <div class="actions">
-        <button id="linkGo" class="btn" type="button">Check link</button>
-        <span id="linkStatus" class="muted" role="status"></span>
-      </div>
-    </div>
-
-    <div class="card" id="linkSkel" hidden aria-hidden="true">
-      <div class="skel-hero">
-        <div class="shim skel-ring"></div>
-        <div class="skel-text">
-          <div class="shim skel-line w60"></div>
-          <div class="shim skel-line w80"></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="linkRes" class="results" hidden>
-      <section class="hero" aria-label="Link verdict">
-        <div class="ring" id="linkRing"></div>
-        <div class="hero-text">
-          <div class="label">Verdict</div>
-          <p class="verdict" id="linkVerdict"></p>
-          <div class="kv" id="linkKv"></div>
-        </div>
+        <h2>Models and device</h2>
+        <div class="kv" id="modelKv"></div>
       </section>
 
       <section class="card">
-        <h2>Rule evidence</h2>
-        <div class="stack" id="linkEv"></div>
+        <h2>Proof-carrying explanation</h2>
+        <p class="explain">Every sentence the Llama model writes is checked by a deterministic verifier before it is shown. A sentence that fails a check is replaced by fixed template text. The verdict screen lists each check in the verifier receipt, with the reason for any rejection.</p>
+        <p class="note" style="margin-top:10px">Numbers on this page are read from the service's /health and are not estimates.</p>
       </section>
-
-      <section class="card" id="linkRemCard">
-        <h2>Remediation</h2>
-        <div id="linkRem"></div>
-      </section>
-    </div>
-  </section>
-
-  <!-- ================= NETWORK ================= -->
-  <section id="panel-net" class="panel" role="tabpanel" aria-labelledby="tab-net" hidden>
-    <div class="card">
-      <h2>Analyse a pcap</h2>
-      <p class="note">Upload a classic .pcap (up to 20 MB). Flows are built and scored on this Pi. The file is not sent anywhere else. Synthetic test captures come from make_test_pcaps.py.</p>
-      <div class="dropzone" style="margin-top:12px">
-        <input id="pcapFile" type="file" accept=".pcap,application/vnd.tcpdump.pcap,application/octet-stream" aria-label="Choose a pcap file">
-        <span class="note" id="pcapName"></span>
-      </div>
-      <div class="actions">
-        <button id="netGo" class="btn" type="button">Analyse pcap</button>
-        <span id="netStatus" class="muted" role="status"></span>
-      </div>
-    </div>
-
-    <div class="card" id="netSkel" hidden aria-hidden="true">
-      <div class="skel-hero">
-        <div class="shim skel-ring"></div>
-        <div class="skel-text">
-          <div class="shim skel-line w60"></div>
-          <div class="shim skel-line w80"></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="netRes" class="results" hidden>
-      <section class="hero" aria-label="Network verdict">
-        <div class="ring" id="netRing"></div>
-        <div class="hero-text">
-          <div class="label">Overall</div>
-          <p class="verdict" id="netState"></p>
-          <div class="kv" id="netKv"></div>
-        </div>
-      </section>
-
-      <section class="card" id="netAlertsCard">
-        <h2>Host alerts</h2>
-        <div class="stack" id="netAlerts"></div>
-        <p class="note" id="netNone"></p>
-      </section>
-
-      <section class="card" id="netRemCard">
-        <h2>What to do</h2>
-        <div id="netRem"></div>
-      </section>
-
-      <section class="card">
-        <h2>Timings and device</h2>
-        <div class="kv" id="netTimes"></div>
-        <div class="tiles" id="netDevice" style="margin-top:12px"></div>
-      </section>
-    </div>
-  </section>
+    </section>
+  </main>
 
   <footer>
     <p>Works offline. Requests go only to this Pi's own service.</p>
     <p>Demo samples are synthetic. Built with Llama.</p>
   </footer>
 </div>
+
+<nav class="bottomnav glass" id="bottomnav" aria-label="Main">
+  <span class="pill" aria-hidden="true"></span>
+  <a class="nav-a" href="#home" data-nav="home">Home</a>
+  <a class="nav-a" href="#check/sms" data-nav="check">Check</a>
+  <a class="nav-a" href="#proof" data-nav="proof">Proof</a>
+</nav>
 
 <script>
 (function () {
@@ -452,15 +672,34 @@ footer p+p{margin-top:4px}
     delivery: "DemoShop: your order #A1234 will arrive between 2 and 6 pm today. Reply STOP to opt out."
   };
   var LINK_SAMPLE = "demo-bank-kyc-update.xyz/verify";
+  var VIEWS = ["home", "check", "proof"];
+  var SUBS = ["sms", "link", "net"];
+  var LANGS = ["auto", "en", "hinglish"];
+  var PHRASE = {
+    kyc_update_request: "Fake KYC update scam",
+    account_block_threat: "Account-block pressure scam",
+    url_in_message: "Suspicious link in message"
+  };
+
+  /* Session state: in memory only, cleared on reload. */
+  var S = { checked: 0, flagged: 0, ms: [], feed: [], lastRisk: null, flowsOk: false };
+  var H = null;            /* last /health body; null when unknown */
+  var HSTATE = "loading";  /* loading | ok | down */
+  var lastHealthAt = 0;
+  var curView = "";
+  var LANG = "auto";
+  var smsCtx = { evidence: [], all: false };
 
   /* ---------- helpers (textContent only; no innerHTML) ---------- */
   function $(id) { return document.getElementById(id); }
   function isNum(v) { return typeof v === "number" && isFinite(v); }
   function isObj(v) { return v !== null && typeof v === "object"; }
   function arr(v) { return Array.isArray(v) ? v : []; }
-  function s(v) { return v === undefined || v === null ? "n/a" : String(v); }
+  function sv(v) { return v === undefined || v === null ? "n/a" : String(v); }
   function fmt(v, d) { return isNum(v) ? v.toFixed(d === undefined ? 1 : d) : "n/a"; }
   function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
+  function cap(t) { t = sv(t); return t.charAt(0).toUpperCase() + t.slice(1); }
+  function clip(t, n) { t = sv(t); return t.length > n ? t.slice(0, n) + "…" : t; }
   function el(tag, cls, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -471,7 +710,57 @@ footer p+p{margin-top:4px}
   function riskClass(r) {
     return "r-" + (r === "HIGH" || r === "MEDIUM" || r === "LOW" || r === "UNCERTAIN" ? r : "NONE");
   }
-  function prettyType(t) { return s(t).replace(/_/g, " "); }
+  function riskVar(r) {
+    if (r === "HIGH") return "var(--high)";
+    if (r === "MEDIUM" || r === "UNCERTAIN") return "var(--med)";
+    if (r === "LOW") return "var(--low)";
+    return "var(--muted)";
+  }
+  function prettyType(t) { return sv(t).replace(/_/g, " "); }
+  function langName(v) {
+    if (v === "hinglish") return "Hinglish";
+    if (v === "en") return "English";
+    return v ? sv(v) : "n/a";
+  }
+  function fmtUptime(sec) {
+    if (!isNum(sec)) return "n/a";
+    var m = Math.floor(sec / 60), h = Math.floor(m / 60);
+    return h > 0 ? h + " h " + (m % 60) + " min" : m + " min";
+  }
+  function clock() {
+    var d = new Date();
+    return (d.getHours() < 10 ? "0" : "") + d.getHours() + ":" + (d.getMinutes() < 10 ? "0" : "") + d.getMinutes();
+  }
+  function median(list) {
+    if (!list.length) return null;
+    var a = list.slice().sort(function (x, y) { return x - y; });
+    var m = Math.floor(a.length / 2);
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  }
+
+  /* Count-up: animates only when the value changed; instant under reduced motion. */
+  function tweenNum(node, to, dec, from) {
+    if (node._raf) { cancelAnimationFrame(node._raf); node._raf = 0; }
+    if (!isNum(to)) { node.textContent = "n/a"; return; }
+    var start = isNum(from) ? from : 0;
+    if (reduce || start === to) { node.textContent = to.toFixed(dec); return; }
+    var t0 = null, dur = 700;
+    function step(ts) {
+      if (t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / dur);
+      var e = 1 - Math.pow(1 - p, 3);
+      node.textContent = (start + (to - start) * e).toFixed(dec);
+      node._raf = p < 1 ? requestAnimationFrame(step) : 0;
+    }
+    node._raf = requestAnimationFrame(step);
+  }
+
+  function setAurora(risk) {
+    var c = risk === "HIGH" ? "var(--high)" :
+      (risk === "MEDIUM" || risk === "UNCERTAIN") ? "var(--med)" :
+      risk === "LOW" ? "var(--low)" : "var(--accent)";
+    document.documentElement.style.setProperty("--aur", c);
+  }
 
   function banner(kind, text) {
     var b = $("banner");
@@ -506,12 +795,13 @@ footer p+p{margin-top:4px}
     var list = arr(items);
     list.forEach(function (item) {
       var box = el("div", "rem");
-      box.appendChild(el("div", "rem-title", s(item.code) + ": " + s(item.title)));
+      box.appendChild(el("div", "rem-title", sv(item.code) + ": " + sv(item.title)));
       var ol = el("ol", "rem-steps");
       arr(item.steps).forEach(function (step) { ol.appendChild(el("li", "", step)); });
       box.appendChild(ol);
       container.appendChild(box);
     });
+    if (!list.length) container.appendChild(el("p", "muted", "No specific step for this result."));
     return list.length;
   }
 
@@ -521,7 +811,7 @@ footer p+p{margin-top:4px}
     list.forEach(function (e) {
       var box = el("div", "");
       var head = el("div", "ev-head");
-      head.appendChild(el("span", "tag tag-rule", s(e.id)));
+      head.appendChild(el("span", "tag tag-rule", sv(e.id)));
       head.appendChild(el("span", "tag", prettyType(e.type)));
       head.appendChild(el("span", "tag tag-muted", "weight " + fmt(e.weight, 2)));
       box.appendChild(head);
@@ -533,7 +823,18 @@ footer p+p{margin-top:4px}
     });
   }
 
-  /* Highlight every occurrence of each evidence phrase in the message preview. */
+  /* Headline from the top evidence type. Derived from rule ids, never from the model. */
+  function headlineFor(risk, evidence) {
+    if (risk === "LOW") return "No known scam pattern";
+    if (!evidence.length) return risk === "HIGH" ? "Scam risk: high" : risk === "MEDIUM" ? "Needs checking" : "Uncertain";
+    var top = evidence[0];
+    evidence.forEach(function (e) { if ((e.weight || 0) > (top.weight || 0)) top = e; });
+    var base = PHRASE[top.type] || (cap(prettyType(top.type)) + " scam");
+    if (risk === "HIGH") return base;
+    return (risk === "MEDIUM" ? "Verify: " : "Uncertain: ") + base;
+  }
+
+  /* Message preview: highlight each evidence phrase, tagged with its evidence index. */
   function buildPreview(container, text, evidence) {
     clear(container);
     var src = String(text || "");
@@ -542,62 +843,122 @@ footer p+p{margin-top:4px}
     var sameLen = lower.length === src.length;
     var hay = sameLen ? lower : src;
     var ranges = [];
-    evidence.forEach(function (e) {
+    evidence.forEach(function (e, idx) {
       var phrase = e && e.text !== undefined && e.text !== null ? String(e.text) : "";
       if (!phrase) return;
       var needle = sameLen ? phrase.toLowerCase() : phrase;
-      if (!needle) return;
       var at = hay.indexOf(needle);
-      while (at !== -1) {
-        ranges.push([at, at + needle.length]);
+      while (needle && at !== -1) {
+        ranges.push({ a: at, b: at + needle.length, i: idx });
         at = hay.indexOf(needle, at + needle.length);
       }
     });
-    ranges.sort(function (a, b) { return a[0] - b[0]; });
-    var merged = [];
-    ranges.forEach(function (r) {
-      var last = merged[merged.length - 1];
-      if (last && r[0] < last[1]) { last[1] = Math.max(last[1], r[1]); }
-      else merged.push([r[0], r[1]]);
-    });
+    ranges.sort(function (x, y) { return (x.a - y.a) || ((y.b - y.a) - (x.b - x.a)); });
     var pos = 0;
-    merged.forEach(function (r) {
-      if (r[0] > pos) container.appendChild(document.createTextNode(src.slice(pos, r[0])));
-      container.appendChild(el("mark", "hit", src.slice(r[0], r[1])));
-      pos = r[1];
+    ranges.forEach(function (r) {
+      if (r.b <= pos) return;
+      var a = Math.max(r.a, pos);
+      if (a > pos) container.appendChild(document.createTextNode(src.slice(pos, a)));
+      var m = el("mark", "hit", src.slice(a, r.b));
+      m.setAttribute("data-ev", String(r.i));
+      m.setAttribute("tabindex", "0");
+      m.setAttribute("role", "button");
+      m.setAttribute("aria-label", "Warning sign " + (r.i + 1) + ", show it");
+      container.appendChild(m);
+      pos = r.b;
     });
     if (pos < src.length) container.appendChild(document.createTextNode(src.slice(pos)));
   }
 
-  function renderPoints(container, points) {
-    clear(container);
-    arr(points).forEach(function (p, i) {
-      var box = el("div", "");
-      var head = el("div", "pt-head");
-      var isLlm = p.source === "llm";
-      head.appendChild(el("span", "tag " + (isLlm ? "tag-llm" : "tag-tpl"), isLlm ? "Llama" : "Template"));
-      head.appendChild(el("span", "tag", (s(p.evidence_id) + " " + prettyType(p.type)).trim()));
-      var chk = isObj(p.check) ? p.check : {};
-      if (chk.ok === null || chk.ok === undefined) {
-        head.appendChild(el("span", "tag tag-muted", "explainer not run"));
-      } else {
-        head.appendChild(el("span", "tag " + (chk.ok ? "tag-ok" : "tag-bad"), chk.ok ? "Verifier ✓ pass" : "Verifier ✗ fail"));
-      }
-      box.appendChild(head);
-      box.appendChild(el("p", "pt-text", (i + 1) + ". " + s(p.text)));
-      if (p.llm_text) {
-        var q = el("div", "llm");
-        q.appendChild(el("div", "label", "Llama wrote"));
-        q.appendChild(el("div", "snip", p.llm_text));
-        box.appendChild(q);
-      }
-      arr(chk.problems).forEach(function (pr) { box.appendChild(el("div", "problem", pr)); });
-      container.appendChild(box);
-    });
+  /* Warning-sign chips: max 5, then "+N more". */
+  function renderSigns() {
+    var box = clear($("signs"));
+    var more = $("signsMore");
+    var ev = smsCtx.evidence;
+    if (!ev.length) {
+      box.appendChild(el("p", "muted", "No warning sign fired for this message."));
+      more.hidden = true;
+      return;
+    }
+    var n = smsCtx.all ? ev.length : Math.min(5, ev.length);
+    for (var i = 0; i < n; i++) {
+      var e = ev[i];
+      var c = el("div", "sign");
+      c.id = "sign-" + i;
+      var head = el("div", "ev-head");
+      head.appendChild(el("span", "tag tag-rule", sv(e.id)));
+      head.appendChild(el("span", "tag tag-muted", "weight " + fmt(e.weight, 2)));
+      c.appendChild(head);
+      c.appendChild(el("span", "sign-t", cap(prettyType(e.type))));
+      if (e.text !== undefined && e.text !== null) c.appendChild(el("span", "snip", e.text));
+      box.appendChild(c);
+    }
+    more.hidden = ev.length <= 5;
+    more.textContent = smsCtx.all ? "Show fewer" : "+" + (ev.length - 5) + " more";
+    more.setAttribute("aria-expanded", smsCtx.all ? "true" : "false");
   }
 
-  /* SVG ring gauge: sweeps from 0 to score; optional tick at the threshold. */
-  function drawRing(box, frac, thr, word, sub) {
+  function revealSign(i) {
+    if (!isNum(i) || i < 0 || i >= smsCtx.evidence.length) return;
+    if (i >= 5 && !smsCtx.all) { smsCtx.all = true; renderSigns(); }
+    var chip = $("sign-" + i);
+    if (!chip) return;
+    chip.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+    chip.classList.remove("flash");
+    void chip.offsetWidth;
+    chip.classList.add("flash");
+  }
+
+  /* Verifier receipt: one row per point. Llama text is shown only if it passed. */
+  function renderReceipt(points, g2) {
+    var box = clear($("rcpt"));
+    var ok = 0, bad = 0, other = 0;
+    points.forEach(function (p) {
+      var chk = isObj(p.check) ? p.check : {};
+      var isLlm = p.source === "llm";
+      var st = chk.ok === true ? "ok" : chk.ok === false ? "bad" : "none";
+      if (st === "ok") ok++; else if (st === "bad") bad++; else other++;
+      var row = el("div", "rcpt rcpt-" + st);
+      var g = el("span", "glyph", st === "ok" ? "✓" : st === "bad" ? "✗" : "–");
+      g.setAttribute("aria-hidden", "true");
+      row.appendChild(g);
+      var body = el("div", "");
+      var head = el("div", "pt-head");
+      head.appendChild(el("span", "tag tag-rule", sv(p.evidence_id)));
+      head.appendChild(el("span", "tag tag-muted", prettyType(p.type)));
+      head.appendChild(el("span", "tag " + (isLlm ? "tag-llm" : "tag-tpl"), isLlm ? "Llama" : "Template"));
+      head.appendChild(el("span", "tag " + (st === "ok" ? "tag-ok" : st === "bad" ? "tag-bad" : "tag-muted"),
+        st === "ok" ? "verified" : st === "bad" ? "rejected" : "not checked"));
+      body.appendChild(head);
+      body.appendChild(el("p", "pt-text", sv(p.text)));
+      if (st === "bad") {
+        body.appendChild(el("div", "problem", isLlm ? "✗ rejected" : "✗ rejected → template shown"));
+        arr(chk.problems).forEach(function (pr) { body.appendChild(el("div", "problem", sv(pr))); });
+        if (p.llm_text) {
+          var q = el("div", "llm");
+          q.appendChild(el("div", "label", "Llama wrote (rejected)"));
+          q.appendChild(el("div", "snip", p.llm_text));
+          body.appendChild(q);
+        }
+      }
+      row.appendChild(body);
+      box.appendChild(row);
+    });
+    if (!points.length) box.appendChild(el("p", "muted", "No verifier points for this message."));
+    $("rcptSum").textContent = ok + " verified · " + bad + " rejected · " + other + " template, not checked";
+
+    var gb = clear($("g2"));
+    if (g2.length) {
+      gb.appendChild(el("p", "note", "Attribution guard rejected " + g2.length + " sentence(s); the template was shown instead."));
+      g2.forEach(function (x) { gb.appendChild(el("div", "problem", isObj(x) ? sv(x.problem) : sv(x))); });
+    } else {
+      gb.appendChild(el("p", "note", "Attribution guard: nothing rejected."));
+    }
+  }
+
+  /* SVG ring gauge: sweeps to the score; optional threshold tick; count-up number. */
+  function drawRing(box, frac, thr, word, sub, showNum) {
+    var prev = box._prev;
     clear(box);
     var svg = document.createElementNS(NS, "svg");
     svg.setAttribute("viewBox", "0 0 120 120");
@@ -624,11 +985,17 @@ footer p+p{margin-top:4px}
     box.appendChild(svg);
     var c = el("div", "ring-c");
     c.appendChild(el("div", "ring-word", word));
+    if (showNum !== false) {
+      var num = el("div", "ring-num", "");
+      c.appendChild(num);
+      if (isNum(frac)) tweenNum(num, frac, 4, prev); else num.textContent = "no score";
+    }
     if (sub) c.appendChild(el("div", "ring-sub", sub));
     box.appendChild(c);
     box.setAttribute("role", "img");
-    box.setAttribute("aria-label", "Risk " + s(word) + (isNum(frac) ? ", score " + fmt(frac, 4) : "") +
+    box.setAttribute("aria-label", "Risk " + sv(word) + (isNum(frac) ? ", score " + fmt(frac, 4) : "") +
       (isNum(thr) ? ", threshold " + fmt(thr, 4) : ""));
+    box._prev = isNum(frac) ? frac : undefined;
 
     var target = isNum(frac) ? RING_C * (1 - clamp(frac, 0, 1)) : RING_C;
     if (reduce || !isNum(frac)) {
@@ -681,39 +1048,46 @@ footer p+p{margin-top:4px}
     });
   }
 
-  /* ---------- SMS ---------- */
+  /* ---------- SMS verdict ---------- */
   function renderSms(d, text) {
     var dec = isObj(d.decision) ? d.decision : {};
     var tm = isObj(d.timings_ms) ? d.timings_ms : {};
     var adv = isObj(d.advisory) ? d.advisory : {};
+    var sum = isObj(adv.summary) ? adv.summary : {};
     var evidence = arr(d.evidence);
+    var skipped = !!adv.llm_skipped_low_risk;
     var res = $("smsRes");
     res.className = "results " + riskClass(dec.risk);
 
-    drawRing($("smsRing"), dec.score, dec.threshold, s(dec.risk));
-    $("smsAction").textContent = s(dec.action);
-    var skipped = !!adv.llm_skipped_low_risk;
+    drawRing($("smsRing"), dec.score, dec.threshold, sv(dec.risk), "score");
+    $("smsHead").textContent = headlineFor(dec.risk, evidence);
+    $("smsAction").textContent = sv(dec.action);
     kv($("smsKv"), [
-      ["Score", fmt(dec.score, 4) + " (threshold " + fmt(dec.threshold, 4) + ")"],
-      ["Scam state", s(dec.scam_state) + " / " + s(dec.evidence_count) + " rule hit(s)"],
-      ["Advisory mode", s(adv.mode)],
+      ["Threshold", fmt(dec.threshold, 4)],
+      ["Scam state", sv(dec.scam_state) + " / " + sv(dec.evidence_count) + " rule hit(s)"],
       ["Explainer", skipped ? "not called (LOW risk, template only)" : arr(d.llm_calls).length + " call(s)"],
-      ["Total", fmt(tm.total, 0) + " ms"]
+      ["Language", langName(adv.lang || dec.lang_detected)],
+      ["Total", fmt(tm.total, 0) + " ms, measured"]
     ]);
 
+    smsCtx = { evidence: evidence, all: false };
+    renderSigns();
     buildPreview($("smsPreview"), text, evidence);
-    renderEvidence($("smsEv"), evidence);
+
+    $("advSummary").textContent = sv(sum.text);
+    $("advSource").textContent = sum.source === "llm"
+      ? "Written by Llama. The verifier passed it."
+      : skipped ? "Template text. The explainer is not run for LOW risk."
+      : "Template text. Llama's wording was rejected or not used.";
+    $("advFoot").textContent = skipped
+      ? "measured: explainer not run · total " + fmt(tm.total, 0) + " ms"
+      : "measured on this Pi: llm " + fmt(tm.llm_total, 0) + " ms · " + arr(tm.llm_calls).length + " call(s) · " +
+        (isNum(tm.llm_cached) && tm.llm_cached > 0 ? tm.llm_cached + " cached" : "0 cached") + " · total " + fmt(tm.total, 0) + " ms";
+
+    var verifier = isObj(d.verifier) ? d.verifier : {};
+    renderReceipt(arr(adv.points), arr(verifier.g2_rejected));
 
     $("smsRemCard").hidden = renderRem($("smsRem"), d.remediation) === 0;
-
-    var sum = isObj(adv.summary) ? adv.summary : {};
-    $("advSummary").textContent = s(sum.text);
-    $("advSource").textContent = "source: " + s(sum.source) + (typeof sum.check === "string" ? " (" + sum.check + ")" : "");
-    renderPoints($("advPoints"), adv.points);
-    var g2 = arr(isObj(d.verifier) ? d.verifier.g2_rejected : null);
-    $("advG2").textContent = g2.length
-      ? "Attribution guard rejected " + g2.length + " sentence(s); the template was shown instead."
-      : "Attribution guard: nothing rejected.";
 
     drawPipe($("smsPipe"), $("smsBar"), $("smsLegend"), tm, skipped);
     var calls = arr(tm.llm_calls);
@@ -732,13 +1106,12 @@ footer p+p{margin-top:4px}
       var en2 = isObj(dev.energy) ? dev.energy : {};
       tiles($("smsDevice"), [
         ["SoC temp", fmt(st.temp_c) + " → " + fmt(en.temp_c) + " °C", "start → end"],
-        ["Throttled", s(st.throttled) + " → " + s(en.throttled), "start → end"],
-        ["Energy", fmt(en2.energy_j, 2) + " J", s(en2.method)],
+        ["Throttled", sv(st.throttled) + " → " + sv(en.throttled), "start → end"],
+        ["Energy", fmt(en2.energy_j, 2) + " J", sv(en2.method)],
         ["Mean power", fmt(en2.mean_w, 2) + " W", "this request"],
         ["Service RSS", fmt(dev.rss_mb, 0) + " MB", "resident memory"]
       ]);
     }
-
     animateIn(res);
   }
 
@@ -749,20 +1122,20 @@ footer p+p{margin-top:4px}
     var res = $("linkRes");
     res.className = "results " + riskClass(d.risk);
     var score = um.enabled && isNum(um.score) ? um.score : null;
-    drawRing($("linkRing"), score, um.enabled ? um.threshold : null, s(d.risk));
+    drawRing($("linkRing"), score, um.enabled ? um.threshold : null, sv(d.risk), "URL score");
 
-    var v = d.verdict === "no_signal" ? "no signal" : s(d.verdict);
+    var v = d.verdict === "no_signal" ? "no signal" : sv(d.verdict);
     var vEl = $("linkVerdict");
     vEl.textContent = v;
     vEl.className = "verdict " + (d.verdict === "phishing" ? "bad" : d.verdict === "suspicious" ? "warn" : "ok");
 
     kv($("linkKv"), [
-      ["Risk", s(d.risk)],
+      ["Risk", sv(d.risk)],
       ["Domain", um.domain || (d.url_count ? "n/a" : "no link found")],
       ["URL model score", !um.enabled ? "off (no threshold in registry)" :
         (score === null ? "no link" : fmt(score, 4) + " (threshold " + fmt(um.threshold, 4) + ")")],
       ["Rule hits", evidence.length ? evidence.map(function (e) { return prettyType(e.type); }).join(", ") : "none"],
-      ["Total", fmt(isObj(d.timings_ms) ? d.timings_ms.total : null, 0) + " ms"]
+      ["Total", fmt(isObj(d.timings_ms) ? d.timings_ms.total : null, 0) + " ms, measured"]
     ]);
     renderEvidence($("linkEv"), evidence);
     $("linkRemCard").hidden = renderRem($("linkRem"), d.remediation) === 0;
@@ -774,32 +1147,31 @@ footer p+p{margin-top:4px}
     var dec = isObj(a.decision) ? a.decision : {};
     var ver = isObj(a.verifier) ? a.verifier : {};
     var adv = isObj(a.advisory) ? a.advisory : {};
-    var card = el("article", "alert");
-    card.className = "alert " + riskClass(dec.risk);
-    card.appendChild(el("div", "label", "Host " + s(a.src)));
-    card.appendChild(el("div", "alert-h", s(dec.risk) + " / " + s(dec.state) + " / " + s(dec.family)));
+    var card = el("article", "alert " + riskClass(dec.risk));
+    card.appendChild(el("div", "label", "Host " + sv(a.src)));
+    card.appendChild(el("div", "alert-h", sv(dec.risk) + " / " + sv(dec.state) + " / " + sv(dec.family)));
     var k = el("div", "kv");
     card.appendChild(k);
     kv(k, [
       ["Attack score (max)", fmt(dec.p_attack, 4)],
-      ["Flagged flows", s(dec.flagged_flows) + " of " + s(dec.flows_from_host)],
-      ["Distinct destination ports", s(dec.distinct_dst_ports)],
+      ["Flagged flows", sv(dec.flagged_flows) + " of " + sv(dec.flows_from_host)],
+      ["Distinct destination ports", sv(dec.distinct_dst_ports)],
       ["Verifier", ver.ok ? "passed" : "rejected: " + arr(ver.reasons).join("; ")]
     ]);
     card.appendChild(el("div", "label", "Evidence"));
     var evBox = el("div", "tags");
     arr(a.evidence).forEach(function (e) {
-      evBox.appendChild(el("span", "tag tag-rule", s(e.id) + " " + prettyType(e.type) + " (weight " + fmt(e.weight, 3) + ")"));
+      evBox.appendChild(el("span", "tag tag-rule", sv(e.id) + " " + prettyType(e.type) + " (weight " + fmt(e.weight, 3) + ")"));
     });
     card.appendChild(evBox);
     card.appendChild(el("div", "label", "Advisory (template)"));
-    card.appendChild(el("p", "pt-text", s(adv.summary)));
-    card.appendChild(el("div", "note", "Action: " + s(adv.action)));
+    card.appendChild(el("p", "pt-text", sv(adv.summary)));
+    card.appendChild(el("div", "note", "Action: " + sv(adv.action)));
     card.appendChild(el("div", "label", "Examples"));
     arr(a.examples).forEach(function (x) {
       var port = (x.dst_port === null || x.dst_port === undefined) ? "?" : x.dst_port;
-      card.appendChild(el("div", "note", s(x.dst || "?") + ":" + port + " " + s(x.family) +
-        " p=" + fmt(x.p_attack, 4) + " " + s(x.state)));
+      card.appendChild(el("div", "note", sv(x.dst || "?") + ":" + port + " " + sv(x.family) +
+        " p=" + fmt(x.p_attack, 4) + " " + sv(x.state)));
     });
     parent.appendChild(card);
   }
@@ -812,17 +1184,16 @@ footer p+p{margin-top:4px}
     res.className = "results " + riskClass(dec.risk);
 
     var frac = isNum(dec.hosts_seen) && dec.hosts_seen > 0 && isNum(dec.alerts) ? dec.alerts / dec.hosts_seen : null;
-    drawRing($("netRing"), frac, null, s(dec.risk), "hosts alerting");
-    $("netState").textContent = s(dec.risk) + " / " + s(dec.state);
+    drawRing($("netRing"), frac, null, sv(dec.risk), "hosts alerting", false);
+    $("netState").textContent = sv(dec.risk) + " / " + sv(dec.state);
     kv($("netKv"), [
-      ["Flows processed", s(d.flows_processed) + " (" + s(d.flow_source) + ")"],
+      ["Flows processed", sv(d.flows_processed) + " (" + sv(d.flow_source) + ")"],
       ["Flows per second", fmt(d.flows_per_s, 1)],
-      ["Alerts (hosts)", s(dec.alerts) + " of " + s(dec.hosts_seen) + " seen"]
+      ["Alerts (hosts)", sv(dec.alerts) + " of " + sv(dec.hosts_seen) + " seen"]
     ]);
 
     var alerts = arr(d.alerts);
-    var box = $("netAlerts");
-    clear(box);
+    var box = clear($("netAlerts"));
     alerts.forEach(function (a) { renderAlert(box, a); });
     $("netNone").textContent = alerts.length ? "" : "No host alert in this capture.";
 
@@ -843,7 +1214,7 @@ footer p+p{margin-top:4px}
     ]);
     tiles($("netDevice"), [
       ["SoC temp", fmt(st.temp_c, 1) + " → " + fmt(en.temp_c, 1) + " °C", "start → end"],
-      ["Energy", fmt(en2.energy_j, 2) + " J", s(en2.method)],
+      ["Energy", fmt(en2.energy_j, 2) + " J", sv(en2.method)],
       ["Service RSS", fmt(dev.rss_mb, 0) + " MB", "resident memory"]
     ]);
     animateIn(res);
@@ -908,11 +1279,59 @@ footer p+p{margin-top:4px}
     return "The Pi is too hot. " + tail;
   }
 
-  /* ---------- tabs ---------- */
-  var TABS = ["sms", "link", "net"];
+  /* ---------- session record (this session only; in memory) ---------- */
+  function riskOf(kind, body) {
+    if (kind === "link") return typeof body.risk === "string" ? body.risk : null;
+    return isObj(body.decision) && typeof body.decision.risk === "string" ? body.decision.risk : null;
+  }
+  function msOf(kind, body) {
+    if (kind === "net") return isNum(body.wall_ms) ? body.wall_ms : null;
+    return isObj(body.timings_ms) && isNum(body.timings_ms.total) ? body.timings_ms.total : null;
+  }
+  function kindName(k) { return k === "sms" ? "SMS" : k === "link" ? "Link" : "Pcap"; }
+
+  function record(kind, body, label) {
+    var risk = riskOf(kind, body);
+    var ms = msOf(kind, body);
+    S.checked++;
+    if (risk === "HIGH" || risk === "MEDIUM") S.flagged++;
+    if (isNum(ms)) S.ms.push(ms);
+    S.lastRisk = risk;
+    if (kind === "net") S.flowsOk = true;
+    S.feed.unshift({ kind: kind, risk: risk, label: clip(label, 60), ms: ms, time: clock(), body: body, text: label });
+    if (S.feed.length > 8) S.feed.length = 8;
+    setAurora(risk);
+    loadHealth(true);
+  }
+
+  /* Reopen a feed entry without a new request. */
+  function reopen(e) {
+    location.hash = "#check/" + e.kind;
+    showView("check");
+    showTab(e.kind, false);
+    var res, status;
+    if (e.kind === "sms") {
+      $("sms").value = e.text;
+      updateCount();
+      renderSms(e.body, e.text);
+      res = $("smsRes"); status = $("status");
+    } else if (e.kind === "link") {
+      renderLink(e.body);
+      res = $("linkRes"); status = $("linkStatus");
+    } else {
+      renderNet(e.body);
+      res = $("netRes"); status = $("netStatus");
+    }
+    res.hidden = false;
+    status.textContent = "reopened from this session";
+    setAurora(e.risk);
+    res.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
+  }
+
+  /* ---------- tabs (Check sub-tabs) ---------- */
   function showTab(name, focus) {
-    if (TABS.indexOf(name) === -1) name = "sms";
-    TABS.forEach(function (t) {
+    if (SUBS.indexOf(name) === -1) name = "sms";
+    SUBS.forEach(function (t) {
       var on = t === name;
       var b = $("tab-" + t);
       b.setAttribute("aria-selected", on ? "true" : "false");
@@ -922,21 +1341,269 @@ footer p+p{margin-top:4px}
     clearBanner();
     if (focus) $("tab-" + name).focus();
   }
-  TABS.forEach(function (t) {
-    $("tab-" + t).addEventListener("click", function () { showTab(t, false); });
+  SUBS.forEach(function (t) {
+    $("tab-" + t).addEventListener("click", function () { location.hash = "#check/" + t; });
   });
   $("tab-sms").parentNode.addEventListener("keydown", function (ev) {
-    var i = TABS.indexOf(ev.target.id.replace("tab-", ""));
+    var i = SUBS.indexOf(ev.target.id.replace("tab-", ""));
     if (i < 0) return;
     var next = null;
-    if (ev.key === "ArrowRight") next = (i + 1) % TABS.length;
-    else if (ev.key === "ArrowLeft") next = (i + TABS.length - 1) % TABS.length;
+    if (ev.key === "ArrowRight") next = (i + 1) % SUBS.length;
+    else if (ev.key === "ArrowLeft") next = (i + SUBS.length - 1) % SUBS.length;
     else if (ev.key === "Home") next = 0;
-    else if (ev.key === "End") next = TABS.length - 1;
+    else if (ev.key === "End") next = SUBS.length - 1;
     if (next === null) return;
     ev.preventDefault();
-    showTab(TABS[next], true);
+    location.hash = "#check/" + SUBS[next];
+    showTab(SUBS[next], true);
   });
+
+  /* ---------- views and routing (location.hash) ---------- */
+  function parseRoute() {
+    var h = (location.hash || "").replace(/^#\/?/, "");
+    var parts = h.split("/");
+    var v = parts[0], sub = parts[1];
+    if (v === "sms" || v === "link" || v === "net") { sub = v; v = "check"; }
+    if (v === "check") return { view: "check", sub: SUBS.indexOf(sub) === -1 ? "sms" : sub };
+    if (v === "proof") return { view: "proof", sub: "" };
+    return { view: "home", sub: "" };
+  }
+  function showView(v) {
+    VIEWS.forEach(function (x) { $("view-" + x).hidden = x !== v; });
+    document.querySelectorAll("[data-nav]").forEach(function (a) {
+      if (a.getAttribute("data-nav") === v) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    });
+    $("bottomnav").style.setProperty("--idx", String(VIEWS.indexOf(v)));
+    if (curView !== "" && curView !== v) window.scrollTo(0, 0);
+    curView = v;
+  }
+  function route() {
+    var r = parseRoute();
+    showView(r.view);
+    if (r.view === "check") showTab(r.sub, false);
+    if (r.view === "home") { renderHome(); loadHealth(false); }
+    if (r.view === "proof") { renderProof(); loadHealth(false); }
+  }
+
+  /* ---------- guard state (only what the service or this session showed) ---------- */
+  var G = {};
+  function ringEl(r, cls) {
+    var c = document.createElementNS(NS, "circle");
+    c.setAttribute("cx", "80"); c.setAttribute("cy", "80"); c.setAttribute("r", String(r));
+    c.setAttribute("transform", "rotate(-90 80 80)");
+    c.setAttribute("class", cls);
+    return c;
+  }
+  function buildGuards() {
+    var box = clear($("guards"));
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 160 160");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    [["sms", 74], ["link", 58], ["net", 42]].forEach(function (r) {
+      svg.appendChild(ringEl(r[1], "g-track"));
+      var fg = ringEl(r[1], "g-fg g-" + r[0]);
+      fg.setAttribute("pathLength", "100");
+      svg.appendChild(fg);
+      G[r[0]] = fg;
+    });
+    box.appendChild(svg);
+    var c = el("div", "guards-c");
+    var num = el("div", "guards-num", "0");
+    c.appendChild(num);
+    c.appendChild(el("div", "guards-sub", "of 3 on"));
+    box.appendChild(c);
+    G.num = num;
+  }
+  function smsState() { return H && H.status === "ok" ? "on" : "unknown"; }
+  function linkState() {
+    if (H && isObj(H.url_model)) return H.url_model.enabled === true ? "on" : "off";
+    return "unknown";
+  }
+  function netState() {
+    var nids = H && isObj(H.models) && Object.keys(H.models).some(function (k) { return /nids/i.test(k); });
+    return S.flowsOk || nids ? "on" : "unknown";
+  }
+  function guardDetail(name, st) {
+    var down = HSTATE === "down", load = HSTATE === "loading";
+    if (name === "sms") {
+      if (st === "on") return "on · service status ok";
+      return "unknown · " + (load ? "checking /health" : down ? "service not reachable" : "no status from /health");
+    }
+    if (name === "link") {
+      if (st === "on") return "on · URL model enabled";
+      if (st === "off") return "off · no URL model in this service";
+      return "unknown · " + (load ? "checking /health" : down ? "service not reachable" : "no /health answer");
+    }
+    if (st !== "on") return "unknown · no pcap check yet and no NIDS model listed";
+    return S.flowsOk ? "on · answered a pcap request this session" : "on · NIDS model listed in /health";
+  }
+
+  function renderFeed() {
+    var ol = clear($("feed"));
+    $("feedEmpty").hidden = S.feed.length > 0;
+    S.feed.forEach(function (e) {
+      var li = el("li", "");
+      var b = el("button", "feed-item");
+      b.type = "button";
+      b.style.setProperty("--rc", riskVar(e.risk));
+      b.appendChild(el("span", "feed-dot"));
+      var txt = el("div", "");
+      txt.appendChild(el("div", "feed-t", e.label));
+      txt.appendChild(el("div", "feed-m", kindName(e.kind) + " · " + sv(e.risk) + " · " +
+        (isNum(e.ms) ? fmt(e.ms, 0) + " ms" : "n/a") + " · " + e.time));
+      b.appendChild(txt);
+      b.addEventListener("click", function () { reopen(e); });
+      li.appendChild(b);
+      ol.appendChild(li);
+    });
+  }
+
+  function renderHome() {
+    var st = { sms: smsState(), link: linkState(), net: netState() };
+    var on = 0;
+    ["sms", "link", "net"].forEach(function (k) {
+      if (st[k] === "on") on++;
+      G[k].style.strokeDashoffset = st[k] === "on" ? "0" : "100";
+    });
+    tweenNum(G.num, on, 0, G.num._v);
+    G.num._v = on;
+
+    var title = $("homeTitle");
+    var t, cls;
+    if (S.lastRisk === "HIGH") { t = "Threat found"; cls = "bad"; }
+    else if (HSTATE === "loading") { t = "Checking the service…"; cls = "unk"; }
+    else if (on === 0) { t = "Status unknown"; cls = "unk"; }
+    else { t = "Protected"; cls = "ok"; }
+    title.className = "status-title " + cls;
+    title.textContent = t;
+    $("homeSub").textContent = on + " of 3 guards on" + (S.lastRisk === "HIGH" ? " · last check flagged high" : "");
+
+    var legend = clear($("glegend"));
+    [["SMS guard", "sms"], ["Link guard", "link"], ["Network guard", "net"]].forEach(function (g) {
+      var li = el("li", "");
+      var dot = el("span", "gdot " + (st[g[1]] === "on" ? "on" : st[g[1]] === "off" ? "off" : ""));
+      li.appendChild(dot);
+      var txt = el("div", "");
+      txt.appendChild(el("div", "gname", g[0]));
+      txt.appendChild(el("div", "note", guardDetail(g[1], st[g[1]])));
+      li.appendChild(txt);
+      legend.appendChild(li);
+    });
+
+    var med = median(S.ms);
+    tweenNum($("cChecked"), S.checked, 0, $("cChecked")._v); $("cChecked")._v = S.checked;
+    tweenNum($("cFlagged"), S.flagged, 0, $("cFlagged")._v); $("cFlagged")._v = S.flagged;
+    tweenNum($("cMedian"), med, 0, $("cMedian")._v); $("cMedian")._v = med;
+    var req = H && isNum(H.requests) ? H.requests : null;
+    tweenNum($("cReq"), req, 0, $("cReq")._v); $("cReq")._v = req;
+
+    renderFeed();
+    setAurora(S.lastRisk);
+  }
+
+  function renderProof() {
+    var net = H && isObj(H.network) ? H.network : null;
+    var title = $("sealTitle"), note = $("sealNote");
+    var radar = $("radar"), airKv = $("airKv");
+    var ifaces = net && Array.isArray(net.interfaces) ? net.interfaces : null;
+    var routes = net && isNum(net.routes) ? net.routes : null;
+    var probe = net && typeof net.egress_probe === "string" ? net.egress_probe : null;
+
+    if (HSTATE === "loading" || !H) {
+      title.className = "seal-title unk";
+      title.textContent = HSTATE === "loading" ? "Checking…" : "Not measured";
+      note.textContent = HSTATE === "loading" ? "Asking the service on this Pi." : "The service did not answer /health, so nothing is measured here.";
+      radar.className = "radar";
+    } else if (!net || net.error || (ifaces === null && routes === null && probe === null)) {
+      title.className = "seal-title warn";
+      title.textContent = "Not measured";
+      note.textContent = "The service has not reported a network check." + (net && net.error ? " (" + net.error + ")" : "");
+      radar.className = "radar warn";
+    } else if (probe === null) {
+      title.className = "seal-title warn";
+      title.textContent = "Not measured";
+      note.textContent = "The egress probe is missing, so isolation is not proven.";
+      radar.className = "radar warn";
+    } else {
+      var loOnly = !!ifaces && ifaces.length === 1 && ifaces[0] === "lo";
+      var noRoutes = routes === 0;
+      var sealed = (loOnly || noRoutes) && probe.indexOf("failed") === 0;
+      if (sealed) {
+        title.className = "seal-title ok";
+        title.textContent = "Sealed";
+        note.textContent = "No outbound route and the connect probe failed, as the service reports it on this Pi.";
+        radar.className = "radar";
+      } else {
+        title.className = "seal-title warn";
+        title.textContent = "Not isolated";
+        note.textContent = "The Pi reports a route or a working probe, so it is not sealed. Shown exactly as reported.";
+        radar.className = "radar warn";
+      }
+    }
+
+    kv(airKv, [
+      ["Interfaces", ifaces ? (ifaces.length ? ifaces.join(", ") : "none") : "n/a"],
+      ["Routes", routes === null ? "n/a" : String(routes)],
+      ["Egress probe", probe === null ? "n/a (not reported)" : probe]
+    ]);
+
+    if (!H) {
+      kv($("modelKv"), [["Service", HSTATE === "loading" ? "checking" : "not reachable"]]);
+      return;
+    }
+    var ec = isObj(H.explainer_cache) ? H.explainer_cache : {};
+    var dom = typeof H.detector_only_mode === "string" ? H.detector_only_mode : (H.detector_only_mode ? "on" : "off");
+    kv($("modelKv"), [
+      ["Explainer runner", sv(H.llm_runner)],
+      ["Detector only mode", dom],
+      ["Threads", sv(H.threads)],
+      ["URL model", isObj(H.url_model) ? (H.url_model.enabled ? "on, threshold " + fmt(H.url_model.threshold, 2) : "off") : "n/a"],
+      ["Explainer cache", "hits " + sv(ec.hits) + " · misses " + sv(ec.misses) + " · size " + sv(ec.size) + " of " + sv(ec.capacity)],
+      ["Uptime", fmtUptime(H.uptime_s)],
+      ["RSS now / peak", fmt(H.rss_mb, 1) + " / " + fmt(H.rss_peak_mb, 1) + " MB"],
+      ["SoC temp", isObj(H.device) ? fmt(H.device.temp_c, 1) + " °C" + (isNum(H.temp_limit_c) ? " (limit " + fmt(H.temp_limit_c, 0) + ")" : "") : "n/a"],
+      ["Requests since start", sv(H.requests) + " (refused while hot: " + sv(H.refused_cooling) + ")"]
+    ]);
+  }
+
+  /* ---------- health (optional; the page works without it) ---------- */
+  function loadHealth(force) {
+    var now = Date.now();
+    if (!force && now - lastHealthAt < 4000) return;
+    lastHealthAt = now;
+    fetch("/health", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (h) {
+        H = isObj(h) ? h : {};
+        HSTATE = "ok";
+        var svc = $("chipSvc");
+        svc.textContent = "Service up";
+        svc.className = "chip chip-ok";
+        if (isObj(H.device) && isNum(H.device.temp_c)) {
+          var limit = isNum(H.temp_limit_c) ? H.temp_limit_c : null;
+          var chipT = $("chipTemp");
+          chipT.textContent = "SoC " + fmt(H.device.temp_c, 1) + " °C" + (limit !== null ? " / limit " + fmt(limit, 0) + " °C" : "");
+          chipT.className = "chip " + (limit !== null && H.device.temp_c >= limit ? "chip-bad" : "chip-ok");
+          chipT.hidden = false;
+        }
+        if (H.detector_only_mode === true) $("chipLlm").textContent = "Explainer off (detector only)";
+        refreshVisible();
+      })
+      .catch(function () {
+        H = null;
+        HSTATE = "down";
+        var svc = $("chipSvc");
+        svc.textContent = "Service not reachable";
+        svc.className = "chip chip-bad";
+        refreshVisible();
+      });
+  }
+  function refreshVisible() {
+    if (curView === "home") renderHome();
+    if (curView === "proof") renderProof();
+  }
 
   /* ---------- theme ---------- */
   function currentTheme() {
@@ -960,31 +1627,8 @@ footer p+p{margin-top:4px}
     document.documentElement.setAttribute("data-theme", next);
     try { localStorage.setItem("rakshak-theme", next); } catch (e) {}
     paintThemeBtn();
+    if (curView === "home") renderHome();
   });
-
-  /* ---------- health chips (optional; the page works without it) ---------- */
-  function loadHealth() {
-    fetch("/health", { cache: "no-store" })
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then(function (h) {
-        var svc = $("chipSvc");
-        svc.textContent = "Service up";
-        svc.className = "chip chip-ok";
-        if (isObj(h.device) && isNum(h.device.temp_c)) {
-          var limit = isNum(h.temp_limit_c) ? h.temp_limit_c : null;
-          var chipT = $("chipTemp");
-          chipT.textContent = "SoC " + fmt(h.device.temp_c, 1) + " °C" + (limit !== null ? " / limit " + fmt(limit, 0) + " °C" : "");
-          chipT.className = "chip " + (limit !== null && h.device.temp_c >= limit ? "chip-bad" : "chip-ok");
-          chipT.hidden = false;
-        }
-        if (h.detector_only_mode) $("chipLlm").textContent = "Explainer off (detector only)";
-      })
-      .catch(function () {
-        var svc = $("chipSvc");
-        svc.textContent = "Service not reachable";
-        svc.className = "chip chip-bad";
-      });
-  }
 
   /* ---------- wiring ---------- */
   var smsEl = $("sms");
@@ -1002,6 +1646,33 @@ footer p+p{margin-top:4px}
   document.querySelectorAll("[data-link-sample]").forEach(function (b) {
     b.addEventListener("click", function () { $("linkText").value = LINK_SAMPLE; clearBanner(); });
   });
+  document.querySelectorAll("[data-lang]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var v = b.getAttribute("data-lang");
+      if (LANGS.indexOf(v) === -1) return;
+      LANG = v;
+      document.querySelectorAll("[data-lang]").forEach(function (x) {
+        x.setAttribute("aria-pressed", x === b ? "true" : "false");
+      });
+    });
+  });
+
+  /* Warning-sign highlight: click or Enter jumps to its chip and flashes it. */
+  $("smsPreview").addEventListener("click", function (ev) {
+    var m = ev.target && ev.target.closest ? ev.target.closest("mark[data-ev]") : null;
+    if (m) revealSign(parseInt(m.getAttribute("data-ev"), 10));
+  });
+  $("smsPreview").addEventListener("keydown", function (ev) {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    var m = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-ev");
+    if (m === null || m === undefined) return;
+    ev.preventDefault();
+    revealSign(parseInt(m, 10));
+  });
+  $("signsMore").addEventListener("click", function () {
+    smsCtx.all = !smsCtx.all;
+    renderSigns();
+  });
 
   $("go").addEventListener("click", function () {
     var text = smsEl.value;
@@ -1009,20 +1680,20 @@ footer p+p{margin-top:4px}
     runReq({
       btn: $("go"), status: $("status"), skel: $("smsSkel"), res: $("smsRes"),
       busy: "running on the Pi...",
-      send: function () { return postJson("/analyze", { sms: text }); },
-      onOk: function (d) { renderSms(d, text); },
+      send: function () { return postJson("/analyze", { sms: text, lang: LANG }); },
+      onOk: function (d) { renderSms(d, text); record("sms", d, text); },
       hot: function (b) { return hotText(b, "The explainer was not run. Try again when it has cooled."); }
     });
   });
 
   $("linkGo").addEventListener("click", function () {
-    var text = $("linkText").value;
-    if (!text.trim()) { banner("warn", "Paste a link first."); return; }
+    var url = $("linkText").value;
+    if (!url.trim()) { banner("warn", "Paste a link first."); return; }
     runReq({
       btn: $("linkGo"), status: $("linkStatus"), skel: $("linkSkel"), res: $("linkRes"),
       busy: "checking on the Pi...",
-      send: function () { return postJson("/analyze_url", { url: text }); },
-      onOk: renderLink,
+      send: function () { return postJson("/analyze_url", { url: url }); },
+      onOk: function (d) { renderLink(d); record("link", d, url); },
       hot: function (b) { return hotText(b, "The link was not checked. Try again when it has cooled."); }
     });
   });
@@ -1040,13 +1711,15 @@ footer p+p{margin-top:4px}
       btn: $("netGo"), status: $("netStatus"), skel: $("netSkel"), res: $("netRes"),
       busy: "running on the Pi...",
       send: function () { return postPcap("/analyze_flows", f); },
-      onOk: renderNet,
+      onOk: function (d) { renderNet(d); record("net", d, "pcap: " + f.name); },
       hot: function (b) { return hotText(b, "The network analysis was not run. Try again when it has cooled."); }
     });
   });
 
-  if (/^#(link|net)$/.test(location.hash)) showTab(location.hash.slice(1) === "net" ? "net" : "link", false);
-  loadHealth();
+  buildGuards();
+  window.addEventListener("hashchange", route);
+  route();
+  loadHealth(true);
 })();
 </script>
 </body>

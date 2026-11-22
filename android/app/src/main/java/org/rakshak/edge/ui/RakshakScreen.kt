@@ -1,23 +1,22 @@
 package org.rakshak.edge.ui
 
 import android.os.Build
-import android.provider.Settings
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -27,10 +26,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -45,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -57,24 +59,23 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import org.rakshak.edge.Analysis
 import org.rakshak.edge.Engine
 import org.rakshak.edge.SharedMessage
@@ -82,12 +83,14 @@ import org.rakshak.edge.analysis.Action
 import org.rakshak.edge.analysis.Evidence
 import org.rakshak.edge.analysis.RemediationItem
 import org.rakshak.edge.analysis.Risk
-import org.rakshak.edge.analysis.Tier
+import org.rakshak.edge.analysis.SCAM_THRESHOLD
 import org.rakshak.edge.analysis.TYPE_PHRASE_EN
+import org.rakshak.edge.analysis.Tier
 import org.rakshak.edge.data.RuleData
+import org.rakshak.edge.llm.PointView
 import org.rakshak.edge.perf.InferenceTiming
 
-/** Synthetic example texts for the demo. They are invented, not real messages. */
+/** Synthetic example texts. They are invented for the demo, not real messages. */
 private data class Sample(val label: String, val text: String)
 
 private val SAMPLES = listOf(
@@ -113,7 +116,27 @@ private val SAMPLES = listOf(
     ),
 )
 
-private const val STAGGER_MS = 60L
+private const val TAB_HOME = 0
+private const val TAB_CHECK = 1
+private const val TAB_PROOF = 2
+private const val MAX_HISTORY = 20
+private const val MAX_SIGNS = 5
+private val ITEM_HEIGHT = 58.dp
+private val PARENTHETICAL = Regex("""\s*\([^)]*\)""")
+
+/** State of the detector as seen by this session's checks. */
+internal enum class DetectorStatus { NOT_TRIED, LOADED, ERROR }
+
+/** One verdict from this session. Kept in memory only, never persisted. */
+internal data class SessionEntry(
+    val id: Long,
+    val atMillis: Long,
+    val checkMs: Long,
+    val analysis: Analysis,
+    val explainMs: Long?,
+)
+
+private fun elapsedMs(startNs: Long): Long = (System.nanoTime() - startNs) / 1_000_000L
 
 /** Verdict, evidence, remediation and the optional explanation for one message. */
 @Composable
@@ -127,7 +150,11 @@ fun RakshakScreen(engine: Engine, shared: SharedMessage?) {
 @Composable
 private fun RakshakContent(engine: Engine, shared: SharedMessage?) {
     val c = LocalRakshakColors.current
+    val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
+    val reducedMotion = rememberReducedMotion()
+    var selectedTab by rememberSaveable { mutableStateOf(TAB_HOME) }
     var text by rememberSaveable { mutableStateOf("") }
     var analysis by remember { mutableStateOf<Analysis?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -135,6 +162,28 @@ private fun RakshakContent(engine: Engine, shared: SharedMessage?) {
     var showAbout by remember { mutableStateOf(false) }
     var activeRequest by remember { mutableStateOf<Job?>(null) }
     var pendingFrame by remember { mutableStateOf<InferenceFrame?>(null) }
+    val history = remember { mutableStateListOf<SessionEntry>() }
+    var currentEntryId by remember { mutableStateOf<Long?>(null) }
+    var checkMs by remember { mutableStateOf<Long?>(null) }
+    var explainMs by remember { mutableStateOf<Long?>(null) }
+    var detectorStatus by remember { mutableStateOf(DetectorStatus.NOT_TRIED) }
+    var verdictSerial by remember { mutableStateOf(0) }
+    val explainerInstalled = remember { engine.explainerInstalled() }
+    val permissions = remember(context) { requestedPermissions(context) }
+    val offline = permissions != null && "android.permission.INTERNET" !in permissions
+    val threat = history.firstOrNull()?.analysis?.tier == Tier.SCAM
+    val wash = if (threat) c.high else c.accent
+    val scroll = rememberScrollState()
+    val transition = rememberInfiniteTransition(label = "aurora")
+    val drift = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 16000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "aurora-drift",
+    )
 
     fun submit(timing: InferenceTiming?, explaining: Boolean = false, run: suspend () -> Result<Analysis>) {
         activeRequest?.cancel()
@@ -161,10 +210,92 @@ private fun RakshakContent(engine: Engine, shared: SharedMessage?) {
         }
     }
 
+    /** engine.check with a wall-clock time around it. A success is recorded in this session. */
+    suspend fun runCheck(message: String, timing: InferenceTiming?): Result<Analysis> {
+        val startNs = System.nanoTime()
+        val result = engine.check(message, timing)
+        val ms = elapsedMs(startNs)
+        result.onSuccess { fresh ->
+            val id = System.nanoTime()
+            currentEntryId = id
+            checkMs = ms
+            explainMs = null
+            detectorStatus = DetectorStatus.LOADED
+            history.add(0, SessionEntry(id = id, atMillis = System.currentTimeMillis(), checkMs = ms, analysis = fresh, explainMs = null))
+            while (history.size > MAX_HISTORY) {
+                history.removeAt(history.lastIndex)
+            }
+            verdictSerial += 1
+        }.onFailure {
+            detectorStatus = DetectorStatus.ERROR
+        }
+        return result
+    }
+
+    /** engine.explain with a wall-clock time around it. The session entry keeps the explanation. */
+    suspend fun runExplain(base: Analysis, timing: InferenceTiming?): Result<Analysis> {
+        val startNs = System.nanoTime()
+        val result = engine.explain(base, timing)
+        val ms = elapsedMs(startNs)
+        result.onSuccess { updated ->
+            explainMs = ms
+            val index = history.indexOfFirst { it.id == currentEntryId }
+            if (index >= 0) {
+                history[index] = history[index].copy(analysis = updated, explainMs = ms)
+            }
+        }
+        return result
+    }
+
+    fun startCheck() {
+        val message = text
+        val timing = InferenceTiming.start("check")
+        submit(timing) { runCheck(message, timing) }
+    }
+
+    fun startExplain(a: Analysis) {
+        val timing = InferenceTiming.start("explain")
+        submit(timing, explaining = true) { runExplain(a, timing) }
+    }
+
+    fun openEntry(entry: SessionEntry) {
+        activeRequest?.cancel()
+        pendingFrame = null
+        busy = false
+        error = null
+        text = entry.analysis.text
+        analysis = entry.analysis
+        currentEntryId = entry.id
+        checkMs = entry.checkMs
+        explainMs = entry.explainMs
+        selectedTab = TAB_CHECK
+    }
+
+    fun selectTab(tab: Int) {
+        if (tab != selectedTab) {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            selectedTab = tab
+        }
+    }
+
     LaunchedEffect(shared) {
         if (shared != null && shared.text.isNotBlank()) {
+            selectedTab = TAB_CHECK
             text = shared.text
-            submit(shared.timing) { engine.check(shared.text, shared.timing) }
+            submit(shared.timing) { runCheck(shared.text, shared.timing) }
+        }
+    }
+
+    LaunchedEffect(selectedTab) {
+        scroll.scrollTo(0)
+    }
+
+    LaunchedEffect(verdictSerial) {
+        val current = analysis
+        if (verdictSerial > 0 && current != null) {
+            haptics.performHapticFeedback(
+                if (current.tier == Tier.SCAM) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove,
+            )
         }
     }
 
@@ -173,11 +304,12 @@ private fun RakshakContent(engine: Engine, shared: SharedMessage?) {
             .fillMaxSize()
             .background(c.bg)
             .drawBehind {
+                val p = if (reducedMotion) 0.5f else drift.value
                 drawRect(
                     brush = Brush.radialGradient(
-                        colors = listOf(c.accent.copy(alpha = 0.20f), Color.Transparent),
-                        center = Offset(size.width * 0.15f, 0f),
-                        radius = size.width * 0.9f,
+                        colors = listOf(wash.copy(alpha = 0.22f), Color.Transparent),
+                        center = Offset(size.width * (0.1f + 0.5f * p), 0f),
+                        radius = size.width * 0.95f,
                     ),
                 )
             },
@@ -185,86 +317,48 @@ private fun RakshakContent(engine: Engine, shared: SharedMessage?) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .verticalScroll(scroll)
+                .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 120.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Header()
-            StatusChips()
-
-            PanelCard {
-                Text(
-                    "Checks a message on this phone. The app asks for no permissions and sends nothing anywhere.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = c.muted,
+            StatusChips(offline = offline)
+            when (selectedTab) {
+                TAB_HOME -> HomeTab(
+                    history = history,
+                    detectorStatus = detectorStatus,
+                    explainerInstalled = explainerInstalled,
+                    offline = offline,
+                    onOpen = { entry -> openEntry(entry) },
                 )
-                Text("Try a synthetic example", style = MaterialTheme.typography.labelLarge, color = c.muted)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    SAMPLES.forEach { sample ->
-                        SampleChip(label = sample.label) { text = sample.text }
-                    }
-                }
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 4,
-                    label = { Text("Paste an SMS or message") },
+                TAB_PROOF -> ProofTab(
+                    detectorStatus = detectorStatus,
+                    explainerInstalled = explainerInstalled,
+                    permissions = permissions,
+                    onAbout = { showAbout = true },
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Button(
-                        onClick = {
-                            val message = text
-                            val timing = InferenceTiming.start("check")
-                            submit(timing) { engine.check(message, timing) }
-                        },
-                        enabled = text.isNotBlank() && !busy,
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    ) {
-                        Text(if (busy) "Checking..." else "Check message")
-                    }
-                    TextButton(
-                        onClick = { showAbout = true },
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    ) { Text("About") }
-                }
-                error?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-                }
-            }
-
-            if (busy && analysis == null) {
-                ScanningCard()
-            }
-
-            analysis?.let { a ->
-                FadeUp(0) { VerdictHero(a) }
-                if (a.evidence.isNotEmpty()) {
-                    FadeUp(1) { EvidenceCard(a) }
-                    FadeUp(2) { PreviewCard(a) }
-                }
-                if (a.remediation.isNotEmpty()) {
-                    FadeUp(3) { RemediationCard(a.remediation, a.tier) }
-                }
-                FadeUp(4) {
-                    AdvisoryCard(
-                        analysis = a,
-                        explainerInstalled = engine.explainerInstalled(),
-                        busy = busy,
-                        onExplain = {
-                            val timing = InferenceTiming.start("explain")
-                            submit(timing, explaining = true) { engine.explain(a, timing) }
-                        },
-                    )
-                }
+                else -> CheckTab(
+                    text = text,
+                    onText = { text = it },
+                    busy = busy,
+                    error = error,
+                    analysis = analysis,
+                    verdictKey = currentEntryId,
+                    checkMs = checkMs,
+                    explainMs = explainMs,
+                    explainerInstalled = explainerInstalled,
+                    onCheck = { startCheck() },
+                    onExplain = { a -> startExplain(a) },
+                    onAbout = { showAbout = true },
+                )
             }
         }
+
+        BottomNav(
+            selected = selectedTab,
+            onSelect = { tab -> selectTab(tab) },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 
     pendingFrame?.let { RecordInferenceFrame(it) }
@@ -301,7 +395,7 @@ private fun RecordInferenceFrame(frame: InferenceFrame) {
 }
 
 // ---------------------------------------------------------------------------
-// Header and input
+// Header, status and navigation
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -331,66 +425,211 @@ private fun Header() {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StatusChips() {
+private fun StatusChips(offline: Boolean) {
     val c = LocalRakshakColors.current
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Chip("● OFFLINE", c.low)
-        Chip("This phone", c.accent2)
+        if (offline) {
+            Chip("● OFFLINE", c.low)
+        } else {
+            Chip("INTERNET permission requested", c.medium)
+        }
+        Chip("This phone", c.muted)
         Chip("SMS student · ONNX", c.accent)
         Chip("Llama 3.2 1B · ExecuTorch", c.accent)
     }
 }
 
 @Composable
-private fun ShieldMark(modifier: Modifier = Modifier) {
+private fun BottomNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val c = LocalRakshakColors.current
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val shield = Path().apply {
-            moveTo(w * 0.5f, 0f)
-            lineTo(w, h * 0.14f)
-            lineTo(w, h * 0.48f)
-            cubicTo(w, h * 0.76f, w * 0.74f, h * 0.92f, w * 0.5f, h)
-            cubicTo(w * 0.26f, h * 0.92f, 0f, h * 0.76f, 0f, h * 0.48f)
-            lineTo(0f, h * 0.14f)
-            close()
+    val shape = RoundedCornerShape(28.dp)
+    val pill = animateFloatAsState(
+        targetValue = selected.toFloat(),
+        animationSpec = tween<Float>(durationMillis = 320, easing = FastOutSlowInEasing),
+        label = "nav-pill",
+    )
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+            .clip(shape)
+            .background(c.glass)
+            .border(1.dp, c.line, shape)
+            .padding(6.dp),
+    ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val density = LocalDensity.current
+            val itemW = maxWidth / 3
+            val itemPx = with(density) { itemW.toPx() }
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset((itemPx * pill.value).roundToInt(), 0) }
+                    .width(itemW)
+                    .height(ITEM_HEIGHT)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(c.accent.copy(alpha = 0.18f)),
+            )
+            Row(modifier = Modifier.fillMaxWidth()) {
+                NavItem(
+                    label = "Home",
+                    glyph = Glyph.HOME,
+                    selected = selected == TAB_HOME,
+                    onClick = { onSelect(TAB_HOME) },
+                    modifier = Modifier.weight(1f),
+                )
+                NavItem(
+                    label = "Check",
+                    glyph = Glyph.CHECK,
+                    selected = selected == TAB_CHECK,
+                    onClick = { onSelect(TAB_CHECK) },
+                    modifier = Modifier.weight(1f),
+                )
+                NavItem(
+                    label = "Proof",
+                    glyph = Glyph.PROOF,
+                    selected = selected == TAB_PROOF,
+                    onClick = { onSelect(TAB_PROOF) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
-        drawPath(
-            path = shield,
-            brush = Brush.linearGradient(
-                colors = listOf(c.accent, c.accent2),
-                start = Offset(0f, 0f),
-                end = Offset(w, h),
-            ),
-        )
-        val tick = Path().apply {
-            moveTo(w * 0.32f, h * 0.5f)
-            lineTo(w * 0.46f, h * 0.64f)
-            lineTo(w * 0.7f, h * 0.38f)
-        }
-        drawPath(
-            path = tick,
-            color = c.bg,
-            style = Stroke(width = w * 0.08f, cap = StrokeCap.Round),
-        )
     }
 }
 
 @Composable
-private fun Chip(text: String, color: Color, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(percent = 50)
-    Box(
+private fun NavItem(
+    label: String,
+    glyph: Glyph,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = LocalRakshakColors.current
+    val tint = if (selected) c.accent else c.muted
+    Column(
         modifier = modifier
-            .clip(shape)
-            .background(color.copy(alpha = 0.14f))
-            .border(1.dp, color.copy(alpha = 0.45f), shape)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .height(ITEM_HEIGHT)
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        Text(text, style = MaterialTheme.typography.labelMedium, color = color)
+        GlyphIcon(glyph = glyph, tint = tint, modifier = Modifier.size(22.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = tint,
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Check tab
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CheckTab(
+    text: String,
+    onText: (String) -> Unit,
+    busy: Boolean,
+    error: String?,
+    analysis: Analysis?,
+    verdictKey: Long?,
+    checkMs: Long?,
+    explainMs: Long?,
+    explainerInstalled: Boolean,
+    onCheck: () -> Unit,
+    onExplain: (Analysis) -> Unit,
+    onAbout: () -> Unit,
+) {
+    val c = LocalRakshakColors.current
+    FadeUp(0) {
+        GlassCard {
+            Text(
+                "Checks a message on this phone. The app asks for no permissions and sends nothing anywhere.",
+                style = MaterialTheme.typography.bodySmall,
+                color = c.muted,
+            )
+            SectionLabel("Try a synthetic example")
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SAMPLES.forEach { sample ->
+                    SampleChip(label = sample.label) { onText(sample.text) }
+                }
+            }
+            Text(
+                "Samples are invented for the demo. They are not real messages.",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.muted,
+            )
+            OutlinedTextField(
+                value = text,
+                onValueChange = onText,
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 4,
+                label = { Text("Paste an SMS or message") },
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(
+                    onClick = onCheck,
+                    enabled = text.isNotBlank() && !busy,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text(if (busy) "Checking..." else "Check message")
+                }
+                TextButton(
+                    onClick = onAbout,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("About") }
+            }
+            error?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = c.high)
+            }
+        }
+    }
+
+    if (busy && analysis == null) {
+        FadeUp(1) { ScanningCard() }
+    }
+
+    analysis?.let { a ->
+        FadeUp(2) { VerdictHero(analysis = a, verdictKey = verdictKey) }
+        if (a.evidence.isNotEmpty()) {
+            FadeUp(3) { WarningSignsCard(a) }
+            FadeUp(4) { PreviewCard(a) }
+        }
+        FadeUp(5) {
+            WhyCard(
+                analysis = a,
+                explainerInstalled = explainerInstalled,
+                busy = busy,
+                explainMs = explainMs,
+                onExplain = { onExplain(a) },
+            )
+        }
+        if (a.advisory.points.isNotEmpty()) {
+            FadeUp(6) { VerifierCard(a.advisory.points) }
+        }
+        if (a.remediation.isNotEmpty()) {
+            FadeUp(7) { RemediationCard(a.remediation, a.tier) }
+        }
+        checkMs?.let { ms ->
+            Text(
+                "checked in $ms ms on this phone",
+                style = MaterialTheme.typography.labelSmall,
+                fontFamily = FontFamily.Monospace,
+                color = c.muted,
+            )
+        }
     }
 }
 
@@ -413,59 +652,6 @@ private fun SampleChip(label: String, onClick: () -> Unit) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Result cards
-// ---------------------------------------------------------------------------
-
-/** Rounded surface card. [glow] adds a soft risk-coloured halo; [scanPhase] draws a sweep. */
-@Composable
-private fun PanelCard(
-    glow: Color? = null,
-    scanPhase: Float? = null,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    val c = LocalRakshakColors.current
-    val shape = RoundedCornerShape(20.dp)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(c.surface)
-            .drawBehind {
-                if (glow != null) {
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(glow, Color.Transparent),
-                            center = Offset(size.width / 2f, 0f),
-                            radius = size.width * 0.8f,
-                        ),
-                    )
-                }
-                if (scanPhase != null) {
-                    val w = size.width
-                    val x = -w + scanPhase * 2f * w
-                    drawRect(
-                        brush = Brush.linearGradient(
-                            colors = listOf(Color.Transparent, c.accent.copy(alpha = 0.16f), Color.Transparent),
-                            start = Offset(x, 0f),
-                            end = Offset(x + w * 0.6f, size.height),
-                        ),
-                    )
-                }
-            }
-            .border(1.dp, c.line, shape)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        content = content,
-    )
-}
-
-@Composable
-private fun SectionTitle(title: String) {
-    val c = LocalRakshakColors.current
-    Text(title, style = MaterialTheme.typography.titleSmall, color = c.muted)
-}
-
 @Composable
 private fun ScanningCard() {
     val c = LocalRakshakColors.current
@@ -479,14 +665,14 @@ private fun ScanningCard() {
         ),
         label = "scan-phase",
     )
-    PanelCard(scanPhase = phase) {
+    GlassCard(scanPhase = phase) {
         Text(
             "Checking on this phone",
             style = MaterialTheme.typography.titleMedium,
             color = c.text,
         )
         Text(
-            "Scoring the message and matching rules. Nothing leaves this device.",
+            "Scoring the message and matching rules. Nothing leaves this phone.",
             style = MaterialTheme.typography.bodySmall,
             color = c.muted,
         )
@@ -494,19 +680,14 @@ private fun ScanningCard() {
 }
 
 @Composable
-private fun VerdictHero(analysis: Analysis) {
+private fun VerdictHero(analysis: Analysis, verdictKey: Long?) {
     val c = LocalRakshakColors.current
     val reduced = rememberReducedMotion()
     val tier = analysis.tier
     val color = tierColor(tier, c)
     val target = if (analysis.score.isNaN()) 0f else analysis.score.toFloat().coerceIn(0f, 1f)
-    val percent = if (analysis.score.isNaN()) {
-        "score --"
-    } else {
-        "score ${(analysis.score * 100.0).coerceIn(0.0, 100.0).roundToInt()}%"
-    }
     val sweep = remember { Animatable(0f) }
-    LaunchedEffect(analysis) {
+    LaunchedEffect(verdictKey) {
         if (reduced) {
             sweep.snapTo(target)
         } else {
@@ -514,9 +695,15 @@ private fun VerdictHero(analysis: Analysis) {
             sweep.animateTo(target, tween(durationMillis = 600, easing = FastOutSlowInEasing))
         }
     }
+    val centerSub = if (analysis.score.isNaN()) {
+        "score --"
+    } else {
+        "score ${(sweep.value * 100f).roundToInt()}%"
+    }
+    val top = analysis.evidence.maxByOrNull { it.weight }
 
-    PanelCard(glow = color.copy(alpha = 0.22f)) {
-        SectionTitle("Verdict")
+    GlassCard(glow = color.copy(alpha = 0.22f)) {
+        SectionLabel("Verdict")
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -526,11 +713,19 @@ private fun VerdictHero(analysis: Analysis) {
                 progress = sweep.value,
                 color = color,
                 centerWord = tierWord(tier),
-                centerSub = percent,
+                centerSub = centerSub,
+                threshold = SCAM_THRESHOLD.toFloat(),
+            )
+            Text(
+                headlineFor(tier, top?.let { phraseOf(it.type) }),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = c.text,
+                textAlign = TextAlign.Center,
             )
             Text(
                 actionLabel(analysis.action),
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 color = c.text,
                 textAlign = TextAlign.Center,
             )
@@ -542,43 +737,27 @@ private fun VerdictHero(analysis: Analysis) {
                     textAlign = TextAlign.Center,
                 )
             }
-            Text(
-                analysis.advisory.summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = c.text,
-                textAlign = TextAlign.Center,
-            )
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EvidenceCard(analysis: Analysis) {
-    PanelCard {
-        SectionTitle("Evidence")
-        analysis.evidence.forEach { e ->
-            EvidenceItem(e)
-        }
-    }
-}
-
-@Composable
-private fun EvidenceItem(e: Evidence) {
+private fun WarningSignsCard(analysis: Analysis) {
     val c = LocalRakshakColors.current
-    val phrase = TYPE_PHRASE_EN[e.type] ?: e.type
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Chip("${e.id} · $phrase", c.accent)
-        Text(
-            text = "\"${e.text.take(60)}\"",
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(c.surface2)
-                .padding(10.dp),
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            color = c.text,
-        )
+    val tint = tierColor(analysis.tier, c)
+    val phrases = analysis.evidence.map { phraseOf(it.type) }.distinct()
+    val shown = phrases.take(MAX_SIGNS)
+    val hidden = phrases.size - shown.size
+    GlassCard {
+        SectionLabel("Warning signs")
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            shown.forEach { phrase -> Chip(phrase, tint) }
+            if (hidden > 0) Chip("+$hidden more", c.muted)
+        }
     }
 }
 
@@ -586,8 +765,8 @@ private fun EvidenceItem(e: Evidence) {
 private fun PreviewCard(analysis: Analysis) {
     val c = LocalRakshakColors.current
     val highlight = tierColor(analysis.tier, c)
-    PanelCard {
-        SectionTitle("Message preview")
+    GlassCard {
+        SectionLabel("Message, matched text highlighted")
         Text(
             text = highlightMatches(analysis.text, analysis.evidence, highlight),
             modifier = Modifier
@@ -621,12 +800,133 @@ private fun highlightMatches(message: String, evidence: List<Evidence>, color: C
         }
     }
 
+private fun isExplainable(analysis: Analysis): Boolean =
+    !analysis.detectorOnly && analysis.lang != "hinglish" &&
+        analysis.advisory.path != "explainer" && analysis.pkg.risk != Risk.LOW
+
+/** The explanation card. Names Llama only when Llama wrote the wording shown. */
+@Composable
+private fun WhyCard(
+    analysis: Analysis,
+    explainerInstalled: Boolean,
+    busy: Boolean,
+    explainMs: Long?,
+    onExplain: () -> Unit,
+) {
+    val c = LocalRakshakColors.current
+    val explainable = isExplainable(analysis)
+    val points = analysis.advisory.points
+    if (points.isEmpty() && !explainable) return
+    val fromModel = analysis.advisory.path == "explainer"
+
+    GlassCard(glass = true) {
+        SectionLabel("Why")
+        Text(
+            text = if (fromModel) {
+                "Llama 3.2 1B · ExecuTorch · on this phone"
+            } else {
+                "Built-in wording · Llama did not run for this message"
+            },
+            style = MaterialTheme.typography.labelMedium,
+            color = if (fromModel) c.accent else c.muted,
+        )
+        Text(
+            text = analysis.advisory.summary,
+            style = MaterialTheme.typography.bodyMedium,
+            color = c.text,
+        )
+        points.forEach { p ->
+            val fromLlm = p.source == "llm"
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Chip(if (fromLlm) "Llama" else "Template", if (fromLlm) c.accent else c.muted)
+                Text(
+                    text = p.text,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.text,
+                )
+            }
+        }
+        if (explainable) {
+            if (explainerInstalled) {
+                OutlinedButton(
+                    onClick = onExplain,
+                    enabled = !busy,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("Explain with Llama") }
+            } else {
+                Text(
+                    "Explanation model not installed. Showing the built-in wording. " +
+                        "See docs/ANDROID_APP.md to add the model.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.muted,
+                )
+            }
+        }
+        if (fromModel && explainMs != null) {
+            Text(
+                "explained in $explainMs ms · measured on this phone",
+                style = MaterialTheme.typography.labelSmall,
+                fontFamily = FontFamily.Monospace,
+                color = c.muted,
+            )
+        }
+    }
+}
+
+/** One row per point: verified, or rejected with the first reason and the template shown. */
+@Composable
+private fun VerifierCard(points: List<PointView>) {
+    val c = LocalRakshakColors.current
+    GlassCard {
+        SectionLabel("Verifier receipt")
+        Text(
+            "Each point is checked by a deterministic verifier before it is shown.",
+            style = MaterialTheme.typography.bodySmall,
+            color = c.muted,
+        )
+        points.forEach { p ->
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    phraseOf(p.type),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = c.text,
+                )
+                if (p.source == "llm") {
+                    Text("✓ verified", style = MaterialTheme.typography.labelMedium, color = c.accent2)
+                } else if (p.problems.isNotEmpty()) {
+                    Text(
+                        "✗ rejected, template shown",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = c.high,
+                    )
+                    Text(
+                        p.problems.first(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.muted,
+                    )
+                } else {
+                    Text(
+                        "Template wording, no model sentence to check",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = c.muted,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun RemediationCard(items: List<RemediationItem>, tier: Tier) {
     val c = LocalRakshakColors.current
     val rail = tierColor(tier, c)
-    PanelCard {
-        SectionTitle("What to do")
+    GlassCard {
+        SectionLabel("What to do now")
         items.forEach { item ->
             Row(
                 modifier = Modifier
@@ -657,119 +957,27 @@ private fun RemediationCard(items: List<RemediationItem>, tier: Tier) {
                 }
             }
         }
-    }
-}
-
-private fun isExplainable(analysis: Analysis): Boolean =
-    !analysis.detectorOnly && analysis.lang != "hinglish" &&
-        analysis.advisory.path != "explainer" && analysis.pkg.risk != Risk.LOW
-
-@Composable
-private fun AdvisoryCard(
-    analysis: Analysis,
-    explainerInstalled: Boolean,
-    busy: Boolean,
-    onExplain: () -> Unit,
-) {
-    val c = LocalRakshakColors.current
-    val explainable = isExplainable(analysis)
-    val points = analysis.advisory.points
-    if (points.isEmpty() && !explainable) return
-
-    PanelCard {
-        if (points.isNotEmpty()) {
-            SectionTitle("What the checks found")
-            points.forEach { p ->
-                val fromLlm = p.source == "llm"
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Chip(if (fromLlm) "Llama" else "Template", if (fromLlm) c.accent else c.muted)
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Text(p.text, style = MaterialTheme.typography.bodyMedium, color = c.text)
-                        if (fromLlm) {
-                            Text(
-                                "Verifier ✓",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = c.low,
-                            )
-                        } else if (p.problems.isNotEmpty()) {
-                            Text(
-                                "Verifier ✗: Llama sentence replaced by template",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = c.high,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        if (explainable) {
-            if (explainerInstalled) {
-                OutlinedButton(
-                    onClick = onExplain,
-                    enabled = !busy,
-                    modifier = Modifier.heightIn(min = 48.dp),
-                ) { Text("Explain with Llama") }
-            } else {
-                Text(
-                    "Explanation model not installed. Showing the built-in wording. " +
-                        "See docs/ANDROID_APP.md to add the model.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = c.muted,
-                )
-            }
-        }
+        Text(
+            "Pre-checked steps, not written by the AI",
+            style = MaterialTheme.typography.labelSmall,
+            color = c.muted,
+        )
     }
 }
 
 // ---------------------------------------------------------------------------
-// Motion and helpers
+// Helpers
 // ---------------------------------------------------------------------------
 
-/** True when the system animator duration scale is 0 (the Android reduced-motion setting). */
-@Composable
-private fun rememberReducedMotion(): Boolean {
-    val context = LocalContext.current
-    return remember(context) {
-        runCatching {
-            Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
-        }.getOrDefault(false)
-    }
-}
+/** The phrase for an evidence type, without its parenthetical examples. */
+internal fun phraseOf(type: String): String =
+    (TYPE_PHRASE_EN[type] ?: type).replace(PARENTHETICAL, "").trim()
 
-/** Fades a card in and slides it up 16 dp, [index] x 60 ms after it first appears. */
-@Composable
-private fun FadeUp(index: Int, content: @Composable () -> Unit) {
-    val reduced = rememberReducedMotion()
-    val progress = remember { Animatable(if (reduced) 1f else 0f) }
-    val density = LocalDensity.current.density
-    LaunchedEffect(Unit) {
-        if (!reduced) {
-            delay(index * STAGGER_MS)
-            progress.animateTo(1f, tween(durationMillis = 450, easing = FastOutSlowInEasing))
-        }
-    }
-    Box(
-        modifier = Modifier.graphicsLayer {
-            alpha = progress.value
-            translationY = (1f - progress.value) * 16f * density
-        },
-    ) {
-        content()
-    }
-}
-
-private fun tierWord(tier: Tier): String = when (tier) {
-    Tier.SCAM -> "SCAM"
-    Tier.VERIFY -> "VERIFY"
-    Tier.SAFE -> "SAFE"
+/** One-line verdict headline built from the top evidence phrase. */
+private fun headlineFor(tier: Tier, phrase: String?): String = when (tier) {
+    Tier.SCAM -> if (phrase == null) "Flagged by the on-device detector" else "Likely scam: $phrase"
+    Tier.VERIFY -> if (phrase == null) "Unclear, check before acting" else "Unclear: $phrase"
+    Tier.SAFE -> if (phrase == null) "No known scam pattern" else "Weak signal only: $phrase"
 }
 
 private fun actionLabel(action: Action): String = when (action) {

@@ -16,10 +16,14 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
- * Ring gauge for the verdict. [progress] is 0..1 (already animated by the caller) and is drawn
- * as an arc starting at 12 o'clock. The centre shows the risk word and a caption.
+ * Ring gauge for the verdict. [progress] is 0..1 and is already animated by the caller, so the
+ * caller can count the score up with it. The arc starts at 12 o'clock. [threshold], when given,
+ * draws a tick on the ring at that score (the SCAM threshold of the detector).
  */
 @Composable
 fun VerdictGauge(
@@ -27,12 +31,13 @@ fun VerdictGauge(
     color: Color,
     centerWord: String,
     centerSub: String,
+    threshold: Float? = null,
     modifier: Modifier = Modifier,
 ) {
     val c = LocalRakshakColors.current
-    Box(modifier = modifier.size(176.dp), contentAlignment = Alignment.Center) {
-        Canvas(modifier = Modifier.size(176.dp)) {
-            val stroke = size.minDimension * 0.09f
+    Box(modifier = modifier.size(184.dp), contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.size(184.dp)) {
+            val stroke = size.minDimension * 0.085f
             val inset = stroke / 2f
             val arcSize = Size(size.width - stroke, size.height - stroke)
             val topLeft = Offset(inset, inset)
@@ -55,6 +60,21 @@ fun VerdictGauge(
                     topLeft = topLeft,
                     size = arcSize,
                     style = Stroke(width = stroke, cap = StrokeCap.Round),
+                )
+            }
+            if (threshold != null) {
+                val rad = (-90.0 + 360.0 * threshold.coerceIn(0f, 1f)) * PI / 180.0
+                val radius = size.minDimension / 2f
+                val cx = size.width / 2f
+                val cy = size.height / 2f
+                val inner = radius - stroke - 6f
+                val outer = radius + 2f
+                drawLine(
+                    color = c.text,
+                    start = Offset(cx + inner * cos(rad).toFloat(), cy + inner * sin(rad).toFloat()),
+                    end = Offset(cx + outer * cos(rad).toFloat(), cy + outer * sin(rad).toFloat()),
+                    strokeWidth = 3f,
+                    cap = StrokeCap.Round,
                 )
             }
         }
