@@ -101,10 +101,15 @@ class ParityTest {
         for (row in rowsSeq()) {
             val text = rowText(row)
             val id = row.getString("id")
-            val canonFlags = ruleFlags(canonicalize(text)).map { it.toInt() }
+            val scorer = StudentScorer { _, _, canonFlags ->
+                if (canonFlags.map { it.toInt() } != row.ints("flags_canon").toList()) {
+                    problems.add("$id flags_canon")
+                }
+                0.5
+            }
+            Analyzer.analyse(text, scorer)
             val rawCanon = Canon(text, text, extractUrls(text))
-            val rawFlags = ruleFlags(rawCanon).map { it.toInt() }
-            if (canonFlags != row.ints("flags_canon").toList()) problems.add("$id flags_canon")
+            val rawFlags = ruleFlags(runRules(rawCanon)).map { it.toInt() }
             if (rawFlags != row.ints("flags_raw").toList()) problems.add("$id flags_raw")
         }
         report("side flags", problems)

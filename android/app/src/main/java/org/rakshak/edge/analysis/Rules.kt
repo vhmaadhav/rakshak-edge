@@ -370,7 +370,7 @@ fun runRules(canon: Canon): List<Evidence> {
 }
 
 /** rule_flags: 1.0 for every evidence type that fires, in EVIDENCE_TYPES order. */
-fun ruleFlags(canon: Canon): FloatArray {
-    val fired = runRules(canon).map { it.type }.toHashSet()
+fun ruleFlags(evidence: List<Evidence>): FloatArray {
+    val fired = evidence.mapTo(HashSet()) { it.type }
     return FloatArray(EVIDENCE_TYPES.size) { i -> if (EVIDENCE_TYPES[i] in fired) 1f else 0f }
 }

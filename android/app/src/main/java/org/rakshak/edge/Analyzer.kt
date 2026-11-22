@@ -13,6 +13,7 @@ import org.rakshak.edge.analysis.chooseAction
 import org.rakshak.edge.analysis.collapseByType
 import org.rakshak.edge.analysis.detectLang
 import org.rakshak.edge.analysis.isDetectorOnly
+import org.rakshak.edge.analysis.ruleFlags
 import org.rakshak.edge.analysis.RemediationItem
 import org.rakshak.edge.analysis.remediationFor
 import org.rakshak.edge.analysis.routeLang
@@ -30,7 +31,7 @@ import org.rakshak.edge.perf.measure
 
 /** The student score for one message. The ONNX implementation is ml.StudentDetector. */
 fun interface StudentScorer {
-    fun score(text: String, canon: Canon): Double
+    fun score(text: String, canon: Canon, side: FloatArray): Double
 }
 
 /** Everything the screen shows for one message, before or after the explainer. */
@@ -65,8 +66,9 @@ object Analyzer {
         timing: InferenceTiming? = null,
     ): Analysis {
         val canon = timing.measure("canonicalize") { canonicalize(text) }
-        val score = scorer.score(text, canon)
         val evidence = timing.measure("rules") { runRules(canon) }
+        val flags = timing.measure("rule_flags") { ruleFlags(evidence) }
+        val score = scorer.score(text, canon, flags)
         return timing.measure("decision") { decide(text, canon, score, evidence, threshold) }
     }
 

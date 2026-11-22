@@ -10,7 +10,6 @@ import org.rakshak.edge.StudentScorer
 import org.rakshak.edge.analysis.Canon
 import org.rakshak.edge.analysis.MAX_LEN
 import org.rakshak.edge.analysis.encodeBytes
-import org.rakshak.edge.analysis.ruleFlags
 import org.rakshak.edge.perf.InferenceTiming
 import org.rakshak.edge.perf.measure
 
@@ -27,8 +26,7 @@ class StudentDetector private constructor(
     private val session: OrtSession,
 ) : AutoCloseable {
 
-    fun scorer(timing: InferenceTiming?): StudentScorer = StudentScorer { text, canon ->
-        val side = timing.measure("rule_flags") { ruleFlags(canon) }
+    fun scorer(timing: InferenceTiming?): StudentScorer = StudentScorer { text, canon, side ->
         timing.measure("onnx_total") { runStudent(text, canon, side, timing) }
     }
 
