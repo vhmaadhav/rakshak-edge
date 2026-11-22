@@ -90,7 +90,28 @@ class SmsRunner(_Base):
         self._featurize = featurize
 
     def make_feed(self, item: dict[str, Any]) -> dict[str, np.ndarray]:
-        feats = self._featurize([item["text"]], buckets=None)
+        return self.make_feed_batch([item])
+
+    def make_feed_batch(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        canons: list[Any] | None = None,
+        canon_rules: list[Any] | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Featurise N messages into one feed (one row per message, same as N single feeds).
+
+        ``canons`` and ``canon_rules`` are optional precomputed canonicalisations and canonical rule
+        evidence (see rakshak.models.features.featurize). The feed reads only the canonical rule
+        flags, so the raw-view rules are not computed here (raw_side=False).
+        """
+        feats = self._featurize(
+            [item["text"] for item in items],
+            buckets=None,
+            canons=canons,
+            canon_rules=canon_rules,
+            raw_side=False,
+        )
         return {
             "raw": feats.raw_bytes.astype(np.int64),
             "canon": feats.canon_bytes.astype(np.int64),
@@ -100,6 +121,12 @@ class SmsRunner(_Base):
     def score(self, outputs: list[np.ndarray]) -> tuple[float, float]:
         logit = float(np.asarray(outputs[0]).reshape(-1)[0])
         return _sigmoid(logit), logit
+
+    def score_batch(self, outputs: list[np.ndarray]) -> list[float]:
+        """Scam probability per row. Uses the scalar _sigmoid per logit, so each probability is
+        bit-identical to what ``score`` gives for the same logit."""
+        logits = np.asarray(outputs[0]).reshape(-1)
+        return [_sigmoid(float(x)) for x in logits]
 
 
 class UrlRunner(_Base):

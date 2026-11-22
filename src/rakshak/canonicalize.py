@@ -157,9 +157,22 @@ def _homoglyph_fold(text: str, flags: Flags) -> str:
     return "".join(out)
 
 
+# Precompiled: the regex module's string-pattern calls look the pattern up in its cache on every
+# call (a flag-enum check per lookup), and these run on every message.
+_LETTER = regex.compile(r"\p{L}")
+_LETTER_RUN = regex.compile(r"\p{L}+")
+_HXXP_S = regex.compile(r"(?i)\bhxxp(s?)://")
+_HXXP_COLON = regex.compile(r"(?i)\bhxxp(s?):")
+_BRACKET_DOT = regex.compile(r"\s*[\[(]\s*\.\s*[\])]\s*")
+_BRACKET_DOT_WORD = regex.compile(r"(?i)\s*[\[(]\s*dot\s*[\])]\s*")
+_SPACE_RUN = regex.compile(r"[ \t]+")
+
+
 def _has_mixed_script(text: str) -> bool:
     """Latin letters mixed with Cyrillic or Greek letters inside one word."""
-    for tok in regex.findall(r"\p{L}+", text):
+    if text.isascii():
+        return False  # Cyrillic and Greek letters are not ASCII, so pure ASCII cannot mix
+    for tok in _LETTER_RUN.findall(text):
         scripts = set()
         for ch in tok:
             if "CYRILLIC" in unicodedata.name(ch, ""):
@@ -175,14 +188,14 @@ def _has_mixed_script(text: str) -> bool:
 
 def _collapse_spacing(text: str, flags: Flags) -> str:
     def _join_letters(m: regex.Match[str]) -> str:
-        letters = regex.findall(r"\p{L}", m.group(0))
+        letters = _LETTER.findall(m.group(0))
         flags.spacing_fold += 1
         return "".join(letters)
 
     text = _SPACED_RUN.sub(_join_letters, text)
 
     def _join_dotted(m: regex.Match[str]) -> str:
-        letters = regex.findall(r"\p{L}", m.group(0))
+        letters = _LETTER.findall(m.group(0))
         flags.spacing_fold += 1
         return "".join(letters)
 
@@ -212,10 +225,10 @@ def _leet_fold(text: str, flags: Flags) -> str:
 
 def _unobfuscate_url_text(text: str) -> str:
     """Rewrite hxxp(s):// and [.] / (dot) into plain form for URL parsing."""
-    text = regex.sub(r"(?i)\bhxxp(s?)://", lambda m: f"http{m.group(1).lower()}://", text)
-    text = regex.sub(r"(?i)\bhxxp(s?):", lambda m: f"http{m.group(1).lower()}:", text)
-    text = regex.sub(r"\s*[\[(]\s*\.\s*[\])]\s*", ".", text)
-    text = regex.sub(r"(?i)\s*[\[(]\s*dot\s*[\])]\s*", ".", text)
+    text = _HXXP_S.sub(lambda m: f"http{m.group(1).lower()}://", text)
+    text = _HXXP_COLON.sub(lambda m: f"http{m.group(1).lower()}:", text)
+    text = _BRACKET_DOT.sub(".", text)
+    text = _BRACKET_DOT_WORD.sub(".", text)
     return text
 
 
@@ -277,6 +290,6 @@ def canonicalize(text: str) -> Canon:
     work = _leet_fold(work, flags)
 
     # Collapse runs of whitespace introduced by stripping.
-    work = regex.sub(r"[ \t]+", " ", work).strip()
+    work = _SPACE_RUN.sub(" ", work).strip()
 
     return Canon(original=text, normalized=work, urls=urls, flags=flags)

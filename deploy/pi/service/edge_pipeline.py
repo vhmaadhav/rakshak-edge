@@ -32,6 +32,7 @@ from edge_decision import (  # noqa: F401 - scam_state_for and detector_only_pac
     scam_state_for,
     url_model_active,
 )
+from explanation_table import ExplanationTable, table_gen
 from rbench.explainer_candidates import BASELINE, CANDIDATES, run_explainer
 from rbench.slot import HINGLISH_LANG, SLOT_MAX_NEW_TOKENS, generate_slot_advisory
 
@@ -47,7 +48,7 @@ from rakshak.url_model import (
     add_url_model_evidence,
     best_url_hit,
 )
-from rakshak.verifier import check_points, template_only_advisory
+from rakshak.verifier import check_points, skip_llm_for_risk, template_only_advisory
 
 LANG = "en"
 # Per-request language (docs/EDGE_PIPELINE.md, "Hinglish"). The request field "lang" is "auto"
@@ -150,6 +151,31 @@ def _ms(t0: float, t1: float) -> float:
     return round((t1 - t0) * 1000.0, 3)
 
 
+@dataclasses.dataclass
+class Decided:
+    """One message after the decision: what the explainer and the assembly need. ``p_scam`` is
+    the detector probability; the t_* stamps are the clock readings of the verdict stages."""
+
+    text: str
+    lang_route: str
+    lang_detected: str
+    p_scam: float
+    dec: Any  # edge_decision.EdgeDecision
+    t_start: float
+    t_canon: float
+    t_detect: float
+    t_evidence: float
+
+    @property
+    def stamps(self) -> tuple[float, float, float, float]:
+        return (self.t_start, self.t_canon, self.t_detect, self.t_evidence)
+
+
+def _table_variant(lang: str) -> str:
+    """The table's prompt-variant key for a language: the live English variant, or "hinglish"."""
+    return EDGE_PROMPT_VARIANT if lang == LANG else "hinglish"
+
+
 class EdgeAnalyzer:
     def __init__(
         self,
@@ -163,13 +189,17 @@ class EdgeAnalyzer:
         hinglish_mode: str = DEFAULT_HINGLISH_MODE,
         url_scorer: UrlScorer | None = None,
         url_threshold: float | None = None,
+        explanation_table: ExplanationTable | None = None,
         explainer_candidate: str = BASELINE,
         explainer_cap: int | None = None,
     ) -> None:
         """``url_scorer`` and ``url_threshold`` together turn the URL model on. With either one
         None (the registry has no threshold for url_student) the URL path is off and the
         decision is the same as before it existed. The URL model adds evidence in verify mode
-        only: in quiet mode the scorer is never called (edge_decision.URL_EVIDENCE_MODE)."""
+        only: in quiet mode the scorer is never called (edge_decision.URL_EVIDENCE_MODE).
+
+        ``explanation_table`` (verdict-first only, see explanation_table.py) answers the explainer
+        from a lookup when every point has an entry. It never changes the decision."""
         if hinglish_mode not in HINGLISH_MODES:
             raise ValueError(
                 f"hinglish_mode must be one of {HINGLISH_MODES}, got {hinglish_mode!r}"
@@ -189,54 +219,190 @@ class EdgeAnalyzer:
         self.url_scorer = url_scorer
         self.url_threshold = None if url_scorer is None else url_threshold
         self.url_active = url_model_active(self.detector_only_mode, self.url_threshold)
+        self.explanation_table = explanation_table
 
-    def analyse(self, text: str, lang: str = "auto") -> dict[str, Any]:
+    # ------------------------------------------------------------------ verdict
+    def decide(
+        self,
+        text: str,
+        lang: str = "auto",
+        p_scam: float | None = None,
+        *,
+        canon: Any | None = None,
+        base_rules: list | None = None,
+    ) -> Decided:
+        """The verdict for one message: canonicalise, score (unless ``p_scam`` is given, as in a
+        batch), rules, decision, and the language route. No explainer call.
+
+        ``canon`` and ``base_rules`` (``run_rules(canon)``) are optional precomputed values. The
+        verdict path passes them so that canonicalise and the rules run once per message; the
+        result is the same either way.
+        """
         clock = self.clock
         t_start = clock()
-        canon = canonicalize(text)
+        if canon is None:
+            canon = canonicalize(text)
         t_canon = clock()
-        p_scam = float(self.detector.score(text))
+        if base_rules is None:
+            base_rules = run_rules(canon)  # the detector featurises from the same rules
+        if p_scam is None:
+            p = self._score_one(text, canon, base_rules)
+        else:
+            p = float(p_scam)
         t_detect = clock()
         hit = best_url_hit(canon.urls, self.url_scorer) if self.url_active else None
         evidence = add_url_evidence(
-            run_rules(canon), canon, hit, self.url_threshold, self.detector_only_mode
+            base_rules, canon, hit, self.url_threshold, self.detector_only_mode
         )
-        dec = decide_edge(canon, evidence, p_scam, self.threshold, self.detector_only_mode)
-        state, package, action = dec.state, dec.package, dec.action
+        dec = decide_edge(canon, evidence, p, self.threshold, self.detector_only_mode)
         t_evidence = clock()
         lang_detected = detect_lang(text)
-        lang_route = route_lang(lang_detected, lang)
-        if dec.detector_only:
-            return self._detector_only_result(
-                p_scam,
-                dec,
-                (t_start, t_canon, t_detect, t_evidence),
-                lang=lang_route,
-                lang_detected=lang_detected,
-            )
-        remediation = remediation_for(package, action.value, lang_route)
-        llm_package = collapse_by_type(package)
-        template_hinglish = lang_route == HINGLISH_LANG and self.hinglish_mode == "template"
-        if template_hinglish:
-            gen = template_gen(llm_package, lang_route)
-        elif lang_route == HINGLISH_LANG or self.explainer_candidate == BASELINE:
-            gen = generate_slot_advisory(
+        return Decided(
+            text=text,
+            lang_route=route_lang(lang_detected, lang),
+            lang_detected=lang_detected,
+            p_scam=p,
+            dec=dec,
+            t_start=t_start,
+            t_canon=t_canon,
+            t_detect=t_detect,
+            t_evidence=t_evidence,
+        )
+
+    def _score_one(self, text: str, canon: Any, base_rules: list | None) -> float:
+        """The detector's probability for one message, reusing the canon and the canonical rules
+        when the detector accepts them (score_prepared)."""
+        prepared = getattr(self.detector, "score_prepared", None)
+        if prepared is not None and base_rules is not None:
+            return float(prepared([text], [canon], [base_rules])[0])
+        return float(self.detector.score(text))
+
+    def score_many(self, texts: list[str]) -> list[float]:
+        """Scam probabilities for a batch: one detector call when the detector supports it."""
+        batch = getattr(self.detector, "score_many", None)
+        if batch is not None:
+            return [float(p) for p in batch(texts)]
+        return [float(self.detector.score(t)) for t in texts]
+
+    # ----------------------------------------------------------------- explainer
+    def _template_path(self, d: Decided) -> bool:
+        """True when the explainer is not needed: G1 (LOW risk) or the Hinglish template mode."""
+        return skip_llm_for_risk(d.dec.package) or (
+            d.lang_route == HINGLISH_LANG and self.hinglish_mode == "template"
+        )
+
+    def _explain_sync(self, d: Decided) -> dict[str, Any]:
+        """The live explainer (or the template for the cases above): one result in the
+        ``generate_slot_advisory`` shape."""
+        llm_package = collapse_by_type(d.dec.package)
+        lang = d.lang_route
+        if lang == HINGLISH_LANG and self.hinglish_mode == "template":
+            return template_gen(llm_package, lang)
+        if lang != HINGLISH_LANG and self.explainer_candidate != BASELINE:
+            return run_explainer(
                 self.llm,
                 llm_package,
-                lang=lang_route,
-                max_new_tokens=self.max_new_tokens,
-                guards=True,
-                variant=None if lang_route == HINGLISH_LANG else EDGE_PROMPT_VARIANT,
-                cleanup=True,
-            )
-        else:
-            gen = run_explainer(
-                self.llm,
-                llm_package,
-                lang_route,
+                lang,
                 candidate=self.explainer_candidate,
                 cap=self.explainer_cap,
             )
+        return generate_slot_advisory(
+            self.llm,
+            llm_package,
+            lang=lang,
+            max_new_tokens=self.max_new_tokens,
+            guards=True,
+            variant=None if lang == HINGLISH_LANG else EDGE_PROMPT_VARIANT,
+            cleanup=True,
+        )
+
+    def _table_explain(self, d: Decided) -> dict[str, Any] | None:
+        """The explainer answer from the table, or None when there is no table or a point has no
+        usable entry."""
+        if self.explanation_table is None:
+            return None
+        return table_gen(
+            self.explanation_table,
+            collapse_by_type(d.dec.package),
+            d.lang_route,
+            _table_variant(d.lang_route),
+        )
+
+    # ------------------------------------------------------------------ results
+    def analyse(self, text: str, lang: str = "auto") -> dict[str, Any]:
+        """The synchronous path: the verdict, then the explainer, in one result (unchanged
+        output; the service uses it unless verdict-first is on)."""
+        d = self.decide(text, lang)
+        if d.dec.detector_only:
+            return self._detector_only_result(
+                d.p_scam, d.dec, d.stamps, lang=d.lang_route, lang_detected=d.lang_detected
+            )
+        return self._assemble(d, self._explain_sync(d))
+
+    def analyse_verdict(
+        self,
+        text: str,
+        lang: str = "auto",
+        p_scam: float | None = None,
+        *,
+        canon: Any | None = None,
+        base_rules: list | None = None,
+    ) -> tuple[dict[str, Any], Decided | None]:
+        """Verdict-first. Returns (result, pending). ``result`` has the verdict and the advisory
+        as far as it is known without the LLM: a table answer when the table covers every point,
+        the template otherwise. ``pending`` is the message's Decided when the explainer still has
+        to run (call ``explain_pending`` on it), and None when the result is final."""
+        d = self.decide(text, lang, p_scam=p_scam, canon=canon, base_rules=base_rules)
+        if d.dec.detector_only:
+            return (
+                self._detector_only_result(
+                    d.p_scam, d.dec, d.stamps, lang=d.lang_route, lang_detected=d.lang_detected
+                ),
+                None,
+            )
+        if self._template_path(d):
+            return self._assemble(d, self._explain_sync(d)), None
+        gen = self._table_explain(d)
+        if gen is not None:
+            return self._assemble(d, gen, path="explainer_table"), None
+        pending = self._assemble(
+            d, template_gen(collapse_by_type(d.dec.package), d.lang_route), path="pending"
+        )
+        return pending, d
+
+    def analyse_verdict_batch(
+        self, texts: list[str], lang: str = "auto"
+    ) -> list[tuple[dict[str, Any], Decided | None]]:
+        """Verdict-first for N messages: one batched detector call, then one decision per
+        message. Each result equals analyse_verdict on the same message (the scores are the same
+        floats, see rbench.runners.onnx.SmsRunner.score_batch)."""
+        canons = [canonicalize(t) for t in texts]
+        rules = [run_rules(c) for c in canons]
+        prepared = getattr(self.detector, "score_prepared", None)
+        if prepared is not None:
+            scores = [float(p) for p in prepared(texts, canons, rules)]
+        else:
+            scores = self.score_many(texts)
+        return [
+            self.analyse_verdict(t, lang, p_scam=p, canon=c, base_rules=r)
+            for t, p, c, r in zip(texts, scores, canons, rules, strict=True)
+        ]
+
+    def explain_pending(self, d: Decided) -> dict[str, Any]:
+        """Run the explainer for a message left pending by analyse_verdict. Returns the full
+        result, the same shape as ``analyse``. Needs the LLM, so the caller holds its lock."""
+        return self._assemble(d, self._explain_sync(d))
+
+    def _assemble(self, d: Decided, gen: dict[str, Any], path: str | None = None) -> dict[str, Any]:
+        """The result for a decided message and one explainer output (``gen``)."""
+        clock = self.clock
+        package = d.dec.package
+        action = d.dec.action
+        lang_route = d.lang_route
+        remediation = remediation_for(package, action.value, lang_route)
+        llm_package = collapse_by_type(package)
+        t_start, t_canon, t_detect, t_evidence = d.stamps
+        template_hinglish = lang_route == HINGLISH_LANG and self.hinglish_mode == "template"
         t_llm_done = clock()
         calls = gen["calls"]
         llm_total = sum(float(c["wall_ms"] or 0.0) for c in calls)
@@ -276,12 +442,21 @@ class EdgeAnalyzer:
                     "check": check,
                 }
             )
-        if skipped or not any(p["source"] == "llm" for p in points):
+        point_sources = {p["source"] for p in points}
+        if skipped or not point_sources & {"llm", "table"}:
             mode = "template"
-        elif all(p["source"] == "llm" for p in points):
+        elif point_sources == {"llm"}:
             mode = "llm"
+        elif point_sources == {"table"}:
+            mode = "table"
         else:
             mode = "partial"
+        if path is None:
+            path = (
+                "low_template"
+                if skipped
+                else (PATH_TEMPLATE_HINGLISH if template_hinglish else "explainer")
+            )
         g2 = [
             {
                 "evidence_id": package.evidence[c["index"]].id,
@@ -294,13 +469,13 @@ class EdgeAnalyzer:
             "decision": {
                 "risk": package.risk.value,
                 "action": action.value,
-                "score": round(p_scam, 4),
+                "score": round(d.p_scam, 4),
                 "threshold": round(self.threshold, 4),
-                "scam_state": state,
+                "scam_state": d.dec.state,
                 "confidence_state": package.confidence_state,
                 "evidence_count": len(package.evidence),
                 "detector_only": False,
-                "lang_detected": lang_detected,
+                "lang_detected": d.lang_detected,
             },
             "evidence": [
                 {"id": e.id, "type": e.type, "weight": round(e.weight, 3), "text": e.text}
@@ -309,9 +484,7 @@ class EdgeAnalyzer:
             "advisory": {
                 "lang": lang_route,
                 "mode": mode,
-                "path": "low_template"
-                if skipped
-                else (PATH_TEMPLATE_HINGLISH if template_hinglish else "explainer"),
+                "path": path,
                 "llm_skipped_low_risk": skipped,
                 "summary": {
                     "text": final["summary"],

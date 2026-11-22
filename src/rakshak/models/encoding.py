@@ -51,12 +51,17 @@ def encode_batch(texts, max_len: int = MAX_LEN) -> np.ndarray:
     return out
 
 
-def rule_flags(canon: Canon) -> np.ndarray:
-    """Multi-hot float32 vector over EVIDENCE_TYPES: 1 where any rule of that type fires."""
+def rule_flags_from(evidence) -> np.ndarray:
+    """Multi-hot float32 vector over EVIDENCE_TYPES for rule evidence that is already computed."""
     out = np.zeros(N_RULES, dtype=np.float32)
-    for ev in run_rules(canon):
+    for ev in evidence:
         out[_RULE_INDEX[ev.type]] = 1.0
     return out
+
+
+def rule_flags(canon: Canon) -> np.ndarray:
+    """Multi-hot float32 vector over EVIDENCE_TYPES: 1 where any rule of that type fires."""
+    return rule_flags_from(run_rules(canon))
 
 
 def _stable_hash(feature: str, buckets: int) -> int:
