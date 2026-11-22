@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Headless build of the Rakshak Edge app on Debian 13 x86_64: JDK 17, Android command-line tools,
 # the platform and build-tools packages only (no emulator, no system image, no NDK), then
-#   ./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon
+#   ./gradlew :app:assembleDebug :app:assembleBenchmark :app:testDebugUnitTest --no-daemon
 #
 # Disk footprint (estimated, not measured on this VM):
 #   JDK 17 headless ~200 MB | cmdline-tools ~150 MB | platform-tools ~80 MB
@@ -58,5 +58,6 @@ if [ ! -f "$ROOT/app/src/main/assets/sms_student.onnx" ]; then
 fi
 
 cd "$ROOT"
-./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon
-echo "APK: $ROOT/app/build/outputs/apk/debug/app-debug.apk"
+./gradlew :app:assembleDebug :app:assembleBenchmark :app:testDebugUnitTest --no-daemon
+echo "Debug APK: $ROOT/app/build/outputs/apk/debug/app-debug.apk"
+echo "Benchmark APK: $ROOT/app/build/outputs/apk/benchmark/app-benchmark.apk"
