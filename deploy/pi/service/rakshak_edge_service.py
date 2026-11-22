@@ -20,8 +20,8 @@ since 2026-11-11; ``runner`` is the previous TextLLMRunner path, kept for compar
 
 Stdlib HTTP on 127.0.0.1 only. In sync mode requests run one at a time (a lock). In
 verdict_first mode the verdict path takes no lock and the explainer runs as a background job under
-that lock (--response-mode, --explanation-table, POST /analyze_batch, GET /explanation/<id>). Before each request the
-SoC temperature is read: at or above ``--temp-limit`` (75 C) the service answers 503 "cooling" and
+that lock (--response-mode, --explanation-table, POST /analyze_batch, GET /explanation/<id>).
+Before each request the SoC temperature is read: at or above ``--temp-limit`` (75 C) the service answers 503 "cooling" and
 does not run the explainer. Each request is logged as one JSON line (stderr and ``--log``).
 
 Start and stop: deploy/pi/service/start_service.sh and stop_service.sh (they run the service in
@@ -61,7 +61,6 @@ from edge_decision import (  # noqa: E402
     URL_EVIDENCE_MODE,
 )
 from edge_device import EnergyWindow, read_snapshot  # noqa: E402
-from rbench.explainer_candidates import BASELINE, CANDIDATES  # noqa: E402
 from edge_pipeline import (  # noqa: E402
     DEFAULT_HINGLISH_MODE,
     HINGLISH_MODES,
@@ -79,6 +78,7 @@ from nids_pipeline import (  # noqa: E402
     FlowRequestError,
     NidsAnalyzer,
 )
+from rbench.explainer_candidates import BASELINE, CANDIDATES  # noqa: E402
 
 DEFAULT_PORT = 8770
 DEFAULT_HOST = "127.0.0.1"
