@@ -1076,13 +1076,16 @@ footer p+p{margin-top:4px}
     drawRing($("smsRing"), dec.score, dec.threshold, sv(dec.risk), "score");
     $("smsHead").textContent = headlineFor(dec.risk, evidence);
     $("smsAction").textContent = sv(dec.action);
-    kv($("smsKv"), [
+    var vfPending = isObj(d.explanation) && d.explanation.status === "pending";
+    smsKvRows = [
       ["Threshold", fmt(dec.threshold, 4)],
       ["Scam state", sv(dec.scam_state) + " / " + sv(dec.evidence_count) + " rule hit(s)"],
-      ["Explainer", skipped ? "not called (LOW risk, template only)" : arr(d.llm_calls).length + " call(s)"],
+      ["Explainer", skipped ? "not called (LOW risk, template only)"
+        : vfPending ? "running after the verdict" : arr(d.llm_calls).length + " call(s)"],
       ["Language", langName(adv.lang || dec.lang_detected)],
       ["Total", fmt(tm.total, 0) + " ms, measured"]
-    ]);
+    ];
+    kv($("smsKv"), smsKvRows);
 
     smsCtx = { evidence: evidence, all: false };
     renderSigns();
@@ -1112,14 +1115,9 @@ footer p+p{margin-top:4px}
     $("smsRemCard").hidden = renderRem($("smsRem"), d.remediation) === 0;
 
     drawPipe($("smsPipe"), $("smsBar"), $("smsLegend"), tm, skipped);
-    var calls = arr(tm.llm_calls);
-    var llmCalls = arr(d.llm_calls);
-    $("smsCalls").textContent = calls.length
-      ? "Per call (ms): " + calls.map(function (x, i) {
-          var c = llmCalls[i];
-          return tm.llm_cached > 0 && c && c.cached ? "cached" : fmt(x, 0);
-        }).join(", ")
-      : "No explainer call for this decision.";
+    $("smsCalls").textContent = vfPending
+      ? "The explainer runs after the verdict; its calls are shown when it is ready."
+      : callsText(tm, arr(d.llm_calls));
 
     var dev = isObj(d.device) ? d.device : null;
     $("smsDeviceCard").hidden = !dev;
@@ -1147,6 +1145,16 @@ footer p+p{margin-top:4px}
 
   /* Verdict-first: the verdict arrives at once; the explanation is fetched by id until it is ready. */
   var explToken = 0;
+  var smsKvRows = [];
+  function callsText(tm, llmCalls) {
+    var calls = arr(tm.llm_calls);
+    return calls.length
+      ? "Per call (ms): " + calls.map(function (x, i) {
+          var c = llmCalls[i];
+          return tm.llm_cached > 0 && c && c.cached ? "cached" : fmt(x, 0);
+        }).join(", ")
+      : "No explainer call for this decision.";
+  }
   function verifiedLlmPoints(points) {
     return points.filter(function (p) {
       return isObj(p) && p.source === "llm" && isObj(p.check) && p.check.ok === true;
@@ -1182,6 +1190,12 @@ footer p+p{margin-top:4px}
         ? "The summary is template text. Llama wrote " + ok + " point(s) that the verifier passed, shown in the receipt below."
         : "Template text. Llama's wording was rejected or not used.";
       $("advFoot").textContent = "measured on this Pi: llm " + fmt(b.wall_ms, 0) + " ms · " + arr(b.llm_calls).length + " call(s) · in the background after the verdict";
+      /* The call count and per-call times come from the finished job, not the verdict response. */
+      if (smsKvRows.length > 2) {
+        smsKvRows[2] = ["Explainer", arr(b.llm_calls).length + " call(s)"];
+        kv($("smsKv"), smsKvRows);
+      }
+      $("smsCalls").textContent = callsText(isObj(b.timings_ms) ? b.timings_ms : {}, arr(b.llm_calls));
     } else if (status === 404) {
       $("advSource").textContent = "Template text. The explanation is no longer available.";
     } else {
