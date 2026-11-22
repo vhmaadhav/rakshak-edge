@@ -14,6 +14,7 @@ from pathlib import Path
 PACKAGE = "org.rakshak.edge.benchmark"
 ACTIVITY = f"{PACKAGE}/org.rakshak.edge.MainActivity"
 SAMPLE_ID = "org.rakshak.edge.perf.SAMPLE_ID"
+PARALLEL_SETUP = "org.rakshak.edge.perf.PARALLEL_SETUP"
 MESSAGES = (
     "Your appointment is confirmed for 10 AM tomorrow. Please arrive 10 minutes early.",
     "Urgent: Your bank account will be blocked. Update your KYC immediately at https://example.invalid/kyc",
@@ -46,13 +47,14 @@ def read_samples():
     return samples
 
 
-def share(message, *, cold, timeout):
+def share(message, *, cold, timeout, parallel_setup=None):
     if cold:
         shell("am", "force-stop", PACKAGE)
     sample_id = time.time_ns()
+    setup_args = () if parallel_setup is None else ("--ez", PARALLEL_SETUP, str(parallel_setup).lower())
     output = shell(
         "am", "start", "-W", "-n", ACTIVITY, "-a", "android.intent.action.SEND", "-t", "text/plain",
-        "--es", "android.intent.extra.TEXT", message, "--el", SAMPLE_ID, str(sample_id),
+        "--es", "android.intent.extra.TEXT", message, "--el", SAMPLE_ID, str(sample_id), *setup_args,
     )
     if "Error:" in output or "Status: timeout" in output:
         raise RuntimeError(output)
@@ -67,6 +69,8 @@ def share(message, *, cold, timeout):
                 raise RuntimeError(f"Expected {expected}, got {sample['path']}. Keep the app open for warm runs.")
             if sample["outcome"] != "verdict":
                 raise RuntimeError("The app could not render a verdict. Check the benchmark APK for the detector asset.")
+            if parallel_setup is not None and sample.get("parallel_setup") is not parallel_setup:
+                raise RuntimeError("The app did not confirm the requested setup mode. Install the current profiling APK.")
             return sample
         time.sleep(0.15)
     raise RuntimeError("No verdict timing received. Keep the phone unlocked and install the benchmark APK.")
@@ -87,6 +91,8 @@ def summarize(samples):
     grouped = defaultdict(list)
     for sample in samples:
         path = sample["path"]
+        if path == "cold_share" and sample.get("parallel_setup"):
+            path = "cold_share_parallel"
         stages = sample.get("stages_ms", {})
         load = {"check": "detector_load", "explain": "llm_load"}.get(path)
         if load is not None:
@@ -116,6 +122,17 @@ def summarize(samples):
     return report
 
 
+def compare_cold_setup(runs, timeout):
+    samples = []
+    for index in range(runs):
+        message = MESSAGES[index % len(MESSAGES)]
+        # Reverse the order for every second fixture cycle so each input sees both orders.
+        parallel_first = (index // len(MESSAGES)) % 2 == 1
+        for parallel in (parallel_first, not parallel_first):
+            samples.append(share(message, cold=True, timeout=timeout, parallel_setup=parallel))
+    return samples
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -124,10 +141,13 @@ def main():
     run.add_argument("--runs", type=int, default=30, help="samples per mode")
     run.add_argument("--warmup", type=int, default=5, help="discarded warm Share samples")
     run.add_argument("--timeout", type=float, default=15, help="max seconds to wait for each timing record")
+    run.add_argument("--compare-setup", action="store_true", help="pair serial and parallel cold setup runs by input")
     report = commands.add_parser("report", help="summarize current logcat, including manual Check and Explain taps")
     for command in (run, report):
         command.add_argument("--out", type=Path, help="save the summary and individual samples as JSON")
     args = parser.parse_args()
+    if args.command == "run" and args.compare_setup and args.mode != "cold":
+        parser.error("--compare-setup requires --mode cold")
 
     try:
         if adb("get-state") != "device":
@@ -141,7 +161,9 @@ def main():
             if args.runs < 1 or args.warmup < 0 or args.timeout <= 0:
                 parser.error("--runs and --timeout must be positive and --warmup must be nonnegative")
             samples = []
-            if args.mode in ("cold", "both"):
+            if args.compare_setup:
+                samples = compare_cold_setup(args.runs, args.timeout)
+            elif args.mode in ("cold", "both"):
                 for index in range(args.runs):
                     samples.append(share(MESSAGES[index % len(MESSAGES)], cold=True, timeout=args.timeout))
             if args.mode in ("warm", "both"):

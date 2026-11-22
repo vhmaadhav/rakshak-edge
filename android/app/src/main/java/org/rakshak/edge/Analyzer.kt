@@ -55,6 +55,8 @@ data class Analysis(
 private const val DETECTOR_ONLY_QUIET_EN = "No specific scam pattern was found in this message."
 private const val DETECTOR_ONLY_QUIET_HI = "Is message mein koi specific scam pattern nahi mila."
 
+internal data class PreparedMessage(val canon: Canon, val evidence: List<Evidence>, val flags: FloatArray)
+
 /**
  * The decision and the template advisory for one message. No model is called here; [explain]
  * adds the Llama sentences on top.
@@ -66,9 +68,24 @@ object Analyzer {
         threshold: Double = SCAM_THRESHOLD,
         timing: InferenceTiming? = null,
     ): Analysis {
+        return analyse(text, prepare(text, timing), scorer, threshold, timing)
+    }
+
+    internal fun prepare(text: String, timing: InferenceTiming?): PreparedMessage {
         val canon = timing.measure("canonicalize") { canonicalize(text) }
         val evidence = timing.measureRules { runRules(canon, timing) }
         val flags = timing.measure("rule_flags") { ruleFlags(evidence) }
+        return PreparedMessage(canon, evidence, flags)
+    }
+
+    internal fun analyse(
+        text: String,
+        prepared: PreparedMessage,
+        scorer: StudentScorer,
+        threshold: Double = SCAM_THRESHOLD,
+        timing: InferenceTiming? = null,
+    ): Analysis {
+        val (canon, evidence, flags) = prepared
         val score = scorer.score(text, canon, flags)
         return timing.measure("decision") { decide(text, canon, score, evidence, threshold) }
     }

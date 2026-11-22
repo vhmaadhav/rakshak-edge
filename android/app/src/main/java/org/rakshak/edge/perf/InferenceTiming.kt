@@ -13,13 +13,16 @@ class InferenceTiming private constructor(
     private val path: String,
     private val id: Long?,
     private val startNs: Long,
+    internal val parallelSetup: Boolean,
 ) {
     private val stagesNs = linkedMapOf<String, Long>()
     private var firstTokenNs: Long? = null
     private var firstVerifiedPointNs: Long? = null
 
-    internal fun recordStage(name: String, elapsedNs: Long) {
+    @Synchronized
+    internal fun recordStage(name: String, detail: String?, elapsedNs: Long) {
         stagesNs[name] = (stagesNs[name] ?: 0L) + elapsedNs
+        if (detail != null) stagesNs[detail] = (stagesNs[detail] ?: 0L) + elapsedNs
     }
 
     fun tokenReceived() {
@@ -33,10 +36,13 @@ class InferenceTiming private constructor(
     fun finish(outcome: String, frameSubmitted: Boolean, modelPoints: Int?, totalPoints: Int?) {
         val endNs = SystemClock.elapsedRealtimeNanos()
         val stages = JSONObject()
-        stagesNs.forEach { (name, nanos) -> stages.put(name, millis(nanos)) }
+        synchronized(this) {
+            stagesNs.forEach { (name, nanos) -> stages.put(name, millis(nanos)) }
+        }
         val sample = JSONObject()
             .put("id", id ?: JSONObject.NULL)
             .put("path", path)
+            .put("parallel_setup", parallelSetup)
             .put("outcome", outcome)
             .put("frame_submitted", frameSubmitted)
             .put("elapsed_ms", millis(endNs - startNs))
@@ -51,15 +57,21 @@ class InferenceTiming private constructor(
 
     companion object {
         const val EXTRA_SAMPLE_ID = "org.rakshak.edge.perf.SAMPLE_ID"
+        const val EXTRA_PARALLEL_SETUP = "org.rakshak.edge.perf.PARALLEL_SETUP"
 
-        fun start(path: String, id: Long? = null, fromProcessStart: Boolean = false): InferenceTiming? {
+        fun start(
+            path: String,
+            id: Long? = null,
+            fromProcessStart: Boolean = false,
+            parallelSetup: Boolean = false,
+        ): InferenceTiming? {
             if (!BuildConfig.INFERENCE_BENCHMARK) return null
             val start = if (fromProcessStart) {
                 Process.getStartElapsedRealtime() * 1_000_000L
             } else {
                 SystemClock.elapsedRealtimeNanos()
             }
-            return InferenceTiming(path, id, start)
+            return InferenceTiming(path, id, start, parallelSetup)
         }
 
         private fun millis(nanos: Long): Double = nanos / 1_000_000.0
@@ -90,14 +102,14 @@ internal inline fun <T> InferenceTiming?.measureRules(work: () -> T): T = measur
     }
 }
 
-internal inline fun <T> InferenceTiming?.measure(name: String, work: () -> T): T {
+internal inline fun <T> InferenceTiming?.measure(name: String, detail: String? = null, work: () -> T): T {
     if (this == null) return work()
     val start = SystemClock.elapsedRealtimeNanos()
-    Trace.beginSection("Rakshak/$name")
+    Trace.beginSection("Rakshak/${detail ?: name}")
     try {
         return work()
     } finally {
         Trace.endSection()
-        recordStage(name, SystemClock.elapsedRealtimeNanos() - start)
+        recordStage(name, detail, SystemClock.elapsedRealtimeNanos() - start)
     }
 }

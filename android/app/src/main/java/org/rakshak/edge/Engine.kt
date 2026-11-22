@@ -5,6 +5,8 @@ import java.io.FileNotFoundException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -51,13 +53,29 @@ class Engine(private val context: Context) : AutoCloseable {
 
     suspend fun check(text: String, timing: InferenceTiming? = null): Result<Analysis> = withContext(Dispatchers.Default) {
         detectorLock.withLock {
-            runCatching {
+            try {
                 ensureOpen()
-                val d = detector ?: timing.measure("detector_load") { loadDetector() }
-                Analyzer.analyse(text, d?.scorer(timing) ?: error(detectorError ?: "Detector unavailable"), timing = timing)
+                Result.success(if (detector == null && timing?.parallelSetup == true) {
+                    checkWithParallelSetup(text, timing)
+                } else {
+                    Analyzer.analyse(text, detectorFor(timing).scorer(timing), timing = timing)
+                })
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Result.failure(error)
             }
         }
     }
+
+    private suspend fun checkWithParallelSetup(text: String, timing: InferenceTiming): Analysis = coroutineScope {
+        val prepared = async { Analyzer.prepare(text, timing) }
+        val scorer = detectorFor(timing).scorer(timing)
+        Analyzer.analyse(text, prepared.await(), scorer, timing = timing)
+    }
+
+    private fun detectorFor(timing: InferenceTiming?): StudentDetector =
+        detector ?: timing.measure("detector_load") { loadDetector() } ?: error(detectorError ?: "Detector unavailable")
 
     fun explainerInstalled(): Boolean = ModelFiles.installed(context)
 

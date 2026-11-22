@@ -49,7 +49,9 @@ class MainActivity : ComponentActivity() {
         val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString() ?: return
         val id = intent.getLongExtra(InferenceTiming.EXTRA_SAMPLE_ID, 0L).takeIf { it > 0L }
         val path = if (coldLaunch) "cold_share" else "warm_share"
-        incoming = SharedMessage(text, InferenceTiming.start(path, id, fromProcessStart = coldLaunch))
+        val parallel = coldLaunch && intent.getBooleanExtra(InferenceTiming.EXTRA_PARALLEL_SETUP, false)
+        val timing = InferenceTiming.start(path, id, fromProcessStart = coldLaunch, parallelSetup = parallel)
+        incoming = SharedMessage(text, timing)
     }
 
     override fun onDestroy() {

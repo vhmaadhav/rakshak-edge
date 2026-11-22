@@ -81,7 +81,9 @@ internal fun pyRe(pattern: String): String {
 }
 
 /** Compiles a Python-style pattern to a Kotlin Regex. `ci` is Python's IGNORECASE. */
-internal fun rxOf(pattern: String, ci: Boolean = false): Regex {
+internal fun rxOf(pattern: String, ci: Boolean = false): Regex = rxOf(pattern, ci, label = null)
+
+internal fun rxOf(pattern: String, ci: Boolean = false, label: String?): Regex {
     var p = pattern
     var caseInsensitive = ci
     if (p.startsWith("(?i)")) {
@@ -92,7 +94,8 @@ internal fun rxOf(pattern: String, ci: Boolean = false): Regex {
     if (caseInsensitive) flags = flags or Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE
     val timing = activeRuleRegexTiming()
     val translated = timing.measure("rules_regex_translate") { pyRe(p) }
-    return timing.measure("rules_regex_compile") { Pattern.compile(translated, flags).toRegex() }
+    val detail = if (timing != null && label != null) "rules_compile/$label" else null
+    return timing.measure("rules_regex_compile", detail) { Pattern.compile(translated, flags).toRegex() }
 }
 
 /** Letters only, as Python's `"".join(regex.findall(r"\p{L}", s))` would give. */

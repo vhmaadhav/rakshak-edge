@@ -102,10 +102,20 @@ single-rule-pass commit with the same inputs and run counts. Save each run to it
   `rules`, the trace records Python-pattern translation (`rules_regex_translate`), regex compilation
   through `rxOf` (`rules_regex_compile`), text-rule matching (`rules_text_match`) and URL-rule
   evaluation (`rules_domain`). Lazy regex work inside URL evaluation can appear in both breakdowns.
+  `rules_compile/…` entries attribute compilation time to named text-rule patterns.
   `llm_load` and `llm_generate` separate Llama setup and generation. `process_peak_rss_kib` is the
   resident high-water mark over the app process lifetime when Android exposes it. Use the `Rakshak/…`
   Perfetto trace sections to diagnose stage contention. Timing records contain no SMS text or
   generated sentences and are exclusive to the benchmark build.
+
+To compare loading the detector before preprocessing against running both concurrently, use the
+same profiling APK for both arms. The command below sends each input to both arms and alternates
+their order across fixture cycles. `--runs` gives the sample count per arm. Setup stage timings
+may overlap in the parallel arm, so compare request-to-verdict frame times directly.
+
+```bash
+python3 tools/benchmark_android.py run --mode cold --compare-setup --runs 16 --out cold-setup.json
+```
 
 ## 4. Regenerating the data assets and the parity fixture
 
