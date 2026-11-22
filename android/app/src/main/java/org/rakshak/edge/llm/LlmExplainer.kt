@@ -2,10 +2,14 @@ package org.rakshak.edge.llm
 
 import android.content.Context
 import java.io.File
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import org.pytorch.executorch.extension.llm.LlmCallback
+import org.pytorch.executorch.extension.llm.LlmGenerationConfig
 import org.pytorch.executorch.extension.llm.LlmModule
+import org.rakshak.edge.perf.InferenceTiming
+import org.rakshak.edge.perf.measure
 
 /**
  * Where the explainer files live. Push them with adb (docs/ANDROID_APP.md):
@@ -32,57 +36,53 @@ object ModelFiles {
  * runner (the prompt already carries the Llama 3 special tokens), KV cache reset before each
  * prompt, as the Pi runner does in rbench/runners/pte_llm.py.
  */
-class LlmExplainer(private val modelPath: String, private val tokenizerPath: String) :
-    TokenGenerator, AutoCloseable {
+class LlmExplainer(modelPath: String, tokenizerPath: String) : AutoCloseable {
+    private val module = LlmModule(modelPath, tokenizerPath, 0.0f)
 
-    private var module: LlmModule? = null
-
-    /** Loads the .pte on first use. Blocking, so it runs on Dispatchers.Default. */
-    suspend fun load() {
-        withContext(Dispatchers.Default) { loadBlocking() }
+    /** Force the native load so its latency is counted separately from generation. */
+    fun load() {
+        module.load()
     }
 
-    private fun loadBlocking() {
-        if (module != null) return
-        val m = LlmModule(modelPath, tokenizerPath, 0.0f)
-        m.load()
-        module = m
-    }
-
-    override suspend fun generate(prompt: String, maxNewTokens: Int, stopWhen: (String) -> Boolean): String =
-        withContext(Dispatchers.Default) {
-            loadBlocking()
-            val m = module ?: error("explainer model is not loaded")
+    fun generator(timing: InferenceTiming?): TokenGenerator =
+        TokenGenerator { prompt, maxNewTokens, stopWhen ->
+            val context = currentCoroutineContext()
+            context.ensureActive()
+            val config = LlmGenerationConfig.create()
+                .maxNewTokens(maxNewTokens)
+                .echo(false)
+                .temperature(0.0f)
+                .numBos(0)
+                .numEos(0)
+                .build()
             val pieces = StringBuilder()
             var stopRequested = false
-            m.resetContext()
-            m.generate(
-                prompt,
-                maxNewTokens,
-                object : LlmCallback {
+            var failureCode: Int? = null
+            timing.measure("llm_generate") {
+                module.resetContext()
+                module.generate(prompt, config, object : LlmCallback {
                     override fun onResult(result: String) {
-                        // Tokens after the stop request are kept: the caller cuts at the sentence end.
+                        if (result.isNotEmpty()) timing?.tokenReceived()
                         pieces.append(result)
-                        if (!stopRequested && stopWhen(pieces.toString())) {
+                        if (!stopRequested && (!context.isActive || stopWhen(pieces.toString()))) {
                             stopRequested = true
-                            m.stop()
+                            module.stop()
                         }
                     }
 
-                    override fun onStats(stats: String) {
-                        // Timing stats are not shown in the app.
+                    override fun onStats(stats: String) = Unit
+
+                    override fun onError(errorCode: Int, message: String) {
+                        failureCode = errorCode
                     }
-                },
-                false,
-                0.0f,
-                0,
-                0,
-            )
+                })
+            }
+            context.ensureActive()
+            failureCode?.let { error("ExecuTorch generation failed (code $it)") }
             pieces.toString()
         }
 
     override fun close() {
-        module?.close()
-        module = null
+        module.close()
     }
 }

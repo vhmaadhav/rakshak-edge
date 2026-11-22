@@ -21,7 +21,7 @@ import org.rakshak.edge.analysis.rxOf
  */
 
 /** Anything that can continue a prompt. [LlmExplainer] is the ExecuTorch implementation. */
-interface TokenGenerator {
+fun interface TokenGenerator {
     /** Returns the generated text. [stopWhen] is called with the text so far after each token. */
     suspend fun generate(prompt: String, maxNewTokens: Int, stopWhen: (String) -> Boolean): String
 }
@@ -212,7 +212,11 @@ object SlotExplainer {
      * Advisory for [pkg]. With a null [generator] (no model installed) or a LOW-risk package
      * (guard G1) no model call is made and the output is the template advisory.
      */
-    suspend fun advise(pkg: EvidencePackage, generator: TokenGenerator?): Advisory {
+    suspend fun advise(
+        pkg: EvidencePackage,
+        generator: TokenGenerator?,
+        onVerifiedPoint: (() -> Unit)? = null,
+    ): Advisory {
         val llmPkg = collapseByType(pkg)
         val summary = templateSummary(pkg, "en")
         if (pkg.risk == Risk.LOW) return templateOnly(llmPkg, "low_template", summary)
@@ -241,6 +245,7 @@ object SlotExplainer {
             problems.filter { it.startsWith("attribution of scam intent") }
                 .forEach { g2.add("${e.id}: ${raw[i]} ($it)") }
             if (problems.isEmpty()) {
+                onVerifiedPoint?.invoke()
                 PointView(e.id, e.type, raw[i].trim(), "llm", emptyList())
             } else {
                 PointView(e.id, e.type, templatePoint(e.type, "en"), "template", problems)

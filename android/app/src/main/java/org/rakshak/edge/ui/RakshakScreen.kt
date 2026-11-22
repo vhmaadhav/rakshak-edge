@@ -1,5 +1,6 @@
 package org.rakshak.edge.ui
 
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +17,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,39 +26,59 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.rakshak.edge.Analysis
 import org.rakshak.edge.Engine
+import org.rakshak.edge.SharedMessage
 import org.rakshak.edge.analysis.Tier
 import org.rakshak.edge.analysis.TYPE_PHRASE_EN
 import org.rakshak.edge.data.RuleData
+import org.rakshak.edge.perf.InferenceTiming
 
 /** Verdict, evidence, remediation and the optional explanation for one message. */
 @Composable
-fun RakshakScreen(engine: Engine, sharedText: String?, sharedNonce: Int) {
+fun RakshakScreen(engine: Engine, shared: SharedMessage?) {
     val scope = rememberCoroutineScope()
     var text by rememberSaveable { mutableStateOf("") }
     var analysis by remember { mutableStateOf<Analysis?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
+    var activeRequest by remember { mutableStateOf<Job?>(null) }
+    var pendingFrame by remember { mutableStateOf<InferenceFrame?>(null) }
 
-    fun check(message: String) {
-        scope.launch {
-            busy = true
-            error = null
-            engine.check(message)
-                .onSuccess { analysis = it }
-                .onFailure { error = it.message ?: "Analysis failed" }
+    fun submit(timing: InferenceTiming?, explaining: Boolean = false, run: suspend () -> Result<Analysis>) {
+        activeRequest?.cancel()
+        pendingFrame = null
+        busy = true
+        error = null
+        activeRequest = scope.launch {
+            run().onSuccess { result ->
+                analysis = result
+                pendingFrame = timing?.let {
+                    if (explaining) {
+                        val points = result.advisory.points
+                        InferenceFrame(it, result.advisory.mode, points.count { p -> p.source == "llm" }, points.size)
+                    } else {
+                        InferenceFrame(it, "verdict")
+                    }
+                }
+            }.onFailure {
+                val message = it.message ?: "Analysis failed"
+                error = if (explaining) "Explanation failed: $message" else message
+                pendingFrame = timing?.let { sample -> InferenceFrame(sample, "error") }
+            }
             busy = false
         }
     }
 
-    LaunchedEffect(sharedNonce) {
-        if (!sharedText.isNullOrBlank()) {
-            text = sharedText
-            check(sharedText)
+    LaunchedEffect(shared) {
+        if (shared != null && shared.text.isNotBlank()) {
+            text = shared.text
+            submit(shared.timing) { engine.check(shared.text, shared.timing) }
         }
     }
 
@@ -80,7 +102,11 @@ fun RakshakScreen(engine: Engine, sharedText: String?, sharedNonce: Int) {
             label = { Text("Paste an SMS or message") },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { check(text) }, enabled = text.isNotBlank() && !busy) {
+            Button(onClick = {
+                val message = text
+                val timing = InferenceTiming.start("check")
+                submit(timing) { engine.check(message, timing) }
+            }, enabled = text.isNotBlank() && !busy) {
                 Text(if (busy) "Checking..." else "Check message")
             }
             TextButton(onClick = { showAbout = true }) { Text("About") }
@@ -92,21 +118,44 @@ fun RakshakScreen(engine: Engine, sharedText: String?, sharedNonce: Int) {
                 analysis = a,
                 explainerInstalled = engine.explainerInstalled(),
                 onExplain = {
-                    scope.launch {
-                        busy = true
-                        engine.explain(a)
-                            .onSuccess { analysis = it }
-                            .onFailure { error = "Explanation failed: ${it.message}" }
-                        busy = false
-                    }
+                    val timing = InferenceTiming.start("explain")
+                    submit(timing, explaining = true) { engine.explain(a, timing) }
                 },
                 busy = busy,
             )
         }
     }
 
+    pendingFrame?.let { RecordInferenceFrame(it) }
+
     if (showAbout) {
         AboutDialog(onDismiss = { showAbout = false })
+    }
+}
+
+private data class InferenceFrame(
+    val timing: InferenceTiming,
+    val outcome: String,
+    val modelPoints: Int? = null,
+    val totalPoints: Int? = null,
+) {
+    fun record(submitted: Boolean) = timing.finish(outcome, submitted, modelPoints, totalPoints)
+}
+
+@Composable
+private fun RecordInferenceFrame(frame: InferenceFrame) {
+    val view = LocalView.current
+    DisposableEffect(view, frame) {
+        val observer = view.viewTreeObserver
+        if (Build.VERSION.SDK_INT >= 29 && view.isHardwareAccelerated && observer.isAlive) {
+            val callback = Runnable { frame.record(submitted = true) }
+            observer.registerFrameCommitCallback(callback)
+            view.invalidate()
+            onDispose { if (observer.isAlive) observer.unregisterFrameCommitCallback(callback) }
+        } else {
+            frame.record(submitted = false)
+            onDispose { }
+        }
     }
 }
 

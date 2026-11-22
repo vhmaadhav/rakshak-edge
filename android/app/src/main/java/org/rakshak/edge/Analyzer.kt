@@ -25,9 +25,11 @@ import org.rakshak.edge.llm.Advisory
 import org.rakshak.edge.llm.PointView
 import org.rakshak.edge.llm.SlotExplainer
 import org.rakshak.edge.llm.TokenGenerator
+import org.rakshak.edge.perf.InferenceTiming
+import org.rakshak.edge.perf.measure
 
 /** The student score for one message. The ONNX implementation is ml.StudentDetector. */
-interface StudentScorer {
+fun interface StudentScorer {
     fun score(text: String, canon: Canon): Double
 }
 
@@ -56,10 +58,19 @@ private const val DETECTOR_ONLY_QUIET_HI = "Is message mein koi specific scam pa
  * adds the Llama sentences on top.
  */
 object Analyzer {
-    fun analyse(text: String, scorer: StudentScorer, threshold: Double = SCAM_THRESHOLD): Analysis {
-        val canon = canonicalize(text)
+    fun analyse(
+        text: String,
+        scorer: StudentScorer,
+        threshold: Double = SCAM_THRESHOLD,
+        timing: InferenceTiming? = null,
+    ): Analysis {
+        val canon = timing.measure("canonicalize") { canonicalize(text) }
         val score = scorer.score(text, canon)
-        val evidence = runRules(canon)
+        val evidence = timing.measure("rules") { runRules(canon) }
+        return timing.measure("decision") { decide(text, canon, score, evidence, threshold) }
+    }
+
+    private fun decide(text: String, canon: Canon, score: Double, evidence: List<Evidence>, threshold: Double): Analysis {
         val state = scamStateFor(score, threshold, evidence)
         val pkg = buildPackage(canon, evidence, state)
         val action = chooseAction(pkg)
@@ -96,8 +107,12 @@ object Analyzer {
      * Adds the explainer sentences. Quiet-mode detector-only messages and Hinglish messages
      * (template mode, the Pi default) make no model call and keep the template advisory.
      */
-    suspend fun explain(analysis: Analysis, generator: TokenGenerator?): Analysis {
+    suspend fun explain(
+        analysis: Analysis,
+        generator: TokenGenerator?,
+        onVerifiedPoint: (() -> Unit)? = null,
+    ): Analysis {
         if (analysis.detectorOnly || analysis.lang == "hinglish") return analysis
-        return analysis.copy(advisory = SlotExplainer.advise(analysis.pkg, generator))
+        return analysis.copy(advisory = SlotExplainer.advise(analysis.pkg, generator, onVerifiedPoint))
     }
 }
