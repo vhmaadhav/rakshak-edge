@@ -3,6 +3,8 @@ package org.rakshak.edge.analysis
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import org.rakshak.edge.perf.InferenceTiming
+import org.rakshak.edge.perf.measure
 
 /**
  * Port of src/rakshak/rules.py: the evidence rules over a canonicalised message, in the same
@@ -362,10 +364,14 @@ private fun domainRules(canon: Canon): List<RawHit> {
 }
 
 /** run_rules: every rule in order, then the domain rules. Ids are E1..En in emission order. */
-fun runRules(canon: Canon): List<Evidence> {
+fun runRules(canon: Canon): List<Evidence> = runRules(canon, null)
+
+internal fun runRules(canon: Canon, timing: InferenceTiming?): List<Evidence> {
     val raw = ArrayList<RawHit>()
-    for (rule in RULES) raw.addAll(rule(canon))
-    raw.addAll(domainRules(canon))
+    timing.measure("rules_text_match") {
+        for (rule in RULES) raw.addAll(rule(canon))
+    }
+    raw.addAll(timing.measure("rules_domain") { domainRules(canon) })
     return raw.mapIndexed { i, h -> Evidence("E${i + 1}", h.type, h.start, h.end, h.text, h.weight) }
 }
 

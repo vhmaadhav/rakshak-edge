@@ -98,9 +98,12 @@ single-rule-pass commit with the same inputs and run counts. Save each run to it
   command isolates its own Share samples. The report separates real Llama results, partial results,
   templates and errors. First verified point is measured in the verifier. The app renders all
   verified points together when the advisory is ready.
-- `stages_ms` breaks out detector load, canonicalization, rules, ONNX and decision time. `llm_load`
-  and `llm_generate` separate Llama setup and generation. `process_peak_rss_kib` is the resident
-  high-water mark over the app process lifetime when Android exposes it. Use the `Rakshak/…`
+- `stages_ms` breaks out detector load, canonicalization, rules, ONNX and decision time. Within
+  `rules`, the trace records Python-pattern translation (`rules_regex_translate`), regex compilation
+  through `rxOf` (`rules_regex_compile`), text-rule matching (`rules_text_match`) and URL-rule
+  evaluation (`rules_domain`). Lazy regex work inside URL evaluation can appear in both breakdowns.
+  `llm_load` and `llm_generate` separate Llama setup and generation. `process_peak_rss_kib` is the
+  resident high-water mark over the app process lifetime when Android exposes it. Use the `Rakshak/…`
   Perfetto trace sections to diagnose stage contention. Timing records contain no SMS text or
   generated sentences and are exclusive to the benchmark build.
 

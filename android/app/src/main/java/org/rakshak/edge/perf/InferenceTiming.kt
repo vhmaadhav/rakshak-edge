@@ -73,6 +73,23 @@ class InferenceTiming private constructor(
     }
 }
 
+private val ruleRegexTiming = ThreadLocal<InferenceTiming>()
+
+internal fun activeRuleRegexTiming(): InferenceTiming? =
+    if (BuildConfig.INFERENCE_BENCHMARK) ruleRegexTiming.get() else null
+
+// The first run initializes Rules.kt and compiles its patterns on the calling thread.
+// Scope the timing around that call so class initialization is included in the breakdown.
+internal inline fun <T> InferenceTiming?.measureRules(work: () -> T): T = measure("rules") {
+    if (this == null) return@measure work()
+    ruleRegexTiming.set(this)
+    try {
+        work()
+    } finally {
+        ruleRegexTiming.remove()
+    }
+}
+
 internal inline fun <T> InferenceTiming?.measure(name: String, work: () -> T): T {
     if (this == null) return work()
     val start = SystemClock.elapsedRealtimeNanos()

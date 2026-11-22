@@ -28,6 +28,7 @@ import org.rakshak.edge.llm.SlotExplainer
 import org.rakshak.edge.llm.TokenGenerator
 import org.rakshak.edge.perf.InferenceTiming
 import org.rakshak.edge.perf.measure
+import org.rakshak.edge.perf.measureRules
 
 /** The student score for one message. The ONNX implementation is ml.StudentDetector. */
 fun interface StudentScorer {
@@ -66,7 +67,7 @@ object Analyzer {
         timing: InferenceTiming? = null,
     ): Analysis {
         val canon = timing.measure("canonicalize") { canonicalize(text) }
-        val evidence = timing.measure("rules") { runRules(canon) }
+        val evidence = timing.measureRules { runRules(canon, timing) }
         val flags = timing.measure("rule_flags") { ruleFlags(evidence) }
         val score = scorer.score(text, canon, flags)
         return timing.measure("decision") { decide(text, canon, score, evidence, threshold) }
