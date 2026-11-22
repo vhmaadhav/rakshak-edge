@@ -306,7 +306,9 @@ def bootstrap_metric_draws(y: np.ndarray, preds: Sequence[np.ndarray], n_boot: i
 
 
 def percentile_interval(draws: np.ndarray, alpha: float = 0.05) -> tuple[float, float]:
-    lo, hi = np.percentile(np.asarray(draws, dtype=np.float64), [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    lo, hi = np.percentile(
+        np.asarray(draws, dtype=np.float64), [100 * alpha / 2, 100 * (1 - alpha / 2)]
+    )
     return float(lo), float(hi)
 
 

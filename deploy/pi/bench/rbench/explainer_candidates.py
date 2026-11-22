@@ -27,7 +27,6 @@ from typing import Any
 
 from rbench.slot import (
     _TERMINATOR,
-    DESCRIBE_SYSTEM,
     SLOT_MAX_NEW_TOKENS,
     _chat,
     _finish_points,

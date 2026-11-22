@@ -39,6 +39,9 @@ class BundleError(Exception):
 def _matches(data_dir: Path, pattern: str) -> set[str]:
     if not pattern or pattern.startswith("/") or ".." in Path(pattern).parts:
         raise BundleError(f"pattern {pattern!r} must be relative and stay inside the data folder")
+    # Before Python 3.13 a pattern ending in "**" matches only folders; "**/*" matches the files too.
+    if pattern == "**" or pattern.endswith("/**"):
+        pattern += "/*"
     return {p.relative_to(data_dir).as_posix() for p in data_dir.glob(pattern) if p.is_file()}
 
 

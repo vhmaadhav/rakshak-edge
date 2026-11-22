@@ -23,4 +23,21 @@ __pycache__/
 # Local eval outputs (contain dataset SMS text; rebuild with deploy/pi/service/build_hinglish_rows.py)
 /results/
 
-/data
+# Model weights and tokenizers are not committed (see android/README.md section 2)
+*.onnx
+*.pte
+*.gguf
+*.safetensors
+tokenizer.model
+/models/
+
+# Secrets and signing keys
+.env
+.env.*
+*.jks
+*.keystore
+*.pem
+kaggle.json
+
+# Local logs
+*.log
