@@ -6,11 +6,17 @@ way the page reads it. No model runs and none of its numbers are measurements; n
 
 Run:  python3 deploy/pi/service/ui_mock.py    (listens on 127.0.0.1:8799)
 Hot-Pi banner: include the text "[hot]" in an SMS or link to get a 503.
+Verdict-first: include "[vf]" in a scam SMS to get the verdict at once and a pending explanation that
+turns ready about 2 s later (GET /explanation/<id>), as the real service does with --response-mode
+verdict_first.
 """
+import copy
 import json
-from pathlib import Path
 import re
+import time
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 HOST, PORT = "127.0.0.1", 8799
 PAGE = str(Path(__file__).resolve().parent / "index.html")
@@ -60,7 +66,7 @@ T = {
 def analyse_sms(text, lang="auto"):
     low = text.lower()
     if "[hot]" in low:
-        return 503, {"error": "too hot", "temp_c": 81.4, "limit_c": 80.0}
+        return 503, {"error": "cooling", "temp_c": 81.4, "limit_c": 80.0}
     tx = T["hinglish"] if lang == "hinglish" else T["en"]
     high = "kyc" in low or "http" in low
     evidence, points, remediation = [], [], []
@@ -68,26 +74,26 @@ def analyse_sms(text, lang="auto"):
         evidence = []
         if "kyc" in low:
             i = low.index("kyc")
-            evidence.append({"id": "R01", "type": "kyc_update_request", "weight": 0.42,
+            evidence.append({"id": "R01", "type": "kyc_block_urgency", "weight": 0.42,
                              "text": text[i:i + 3]})
         if "blocked" in low:
             i = low.index("blocked")
-            evidence.append({"id": "R04", "type": "account_block_threat", "weight": 0.31,
+            evidence.append({"id": "R04", "type": "account_suspension", "weight": 0.31,
                              "text": text[i:i + len("blocked")]})
         if "http" in low:
             i = low.index("http")
             m = re.match(r"\S+", text[i:])
-            evidence.append({"id": "R07", "type": "url_in_message", "weight": 0.27,
+            evidence.append({"id": "R07", "type": "suspicious_url", "weight": 0.27,
                              "text": m.group(0) if m else text[i:]})
         points = [
-            {"source": "llm", "evidence_id": "R01", "type": "kyc_update_request",
+            {"source": "llm", "evidence_id": "R01", "type": "kyc_block_urgency",
              "text": tx["kyc_point"],
              "llm_text": "It asks you to update your KYC through a link in the message.",
              "check": {"ok": True, "problems": []}},
-            {"source": "template", "evidence_id": "R04", "type": "account_block_threat",
+            {"source": "template", "evidence_id": "R04", "type": "account_suspension",
              "text": tx["block_point"],
              "llm_text": None, "check": {"ok": None, "problems": []}},
-            {"source": "template", "evidence_id": "R07", "type": "url_in_message",
+            {"source": "template", "evidence_id": "R07", "type": "suspicious_url",
              "text": tx["url_point"],
              "llm_text": "Open the link on the page to finish the update within 24 hours.",
              "check": {"ok": False, "problems": ["sentence cites a deadline not in the evidence"]}},
@@ -100,7 +106,8 @@ def analyse_sms(text, lang="auto"):
                    "verify": 2.1, "total": 636.0, "llm_calls": [612.4], "llm_cached": 0}
         llm_calls = [{"cached": False}]
         advisory = {"mode": "llm+template", "llm_skipped_low_risk": False, "lang": lang if lang in LANGS else "en",
-                    "summary": {"text": tx["summary"], "source": "llm", "check": "pass"},
+                    "summary": {"text": tx["summary"], "source": "template",
+                                "check": "template, not an LLM sentence"},
                     "points": points}
         remediation = [{"code": "R01", "title": tx["rem_title"], "steps": list(tx["rem_steps"])}]
     else:
@@ -116,7 +123,7 @@ def analyse_sms(text, lang="auto"):
                     "points": [{"source": "template", "evidence_id": "-", "type": "none",
                                 "text": tx["none_point"], "llm_text": None,
                                 "check": {"ok": None, "problems": []}}]}
-    return 200, {
+    full = {
         "decision": decision,
         "timings_ms": timings,
         "llm_calls": llm_calls,
@@ -128,6 +135,48 @@ def analyse_sms(text, lang="auto"):
                    "energy": {"energy_j": 3.84, "method": "ina219", "mean_w": 4.6},
                    "rss_mb": 412},
     }
+    if high and "[vf]" in low:
+        return 200, verdict_first(full)
+    return 200, full
+
+
+# FAKE verdict-first store: id -> (created, full response). Ready 2 s after the verdict.
+EXPLANATIONS = {}
+
+
+def verdict_first(full):
+    """The verdict at once, the template advisory, and a pending explanation (real shape)."""
+    eid = uuid.uuid4().hex[:16]
+    EXPLANATIONS[eid] = (time.time(), full)
+    adv = copy.deepcopy(full["advisory"])
+    adv.update(mode="template", path="pending")
+    for point in adv["points"]:
+        point.update(source="template", llm_text=None, check={"ok": None, "problems": []})
+    timings = dict(full["timings_ms"], llm_total=0.0, llm_calls=[], total=22.0)
+    return {
+        "decision": full["decision"],
+        "evidence": full["evidence"],
+        "remediation": full["remediation"],
+        "advisory": adv,
+        "timings_ms": timings,
+        "verifier": {"g2_rejected": []},
+        "explanation": {"status": "pending", "id": eid, "url": "/explanation/" + eid,
+                        "explanation_source": "llm"},
+        "device": {"start": full["device"]["start"], "rss_mb": 412},
+    }
+
+
+def explanation(eid):
+    entry = EXPLANATIONS.get(eid)
+    if entry is None:
+        return 404, {"error": "unknown or expired explanation id", "id": eid}
+    created, full = entry
+    if time.time() - created < 2.0:
+        return 200, {"id": eid, "status": "pending", "queued_at": created}
+    return 200, {"id": eid, "status": "ready", "explanation_source": "llm",
+                 "advisory": full["advisory"], "verifier": full["verifier"],
+                 "llm_calls": full["llm_calls"], "timings_ms": full["timings_ms"],
+                 "wall_ms": 612.4, "queued_at": created}
 
 
 def analyse_url(url):
@@ -188,7 +237,7 @@ def analyse_flows(body_len):
 
 HEALTH = {
     "status": "ok", "pid": 4242, "uptime_s": 913.4, "threads": 4, "temp_limit_c": 80.0,
-    "models": {}, "detector_only_mode": False,
+    "models": {}, "detector_only_mode": "quiet",
     "url_model": {"enabled": True, "threshold": 0.6, "evidence_visible": True},
     "hinglish_mode": "auto", "llm_runner": "executorch", "requests": 17, "refused_cooling": 0,
     "rss_mb": 402.1, "rss_peak_mb": 440.0, "device": snap(53.1),
@@ -219,6 +268,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, fh.read(), "text/html; charset=utf-8")
         if self.path == "/health":
             return self._send(200, HEALTH)
+        if self.path.startswith("/explanation/"):
+            status, out = explanation(self.path[len("/explanation/"):].split("?")[0])
+            return self._send(status, out)
         return self._send(404, {"error": "not found"})
 
     def _body(self):
@@ -226,7 +278,6 @@ class Handler(BaseHTTPRequestHandler):
         return self.rfile.read(n) if n > 0 else b""
 
     def do_POST(self):
-        import time
         body = self._body()
         time.sleep(DELAY_S)  # show the loading state
         if self.path in ("/analyze", "/analyze_url"):
