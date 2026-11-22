@@ -118,6 +118,28 @@ def _is_syn_only(flow: Mapping[str, Any]) -> bool:
     return syn is not None and syn >= 1 and back == 0
 
 
+def rule_relevant(flow: Mapping[str, Any]) -> bool:
+    """True when ``flow`` is one that ``evaluate`` can count toward a rule (same tests, no window).
+
+    The live session keeps only these flows per host, so its state stays small. A flow that is not
+    relevant can never change a rule hit.
+    """
+    if flow.get("src_ip") is None or _num(flow.get("bidirectional_first_seen_ms")) is None:
+        return False
+    proto = _num(flow.get("protocol"))
+    dport = _num(flow.get("dst_port"))
+    if proto is None or dport is None:
+        return False
+    proto_i, dport_i = int(proto), int(dport)
+    if proto_i == 6 and (dport_i == SSH_PORT or dport_i in OTHER_AUTH_PORTS):
+        if _is_short_tcp(flow):
+            return True
+    if proto_i == 17 and dport_i == DNS_PORT:
+        name = flow.get("requested_server_name")
+        return dns_name_is_suspicious(name if isinstance(name, str) else None)
+    return proto_i == 6 and _is_syn_only(flow)
+
+
 def _qualifying_in_windows(
     events: list[tuple[float, int]], window_ms: float, min_count: int
 ) -> set[int]:

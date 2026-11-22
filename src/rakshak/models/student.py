@@ -386,7 +386,10 @@ def onnx_parity(model: CharCNN, path: Path, feats: Featurized, n: int = 64) -> d
     feed: dict[str, np.ndarray] = {v: sub.bytes_view(v).astype(np.int64) for v in model.views}
     if model.n_side:
         feed["side"] = np.ascontiguousarray(sub.side(model.views[-1]), dtype=np.float32)
-    session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+    from rakshak.ort_offline import offline_session_options
+
+    session = ort.InferenceSession(str(path), sess_options=offline_session_options(ort),
+                                   providers=["CPUExecutionProvider"])
     got = session.run(None, {i.name: feed[i.name] for i in session.get_inputs()})[0]
     with torch.inference_mode():
         views = {v: torch.as_tensor(feed[v]) for v in model.views}

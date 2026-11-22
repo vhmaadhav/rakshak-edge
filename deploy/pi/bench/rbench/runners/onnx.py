@@ -34,7 +34,14 @@ def _ort():
 
 def make_session(path: Path, threads: int):
     ort = _ort()
-    opts = ort.SessionOptions()
+    try:
+        from rakshak.ort_offline import offline_session_options
+
+        opts = offline_session_options(ort)
+    except ImportError:  # an older rakshak on the path: same telemetry switch, inline
+        opts = ort.SessionOptions()
+        if callable(getattr(ort, "disable_telemetry_events", None)):
+            ort.disable_telemetry_events()
     opts.intra_op_num_threads = int(threads)
     opts.inter_op_num_threads = 1
     opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL

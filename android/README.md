@@ -4,8 +4,9 @@ Offline scam-SMS and link checker for Android (package `org.rakshak.edge`, minSd
 Design, parity method, versions and open items: [`docs/ANDROID_APP.md`](../docs/ANDROID_APP.md).
 
 Status: **builds, and all 27 JVM unit tests pass** (headless, InstaBox VM, 2026-11-20). The 27
-include 8 parity tests over the 318-row Python fixture. **Not run on a device yet.** Details are
-in `docs/ANDROID_APP.md`.
+include 8 parity tests over the 318-row Python fixture. No on-device run is recorded in this tree,
+so there are no device latency numbers yet. Device results, when they exist, are tracked in
+[`docs/RESULTS_INDEX.md`](../docs/RESULTS_INDEX.md). Details are in `docs/ANDROID_APP.md`.
 
 ## 1. Build box (Debian 13, x86_64)
 
