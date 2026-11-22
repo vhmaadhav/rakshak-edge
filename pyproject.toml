@@ -17,12 +17,15 @@ dependencies = [
     "lightgbm>=4.3",
     "pyarrow>=26.0.0",
     "datasketch>=2.0.0",
+    "scipy>=1.11",
+    "onnxruntime>=1.18",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.2",
     "pytest-xdist>=3.8.0",
+    "onnx>=1.16",
     "ruff>=0.5",
 ]
 
