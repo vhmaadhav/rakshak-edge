@@ -141,7 +141,7 @@ Detector numbers come from a campaign-disjoint test split with campaign-clustere
 
 | Mode | p50 | Note |
 |---|---|---|
-| Synchronous (verdict plus Llama explanation) | 794 ms to 1.4 s | Llama about 1.1 s to first token |
+| Synchronous (verdict plus Llama explanation) | 794 ms to 1.4 s | two runs; Llama about 1.1 s to first token |
 | Verdict-first (verdict only) | 5.5 ms | 0 verdict flips over 5,080 messages with the FP32 ONNX model |
 | Verdict-first throughput | up to 1,050 msg/s | 4 workers, 16 clients, batching |
 
