@@ -3,485 +3,1050 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Rakshak Edge: on-device threat detection on Raspberry Pi 5. Nothing leaves this device.">
 <title>Rakshak edge pipeline</title>
 <style>
+/* ---------- tokens (light first, dark below) ---------- */
 :root{
-  --bg:#f4f6f9; --card:#ffffff; --fg:#141820; --muted:#5b6675; --line:#d8dee6;
-  --ok:#17803a; --warn:#a85f00; --bad:#c42b2b; --accent:#2457d6;
-  --banner-bad:#fdeaea; --banner-warn:#fff3d6;
-  color-scheme: light dark;
+  --bg:#F5F7FB; --surface:#FFFFFF; --surface-2:#EEF1F8; --line:#D9DFEA;
+  --text:#111827; --muted:#5B6475;
+  --accent:#4A55E0; --accent-2:#0891B2; --on-accent:#FFFFFF;
+  --high:#D92D3F; --med:#B7791F; --med-ink:#8A5A0E; --low:#15803D; --low-ink:#15803D;
+  --s1:#4A55E0; --s2:#0891B2; --s3:#7C3AED; --s4:#B7791F; --s5:#15803D;
+  --banner-bad:#FDEAEA; --banner-warn:#FFF3D6;
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#0e1116; --card:#171b22; --fg:#e6e9ef; --muted:#98a2b0; --line:#2a313c;
-    --ok:#3fb950; --warn:#e6a511; --bad:#ff6b63; --accent:#7aa2ff;
-    --banner-bad:#3d1719; --banner-warn:#3a2c10;
+    --bg:#0A0E17; --surface:#121826; --surface-2:#18203A; --line:#263049;
+    --text:#E8ECF4; --muted:#8C97AD;
+    --accent:#6C7BFF; --accent-2:#22D3EE; --on-accent:#0A0E17;
+    --high:#FF4D5E; --med:#FFB020; --med-ink:#FFB020; --low:#22C55E; --low-ink:#22C55E;
+    --s1:#6C7BFF; --s2:#22D3EE; --s3:#A78BFA; --s4:#FFB020; --s5:#22C55E;
+    --banner-bad:#3D1719; --banner-warn:#3A2C10;
+    color-scheme: dark;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#0e1116; --card:#171b22; --fg:#e6e9ef; --muted:#98a2b0; --line:#2a313c;
-  --ok:#3fb950; --warn:#e6a511; --bad:#ff6b63; --accent:#7aa2ff;
-  --banner-bad:#3d1719; --banner-warn:#3a2c10;
+  --bg:#0A0E17; --surface:#121826; --surface-2:#18203A; --line:#263049;
+  --text:#E8ECF4; --muted:#8C97AD;
+  --accent:#6C7BFF; --accent-2:#22D3EE; --on-accent:#0A0E17;
+  --high:#FF4D5E; --med:#FFB020; --med-ink:#FFB020; --low:#22C55E; --low-ink:#22C55E;
+  --s1:#6C7BFF; --s2:#22D3EE; --s3:#A78BFA; --s4:#FFB020; --s5:#22C55E;
+  --banner-bad:#3D1719; --banner-warn:#3A2C10;
+  color-scheme: dark;
 }
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--fg)}
-body{font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden}
-main{padding:16px;max-width:900px;margin:0 auto}
-h1{font-size:18px;margin:0 0 4px;font-weight:700}
-h2{font-size:14px;margin:0 0 8px;font-weight:700}
-.sub{color:var(--muted);font-size:13px;margin-bottom:12px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;
-  margin-bottom:12px;min-width:0}
-.label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
-textarea{width:100%;min-height:96px;font:14px/1.4 system-ui,sans-serif;color:var(--fg);
-  background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;resize:vertical}
-input[type="text"]{width:100%;font:14px/1.4 system-ui,sans-serif;color:var(--fg);
-  background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
-button{font:600 14px system-ui,sans-serif;color:#fff;background:var(--accent);border:0;
-  border-radius:8px;padding:9px 16px;cursor:pointer;margin-top:8px}
-button[disabled]{opacity:.55;cursor:wait}
-.row{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
-.pill{display:inline-block;padding:1px 9px;border-radius:999px;border:1px solid var(--line);
-  font-size:12px;font-weight:700}
-.risk-HIGH{color:var(--bad);border-color:var(--bad)}
-.risk-MEDIUM,.risk-UNCERTAIN{color:var(--warn);border-color:var(--warn)}
-.risk-LOW{color:var(--ok);border-color:var(--ok)}
-.src-llm{color:var(--accent);border-color:var(--accent)}
-.src-template{color:var(--muted)}
-.ok{color:var(--ok)} .bad{color:var(--bad)} .muted{color:var(--muted)}
-.banner{display:none;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-weight:600}
+
+/* ---------- base ---------- */
+[hidden]{display:none !important}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;hyphens:auto}
+body::before{content:"";position:fixed;left:0;right:0;top:0;height:360px;pointer-events:none;z-index:0;
+  background:radial-gradient(60% 100% at 50% 0%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 72%)}
+.wrap{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:16px;min-width:0}
+h1{font-size:20px;line-height:1.2;margin:0;font-weight:800;letter-spacing:-.01em;overflow-wrap:anywhere}
+h2{font-size:14px;margin:0 0 10px;font-weight:700;letter-spacing:.01em}
+p{margin:0}
+.tagline{margin:2px 0 0;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.muted{color:var(--muted)}
+.label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.note{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+:focus-visible{outline:3px solid var(--accent-2);outline-offset:2px}
+
+/* ---------- header ---------- */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.brand{display:flex;gap:12px;align-items:center;min-width:0}
+.mark{width:40px;height:40px;flex:none}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 10px;border-radius:999px;
+  border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:12px;font-weight:600;overflow-wrap:anywhere}
+.chip-ok{color:var(--text)}
+.chip-bad{color:var(--high);border-color:var(--high)}
+.chip-warn{color:var(--med-ink);border-color:var(--med)}
+.pip{width:8px;height:8px;border-radius:50%;background:var(--low);flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--low) 25%,transparent)}
+
+/* ---------- tabs ---------- */
+.tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:16px;padding:4px;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px}
+.tab{min-height:44px;margin:0;border:0;border-radius:10px;background:transparent;color:var(--muted);
+  font:700 14px/1 system-ui,sans-serif;padding:0 8px;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--surface-2);color:var(--text);box-shadow:inset 0 -3px 0 var(--accent)}
+
+/* ---------- surfaces ---------- */
+.panel{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.results{display:flex;flex-direction:column;gap:12px;min-width:0;--rc:var(--muted)}
+.r-HIGH{--rc:var(--high)}
+.r-MEDIUM,.r-UNCERTAIN{--rc:var(--med)}
+.r-LOW{--rc:var(--low)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;min-width:0}
+.hero{display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;min-width:0;
+  background:var(--surface);border:1px solid color-mix(in srgb,var(--rc) 45%,var(--line));border-radius:20px;
+  padding:20px 16px;box-shadow:0 18px 50px -28px color-mix(in srgb,var(--rc) 85%,transparent)}
+.hero-text{min-width:0;width:100%;display:flex;flex-direction:column;gap:10px}
+.action{font-size:clamp(17px,4.6vw,21px);font-weight:800;line-height:1.3;overflow-wrap:anywhere}
+.verdict{font-size:clamp(24px,7vw,30px);font-weight:800;line-height:1.1;overflow-wrap:anywhere}
+.verdict.ok{color:var(--low-ink)} .verdict.warn{color:var(--med-ink)} .verdict.bad{color:var(--high)}
+@media (min-width:560px){
+  .hero{flex-direction:row;text-align:left;padding:22px}
+  .hero-text{text-align:left}
+}
+.kv{display:grid;gap:6px;font-size:14px}
+.kv-row{display:grid;grid-template-columns:minmax(0,40%) minmax(0,1fr);gap:2px 12px;align-items:baseline}
+.kv-row .k{color:var(--muted)}
+.kv-row .v{font-weight:600;overflow-wrap:anywhere}
+.stack > *+*{border-top:1px dashed var(--line);margin-top:12px;padding-top:12px}
+.tags{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+.tag{display:inline-flex;align-items:center;max-width:100%;padding:3px 10px;border-radius:999px;border:1px solid var(--line);
+  background:var(--surface-2);color:var(--text);font-size:12px;font-weight:700;overflow-wrap:anywhere}
+.tag-rule{color:var(--rc);border-color:color-mix(in srgb,var(--rc) 60%,var(--line))}
+.tag-muted{color:var(--muted)}
+.tag-llm{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 60%,var(--line))}
+.tag-tpl{color:var(--muted)}
+.tag-ok{color:var(--low-ink);border-color:color-mix(in srgb,var(--low) 60%,var(--line))}
+.tag-bad{color:var(--high);border-color:color-mix(in srgb,var(--high) 60%,var(--line))}
+.ev-head{display:flex;flex-wrap:wrap;gap:6px}
+.snip-label{margin-top:8px}
+.snip{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--text);
+  background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:4px;
+  white-space:pre-wrap;overflow-wrap:anywhere}
+.preview{font-size:15px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface-2);
+  border-radius:12px;padding:12px;min-height:44px}
+mark.hit{background:color-mix(in srgb,var(--rc) 30%,transparent);color:inherit;border-radius:4px;padding:0 2px;
+  box-shadow:inset 0 -2px 0 var(--rc)}
+.pt-head{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pt-text{margin-top:6px;overflow-wrap:anywhere}
+.llm{margin-top:8px}
+.problem{font-size:13px;color:var(--high);margin-top:6px;overflow-wrap:anywhere}
+
+/* ---------- pipeline ---------- */
+.pipe{list-style:none;margin:4px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));position:relative}
+.pipe::before{content:"";position:absolute;left:10%;right:10%;top:9px;height:2px;background:var(--line);border-radius:2px}
+.node{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;position:relative;
+  animation:lit .5s ease-out both;animation-delay:calc(var(--i,0) * 110ms)}
+.node .dot{width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 4px var(--surface),0 0 14px -2px var(--c)}
+.node .lbl{font-size:10.5px;font-weight:700;color:var(--muted);line-height:1.2;max-width:100%;overflow-wrap:anywhere;text-align:center;hyphens:auto}
+.bar{display:flex;height:10px;border-radius:999px;overflow:hidden;background:var(--surface-2);gap:2px;margin-top:14px}
+.seg{min-width:4px;border-radius:999px;background:var(--c)}
+.legend{list-style:none;padding:0;margin:10px 0 0;display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted)}
+.legend li{display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.legend li::before{content:"";width:10px;height:10px;border-radius:3px;background:var(--c)}
+.calls{margin-top:10px}
+
+/* ---------- device tiles ---------- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.tile{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
+.tile-v{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;margin-top:2px}
+.tile-s{font-size:12px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+
+/* ---------- remediation rail ---------- */
+.rem{border-left:3px solid var(--rc);padding:2px 0 2px 12px}
+.rem + .rem{margin-top:12px}
+.rem-title{font-weight:700;overflow-wrap:anywhere}
+.rem-steps{margin:6px 0 0;padding-left:20px}
+.rem-steps li{margin:4px 0;overflow-wrap:anywhere}
+
+/* ---------- ring gauge ---------- */
+.ring{--ring:clamp(128px,40vw,168px);position:relative;width:var(--ring);height:var(--ring);flex:none}
+.ring svg{width:100%;height:100%;display:block;overflow:visible}
+.ring-track{fill:none;stroke:var(--line);stroke-width:10}
+.ring-fg{fill:none;stroke:var(--rc,var(--muted));stroke-width:10;stroke-linecap:round;
+  stroke-dasharray:314.16;stroke-dashoffset:314.16;transition:stroke-dashoffset .6s ease-out}
+.ring-tick{stroke:var(--text);stroke-width:2.5;stroke-linecap:round}
+.ring-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:0 14px;text-align:center}
+.ring-word{font-weight:800;font-size:clamp(20px,6vw,26px);letter-spacing:.04em;color:var(--rc);line-height:1;overflow-wrap:anywhere}
+.ring-sub{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+
+/* ---------- inputs and buttons ---------- */
+textarea,input[type="text"]{display:block;width:100%;min-width:0;margin-top:6px;font:16px/1.4 system-ui,sans-serif;color:var(--text);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+textarea{min-height:112px;resize:vertical}
+input[type="file"]{max-width:100%;font:14px system-ui,sans-serif;color:var(--text)}
+.dropzone{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px dashed var(--line);border-radius:12px;background:var(--surface-2)}
+.btn{min-height:44px;padding:0 18px;border:0;border-radius:12px;background:var(--accent);color:var(--on-accent);
+  font:700 15px/1 system-ui,sans-serif;cursor:pointer;margin:0}
+.btn[disabled]{opacity:.6;cursor:progress}
+.btn-ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.samples{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.sample{min-height:44px;margin:0;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);
+  color:var(--text);font:600 13px/1.2 system-ui,sans-serif;cursor:pointer;text-align:left;max-width:100%}
+.counter{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:6px;text-align:right}
+.actions{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-top:12px}
+.banner{display:none;border-radius:12px;padding:10px 12px;font-weight:600;border:1px solid var(--line);overflow-wrap:anywhere}
 .banner.show{display:block}
-.banner.bad{background:var(--banner-bad);color:var(--bad);border:1px solid var(--bad)}
-.banner.warn{background:var(--banner-warn);color:var(--warn);border:1px solid var(--warn)}
-.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
-.kv div:nth-child(odd){color:var(--muted)}
-.point{border-top:1px dashed var(--line);padding:8px 0}
-.point:first-child{border-top:0;padding-top:0}
-.point .text{overflow-wrap:anywhere}
-.llm-text{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted);
-  overflow-wrap:anywhere;margin-top:4px}
-.problem{font-size:12px;color:var(--bad);overflow-wrap:anywhere;margin-top:2px}
-.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line)}
-th{color:var(--muted);font-weight:600}
-td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
-.note{font-size:12px;color:var(--muted);margin-top:6px}
+.banner.bad{background:var(--banner-bad);color:var(--high);border-color:var(--high)}
+.banner.warn{background:var(--banner-warn);color:var(--med-ink);border-color:var(--med)}
+
+/* ---------- loading ---------- */
+.shim{background:linear-gradient(90deg,var(--surface-2) 0%,var(--line) 50%,var(--surface-2) 100%);
+  background-size:200% 100%;animation:shim 1.3s linear infinite;border-radius:8px}
+.skel-hero{display:flex;flex-direction:column;align-items:center;gap:16px}
+.skel-ring{width:150px;height:150px;border-radius:50%}
+.skel-text{width:100%;display:flex;flex-direction:column;gap:10px}
+.skel-line{height:14px}
+.w60{width:60%}.w80{width:80%}
+.pipe-skel .node{animation:none}
+.pipe-skel .dot{background:var(--line);animation:pulse 1.1s ease-in-out infinite;animation-delay:calc(var(--i,0) * .15s)}
+.pipe-skel .lbl{color:transparent;background:var(--surface-2);border-radius:4px;height:10px;width:100%}
+.skel-status{display:flex;align-items:center;gap:10px}
+
+/* ---------- alerts (network) ---------- */
+.alert{display:flex;flex-direction:column;gap:10px;min-width:0}
+.alert-h{font-size:20px;font-weight:800;color:var(--rc);overflow-wrap:anywhere}
+
+/* ---------- motion ---------- */
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes lit{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes shim{from{background-position:200% 0}to{background-position:-200% 0}}
+@keyframes pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
+.rise{animation:rise .55s ease-out both;animation-delay:var(--d,0ms)}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none !important;transition:none !important}
+}
+
+footer{margin:22px 0 10px;color:var(--muted);font-size:12.5px;text-align:center;overflow-wrap:anywhere}
+footer p+p{margin-top:4px}
 </style>
 </head>
 <body>
-<main>
+<div class="wrap">
+
   <header>
-    <h1>Rakshak edge pipeline</h1>
-    <div class="sub">Runs on this Raspberry Pi 5. The SMS student and the Llama explainer are
-      loaded once; nothing leaves the device.</div>
+    <div class="top">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <path d="M16 2.5 27.5 6.8v8.4c0 7.2-4.7 12.6-11.5 14.3C9.2 27.8 4.5 22.4 4.5 15.2V6.8z" fill="var(--accent)"/>
+          <path d="M11.2 16.3l3.3 3.3 6.3-6.6" fill="none" stroke="var(--on-accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div style="min-width:0">
+          <h1>Rakshak Edge</h1>
+          <p class="tagline">On-device threat detection. Nothing leaves this device.</p>
+        </div>
+      </div>
+      <button id="themeBtn" class="btn btn-ghost" type="button" aria-label="Switch theme">Theme</button>
+    </div>
+    <div class="chips" aria-label="Device and service status">
+      <span class="chip chip-ok"><i class="pip" aria-hidden="true"></i>OFFLINE</span>
+      <span class="chip">Raspberry Pi 5</span>
+      <span class="chip">SMS student · ONNX</span>
+      <span class="chip" id="chipLlm">Llama 3.2 1B · ExecuTorch</span>
+      <span class="chip" id="chipSvc">Checking service…</span>
+      <span class="chip" id="chipTemp" hidden></span>
+    </div>
   </header>
 
-  <div id="banner" class="banner" role="status"></div>
+  <nav class="tabs" role="tablist" aria-label="Checks">
+    <button class="tab" id="tab-sms" role="tab" type="button" aria-selected="true" aria-controls="panel-sms">SMS</button>
+    <button class="tab" id="tab-link" role="tab" type="button" aria-selected="false" aria-controls="panel-link" tabindex="-1">Link</button>
+    <button class="tab" id="tab-net" role="tab" type="button" aria-selected="false" aria-controls="panel-net" tabindex="-1">Network</button>
+  </nav>
 
-  <section class="card">
-    <h2>Paste an SMS</h2>
-    <textarea id="sms" maxlength="2000" placeholder="Paste the message text here"></textarea>
-    <div class="row">
-      <button id="go" type="button">Analyse</button>
-      <span id="status" class="muted"></span>
+  <div id="banner" class="banner" role="status" aria-live="polite"></div>
+
+  <!-- ================= SMS ================= -->
+  <section id="panel-sms" class="panel" role="tabpanel" aria-labelledby="tab-sms">
+    <div class="card">
+      <label for="sms" class="label">Message text</label>
+      <textarea id="sms" maxlength="2000" placeholder="Paste an SMS to check"></textarea>
+      <div class="counter" id="smsCount">0 / 2000</div>
+      <div class="label" style="margin-top:6px">Try a synthetic sample</div>
+      <div class="samples">
+        <button class="sample" type="button" data-sample="kyc">Try: KYC scam</button>
+        <button class="sample" type="button" data-sample="otp">Try: OTP bank alert</button>
+        <button class="sample" type="button" data-sample="hinglish">Try: Hinglish job scam</button>
+        <button class="sample" type="button" data-sample="delivery">Try: safe delivery SMS</button>
+      </div>
+      <div class="actions">
+        <button id="go" class="btn" type="button">Analyse</button>
+        <span id="status" class="muted" role="status"></span>
+      </div>
+    </div>
+
+    <div class="card" id="smsSkel" hidden aria-hidden="true">
+      <div class="skel-hero">
+        <div class="shim skel-ring"></div>
+        <div class="skel-text">
+          <div class="shim skel-line w60"></div>
+          <div class="shim skel-line"></div>
+          <div class="shim skel-line w80"></div>
+        </div>
+      </div>
+      <ol class="pipe pipe-skel" style="margin-top:18px">
+        <li class="node" style="--i:0"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
+        <li class="node" style="--i:1"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
+        <li class="node" style="--i:2"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
+        <li class="node" style="--i:3"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
+        <li class="node" style="--i:4"><span class="dot"></span><span class="lbl">&nbsp;</span></li>
+      </ol>
+    </div>
+
+    <div id="smsRes" class="results" hidden>
+      <section class="hero" aria-label="SMS verdict">
+        <div class="ring" id="smsRing"></div>
+        <div class="hero-text">
+          <div class="label">Action</div>
+          <p class="action" id="smsAction"></p>
+          <div class="kv" id="smsKv"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Message and rule evidence</h2>
+        <div class="preview" id="smsPreview"></div>
+        <div class="stack" id="smsEv" style="margin-top:12px"></div>
+      </section>
+
+      <section class="card" id="smsRemCard">
+        <h2>What to do</h2>
+        <div id="smsRem"></div>
+      </section>
+
+      <section class="card" id="advCard">
+        <h2>Advisory</h2>
+        <div class="label">Summary</div>
+        <p id="advSummary" class="pt-text" style="margin-top:4px"></p>
+        <p id="advSource" class="note" style="margin-top:6px"></p>
+        <div class="stack" id="advPoints" style="margin-top:12px"></div>
+        <p id="advG2" class="note" style="margin-top:12px"></p>
+      </section>
+
+      <section class="card" id="smsPipeCard">
+        <h2>Pipeline</h2>
+        <ol class="pipe" id="smsPipe" aria-label="Pipeline stages"></ol>
+        <div class="bar" id="smsBar" role="img" aria-label="Share of measured time per stage"></div>
+        <ul class="legend" id="smsLegend"></ul>
+        <p class="note calls" id="smsCalls"></p>
+      </section>
+
+      <section class="card" id="smsDeviceCard">
+        <h2>Device</h2>
+        <div class="tiles" id="smsDevice"></div>
+      </section>
     </div>
   </section>
 
-  <section id="result" class="card" hidden>
-    <div class="row" style="justify-content:space-between">
-      <div><div class="label">Risk</div><div id="risk" class="big"></div></div>
-      <div><div class="label">Action</div><div id="action" style="font-weight:700"></div></div>
-      <div><div class="label">Total</div><div id="total" class="big"></div></div>
+  <!-- ================= LINK ================= -->
+  <section id="panel-link" class="panel" role="tabpanel" aria-labelledby="tab-link" hidden>
+    <div class="card">
+      <h2>Check a link</h2>
+      <p class="note">Paste one link. The URL model scores it and the domain rules run on this Pi. The link is not opened.</p>
+      <p class="note" style="margin-top:6px">Links inside SMS are checked in verify mode; use Check a link for any link.</p>
+      <label for="linkText" class="label" style="display:block;margin-top:12px">Link</label>
+      <input id="linkText" type="text" maxlength="2000" placeholder="Paste the link here" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="samples">
+        <button class="sample" type="button" data-link-sample="1">Try: synthetic phishing link</button>
+      </div>
+      <div class="actions">
+        <button id="linkGo" class="btn" type="button">Check link</button>
+        <span id="linkStatus" class="muted" role="status"></span>
+      </div>
     </div>
-    <div class="kv" style="margin-top:10px">
-      <div>Score</div><div id="score"></div>
-      <div>Scam state</div><div id="state"></div>
-      <div>Advisory mode</div><div id="mode"></div>
-      <div>Explainer</div><div id="llmskip"></div>
+
+    <div class="card" id="linkSkel" hidden aria-hidden="true">
+      <div class="skel-hero">
+        <div class="shim skel-ring"></div>
+        <div class="skel-text">
+          <div class="shim skel-line w60"></div>
+          <div class="shim skel-line w80"></div>
+        </div>
+      </div>
     </div>
-  </section>
 
-  <section id="smsRemediationCard" class="card" hidden>
-    <h2>Remediation</h2>
-    <div id="smsRemediation"></div>
-  </section>
+    <div id="linkRes" class="results" hidden>
+      <section class="hero" aria-label="Link verdict">
+        <div class="ring" id="linkRing"></div>
+        <div class="hero-text">
+          <div class="label">Verdict</div>
+          <p class="verdict" id="linkVerdict"></p>
+          <div class="kv" id="linkKv"></div>
+        </div>
+      </section>
 
-  <section id="evidenceCard" class="card" hidden>
-    <h2>Rule evidence</h2>
-    <div id="evidence"></div>
-  </section>
+      <section class="card">
+        <h2>Rule evidence</h2>
+        <div class="stack" id="linkEv"></div>
+      </section>
 
-  <section id="advisoryCard" class="card" hidden>
-    <h2>Advisory</h2>
-    <div class="point">
-      <div class="label">Summary</div>
-      <div id="summary" class="text"></div>
-      <div id="summarySource" class="note"></div>
-    </div>
-    <div id="points"></div>
-    <div id="g2" class="note"></div>
-  </section>
-
-  <section id="timingCard" class="card" hidden>
-    <h2>Stages</h2>
-    <div class="scroll"><table>
-      <thead><tr><th>Stage</th><th class="n">ms</th></tr></thead>
-      <tbody id="stages"></tbody>
-    </table></div>
-    <div class="note" id="llmCalls"></div>
-  </section>
-
-  <section id="deviceCard" class="card" hidden>
-    <h2>Device</h2>
-    <div class="kv" id="device"></div>
-  </section>
-  <section class="card" id="linkCard">
-    <h2>Check a link</h2>
-    <div class="note">Paste one link. The URL model scores it and the domain rules run on this
-      Pi. The link is not opened.</div>
-    <div class="note">Links inside SMS are checked in verify mode; use Check a link for any link.</div>
-    <div style="margin-top:8px">
-      <input id="linkText" type="text" maxlength="2000" placeholder="Paste the link here" autocomplete="off">
-    </div>
-    <div class="row">
-      <button id="linkGo" type="button">Check link</button>
-      <span id="linkStatus" class="muted"></span>
+      <section class="card" id="linkRemCard">
+        <h2>Remediation</h2>
+        <div id="linkRem"></div>
+      </section>
     </div>
   </section>
 
-  <section id="linkResult" class="card" hidden>
-    <div class="row" style="justify-content:space-between">
-      <div><div class="label">Verdict</div><div id="linkVerdict" class="big"></div></div>
-      <div><div class="label">Risk</div><div id="linkRisk" style="font-weight:700"></div></div>
-      <div><div class="label">Total</div><div id="linkTotal" class="big"></div></div>
+  <!-- ================= NETWORK ================= -->
+  <section id="panel-net" class="panel" role="tabpanel" aria-labelledby="tab-net" hidden>
+    <div class="card">
+      <h2>Analyse a pcap</h2>
+      <p class="note">Upload a classic .pcap (up to 20 MB). Flows are built and scored on this Pi. The file is not sent anywhere else. Synthetic test captures come from make_test_pcaps.py.</p>
+      <div class="dropzone" style="margin-top:12px">
+        <input id="pcapFile" type="file" accept=".pcap,application/vnd.tcpdump.pcap,application/octet-stream" aria-label="Choose a pcap file">
+        <span class="note" id="pcapName"></span>
+      </div>
+      <div class="actions">
+        <button id="netGo" class="btn" type="button">Analyse pcap</button>
+        <span id="netStatus" class="muted" role="status"></span>
+      </div>
     </div>
-    <div class="kv" style="margin-top:10px">
-      <div>Domain</div><div id="linkDomain"></div>
-      <div>URL model score</div><div id="linkScore"></div>
-      <div>Rule hits</div><div id="linkRules"></div>
+
+    <div class="card" id="netSkel" hidden aria-hidden="true">
+      <div class="skel-hero">
+        <div class="shim skel-ring"></div>
+        <div class="skel-text">
+          <div class="shim skel-line w60"></div>
+          <div class="shim skel-line w80"></div>
+        </div>
+      </div>
     </div>
-    <div id="linkEvidence"></div>
-    <h2 style="margin-top:12px">Remediation</h2>
-    <div id="linkRemediation"></div>
+
+    <div id="netRes" class="results" hidden>
+      <section class="hero" aria-label="Network verdict">
+        <div class="ring" id="netRing"></div>
+        <div class="hero-text">
+          <div class="label">Overall</div>
+          <p class="verdict" id="netState"></p>
+          <div class="kv" id="netKv"></div>
+        </div>
+      </section>
+
+      <section class="card" id="netAlertsCard">
+        <h2>Host alerts</h2>
+        <div class="stack" id="netAlerts"></div>
+        <p class="note" id="netNone"></p>
+      </section>
+
+      <section class="card" id="netRemCard">
+        <h2>What to do</h2>
+        <div id="netRem"></div>
+      </section>
+
+      <section class="card">
+        <h2>Timings and device</h2>
+        <div class="kv" id="netTimes"></div>
+        <div class="tiles" id="netDevice" style="margin-top:12px"></div>
+      </section>
+    </div>
   </section>
 
-  <section class="card" id="netCard">
-    <h2>Network: analyse a pcap</h2>
-    <div class="note">Upload a classic .pcap (up to 20 MB). Flows are built and scored on this Pi.
-      The file is not sent anywhere else. Synthetic test captures come from
-      make_test_pcaps.py.</div>
-    <div style="margin-top:8px">
-      <input id="pcapFile" type="file" accept=".pcap,application/vnd.tcpdump.pcap,application/octet-stream">
-    </div>
-    <div style="margin-top:8px">
-      <button id="netGo" type="button">Analyse pcap</button>
-      <span id="netStatus" class="muted"></span>
-    </div>
-  </section>
+  <footer>
+    <p>Works offline. Requests go only to this Pi's own service.</p>
+    <p>Demo samples are synthetic. Built with Llama.</p>
+  </footer>
+</div>
 
-  <section id="netResult" class="card" hidden>
-    <h2>Network result</h2>
-    <div class="kv" id="netSummary"></div>
-    <div id="netAlerts"></div>
-    <div class="note" id="netNone"></div>
-  </section>
-
-  <section id="netTiming" class="card" hidden>
-    <h2>Network timings and device</h2>
-    <div class="kv" id="netTimes"></div>
-  </section>
-
-  <section id="netRemediationCard" class="card" hidden>
-    <h2>Remediation</h2>
-    <div id="netRemediation"></div>
-  </section>
-</main>
 <script>
 (function () {
   "use strict";
-  var $ = function (id) { return document.getElementById(id); };
 
-  function fmt(v, digits) {
-    if (v === null || v === undefined) return "n/a";
-    return Number(v).toFixed(digits === undefined ? 1 : digits);
-  }
+  var NS = document.querySelector("svg.mark").namespaceURI;
+  var RING_C = 2 * Math.PI * 50;
+  var MAX_PCAP = 20 * 1024 * 1024;
+  var reduce = false;
+  try { reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) {}
+
+  var SAMPLES = {
+    kyc: "Dear customer your KYC is pending, account will be blocked today. Update at sbi-kyc-update.xyz/verify",
+    otp: "Demo Bank: OTP 482913 is for your login. Do not share this OTP with anyone, including bank staff. We never ask for OTP on calls.",
+    hinglish: "Ghar baithe kamao 5000 rozana, part time job, WhatsApp karo 98xxxxxx12",
+    delivery: "DemoShop: your order #A1234 will arrive between 2 and 6 pm today. Reply STOP to opt out."
+  };
+  var LINK_SAMPLE = "demo-bank-kyc-update.xyz/verify";
+
+  /* ---------- helpers (textContent only; no innerHTML) ---------- */
+  function $(id) { return document.getElementById(id); }
+  function isNum(v) { return typeof v === "number" && isFinite(v); }
+  function isObj(v) { return v !== null && typeof v === "object"; }
+  function arr(v) { return Array.isArray(v) ? v : []; }
+  function s(v) { return v === undefined || v === null ? "n/a" : String(v); }
+  function fmt(v, d) { return isNum(v) ? v.toFixed(d === undefined ? 1 : d) : "n/a"; }
+  function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
   function el(tag, cls, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
     if (text !== undefined && text !== null) e.textContent = String(text);
     return e;
   }
-  function row(table, label, value) {
-    table.appendChild(el("div", "", label));
-    table.appendChild(el("div", "", value));
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); return node; }
+  function riskClass(r) {
+    return "r-" + (r === "HIGH" || r === "MEDIUM" || r === "LOW" || r === "UNCERTAIN" ? r : "NONE");
   }
+  function prettyType(t) { return s(t).replace(/_/g, " "); }
+
   function banner(kind, text) {
     var b = $("banner");
     b.className = "banner show " + (kind || "");
     b.textContent = text;
   }
-  function clearBanner() { $("banner").className = "banner"; $("banner").textContent = ""; }
+  function clearBanner() { var b = $("banner"); b.className = "banner"; b.textContent = ""; }
 
-  function render(d) {
-    $("result").hidden = false;
-    renderRemediation($("smsRemediation"), d.remediation);
-    $("smsRemediationCard").hidden = !(d.remediation && d.remediation.length);
-    var risk = d.decision.risk;
-    $("risk").textContent = risk;
-    $("risk").className = "big risk-" + risk;
-    $("action").textContent = d.decision.action;
-    $("total").textContent = fmt(d.timings_ms.total, 0) + " ms";
-    $("score").textContent = fmt(d.decision.score, 4) + " (threshold " + fmt(d.decision.threshold, 4) + ")";
-    $("state").textContent = d.decision.scam_state + " / " + d.decision.evidence_count + " rule hit(s)";
-    $("mode").textContent = d.advisory.mode;
-    $("llmskip").textContent = d.advisory.llm_skipped_low_risk
-      ? "not called (LOW risk, template only)"
-      : d.llm_calls.length + " call(s)";
-
-    var ev = $("evidence"); ev.textContent = "";
-    if (!d.evidence.length) ev.appendChild(el("div", "muted", "No rule fired."));
-    d.evidence.forEach(function (e) {
-      var p = el("div", "point");
-      p.appendChild(el("span", "pill", e.id + " " + e.type + " w=" + fmt(e.weight, 2)));
-      p.appendChild(el("div", "text", "matched: " + e.text));
-      ev.appendChild(p);
+  function kv(container, rows) {
+    clear(container);
+    rows.forEach(function (r) {
+      var row = el("div", "kv-row");
+      row.appendChild(el("span", "k", r[0]));
+      row.appendChild(el("span", "v", r[1]));
+      container.appendChild(row);
     });
-    $("evidenceCard").hidden = false;
-
-    $("summary").textContent = d.advisory.summary.text;
-    $("summarySource").textContent = "source: " + d.advisory.summary.source + " (" + d.advisory.summary.check + ")";
-    var pts = $("points"); pts.textContent = "";
-    d.advisory.points.forEach(function (p, i) {
-      var box = el("div", "point");
-      var head = el("div", "");
-      head.appendChild(el("span", "pill src-" + p.source, p.source));
-      head.appendChild(document.createTextNode(" "));
-      head.appendChild(el("span", "pill", p.evidence_id + " " + p.type));
-      head.appendChild(document.createTextNode(" "));
-      if (p.check.ok === null) head.appendChild(el("span", "muted", "explainer not run"));
-      else head.appendChild(el("span", p.check.ok ? "ok" : "bad", p.check.ok ? "verifier: pass" : "verifier: fail"));
-      box.appendChild(head);
-      box.appendChild(el("div", "text", (i + 1) + ". " + p.text));
-      if (p.llm_text) box.appendChild(el("div", "llm-text", "explainer wrote: " + p.llm_text));
-      (p.check.problems || []).forEach(function (pr) { box.appendChild(el("div", "problem", pr)); });
-      pts.appendChild(box);
-    });
-    var g2 = d.verifier.g2_rejected || [];
-    $("g2").textContent = g2.length
-      ? "Attribution guard rejected " + g2.length + " sentence(s); the template was shown instead."
-      : "Attribution guard: nothing rejected.";
-    $("advisoryCard").hidden = false;
-
-    var t = d.timings_ms, body = $("stages"); body.textContent = "";
-    [["Canonicalise", t.canonicalise], ["Detect (student ONNX)", t.detect],
-     ["Evidence and decision", t.evidence], ["Explainer, all calls", t.llm_total],
-     ["Verify and assemble", t.verify], ["Total", t.total]].forEach(function (r) {
-      var tr = el("tr", "");
-      tr.appendChild(el("td", "", r[0]));
-      tr.appendChild(el("td", "n", fmt(r[1], 1)));
-      body.appendChild(tr);
-    });
-    $("llmCalls").textContent = t.llm_calls.length
-      ? "Per call (ms): " + t.llm_calls.map(function (x, i) {
-          var c = d.llm_calls[i];
-          return t.llm_cached > 0 && c && c.cached ? "cached" : fmt(x, 0);
-        }).join(", ")
-      : "No explainer call for this decision.";
-    $("timingCard").hidden = false;
-
-    var dev = d.device, dt = $("device"); dt.textContent = "";
-    row(dt, "SoC temp start / end", fmt(dev.start.temp_c) + " / " + fmt(dev.end.temp_c) + " C");
-    row(dt, "Throttled start / end", (dev.start.throttled || "n/a") + " / " + (dev.end.throttled || "n/a"));
-    row(dt, "Energy this request", fmt(dev.energy.energy_j, 2) + " J (" + dev.energy.method + ")");
-    row(dt, "Mean power", fmt(dev.energy.mean_w, 2) + " W");
-    row(dt, "Service RSS", fmt(dev.rss_mb, 0) + " MB");
-    $("deviceCard").hidden = false;
   }
 
-  $("go").addEventListener("click", function () {
-    var text = $("sms").value;
-    if (!text.trim()) { banner("warn", "Paste an SMS first."); return; }
-    clearBanner();
-    var btn = $("go"); btn.disabled = true; $("status").textContent = "running on the Pi...";
-    fetch("/analyze", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({sms: text})
-    }).then(function (r) {
-      return r.json().then(function (j) { return {status: r.status, body: j}; });
-    }).then(function (res) {
-      if (res.status === 200) { render(res.body); $("status").textContent = "done"; return; }
-      if (res.status === 503) {
-        banner("bad", "The Pi is too hot (" + fmt(res.body.temp_c) + " C, limit " +
-          fmt(res.body.limit_c) + " C). The explainer was not run. Try again when it has cooled.");
-      } else {
-        banner("bad", res.body.error || ("request failed (" + res.status + ")"));
-      }
-      $("status").textContent = "";
-    }).catch(function (err) {
-      banner("bad", "Could not reach the service: " + err);
-      $("status").textContent = "";
-    }).then(function () { btn.disabled = false; });
-  });
+  function tiles(container, list) {
+    clear(container);
+    list.forEach(function (t) {
+      var tile = el("div", "tile");
+      tile.appendChild(el("div", "label", t[0]));
+      tile.appendChild(el("div", "tile-v", t[1]));
+      if (t[2]) tile.appendChild(el("div", "tile-s", t[2]));
+      container.appendChild(tile);
+    });
+  }
 
-  function renderRemediation(container, items) {
-    container.textContent = "";
-    (items || []).forEach(function (item) {
-      var box = el("div", "", "");
-      box.style.marginTop = "8px";
-      box.appendChild(el("div", "", item.code + ": " + item.title));
-      box.firstChild.style.fontWeight = "700";
-      var ol = el("ol", "", "");
-      ol.style.margin = "4px 0 0 18px";
-      (item.steps || []).forEach(function (step) { ol.appendChild(el("li", "", step)); });
+  function renderRem(container, items) {
+    clear(container);
+    var list = arr(items);
+    list.forEach(function (item) {
+      var box = el("div", "rem");
+      box.appendChild(el("div", "rem-title", s(item.code) + ": " + s(item.title)));
+      var ol = el("ol", "rem-steps");
+      arr(item.steps).forEach(function (step) { ol.appendChild(el("li", "", step)); });
       box.appendChild(ol);
+      container.appendChild(box);
+    });
+    return list.length;
+  }
+
+  function renderEvidence(container, list) {
+    clear(container);
+    if (!list.length) { container.appendChild(el("p", "muted", "No rule fired.")); return; }
+    list.forEach(function (e) {
+      var box = el("div", "");
+      var head = el("div", "ev-head");
+      head.appendChild(el("span", "tag tag-rule", s(e.id)));
+      head.appendChild(el("span", "tag", prettyType(e.type)));
+      head.appendChild(el("span", "tag tag-muted", "weight " + fmt(e.weight, 2)));
+      box.appendChild(head);
+      if (e.text !== undefined && e.text !== null) {
+        box.appendChild(el("div", "label snip-label", "matched"));
+        box.appendChild(el("div", "snip", e.text));
+      }
       container.appendChild(box);
     });
   }
 
-  function renderAlert(parent, a) {
-    var card = el("div", "", "");
-    card.style.borderTop = "1px solid var(--line)";
-    card.style.marginTop = "10px";
-    card.style.paddingTop = "10px";
-    card.appendChild(el("div", "label", "Host " + a.src));
-    var head = el("div", "big", a.decision.risk + " / " + a.decision.state + " / " + a.decision.family);
-    card.appendChild(head);
-    var kv = el("div", "kv", "");
-    row(kv, "Attack score (max)", fmt(a.decision.p_attack, 4));
-    row(kv, "Flagged flows", a.decision.flagged_flows + " of " + a.decision.flows_from_host);
-    row(kv, "Distinct destination ports", a.decision.distinct_dst_ports);
-    row(kv, "Verifier", a.verifier.ok ? "passed" : "rejected: " + a.verifier.reasons.join("; "));
-    card.appendChild(kv);
-    card.appendChild(el("div", "label", "Evidence"));
-    var ev = el("div", "", "");
-    a.evidence.forEach(function (e) {
-      ev.appendChild(el("div", "", e.id + " " + e.type + " (weight " + fmt(e.weight, 3) + ")"));
+  /* Highlight every occurrence of each evidence phrase in the message preview. */
+  function buildPreview(container, text, evidence) {
+    clear(container);
+    var src = String(text || "");
+    if (!src) { container.appendChild(el("span", "muted", "(empty message)")); return; }
+    var lower = src.toLowerCase();
+    var sameLen = lower.length === src.length;
+    var hay = sameLen ? lower : src;
+    var ranges = [];
+    evidence.forEach(function (e) {
+      var phrase = e && e.text !== undefined && e.text !== null ? String(e.text) : "";
+      if (!phrase) return;
+      var needle = sameLen ? phrase.toLowerCase() : phrase;
+      if (!needle) return;
+      var at = hay.indexOf(needle);
+      while (at !== -1) {
+        ranges.push([at, at + needle.length]);
+        at = hay.indexOf(needle, at + needle.length);
+      }
     });
-    card.appendChild(ev);
+    ranges.sort(function (a, b) { return a[0] - b[0]; });
+    var merged = [];
+    ranges.forEach(function (r) {
+      var last = merged[merged.length - 1];
+      if (last && r[0] < last[1]) { last[1] = Math.max(last[1], r[1]); }
+      else merged.push([r[0], r[1]]);
+    });
+    var pos = 0;
+    merged.forEach(function (r) {
+      if (r[0] > pos) container.appendChild(document.createTextNode(src.slice(pos, r[0])));
+      container.appendChild(el("mark", "hit", src.slice(r[0], r[1])));
+      pos = r[1];
+    });
+    if (pos < src.length) container.appendChild(document.createTextNode(src.slice(pos)));
+  }
+
+  function renderPoints(container, points) {
+    clear(container);
+    arr(points).forEach(function (p, i) {
+      var box = el("div", "");
+      var head = el("div", "pt-head");
+      var isLlm = p.source === "llm";
+      head.appendChild(el("span", "tag " + (isLlm ? "tag-llm" : "tag-tpl"), isLlm ? "Llama" : "Template"));
+      head.appendChild(el("span", "tag", (s(p.evidence_id) + " " + prettyType(p.type)).trim()));
+      var chk = isObj(p.check) ? p.check : {};
+      if (chk.ok === null || chk.ok === undefined) {
+        head.appendChild(el("span", "tag tag-muted", "explainer not run"));
+      } else {
+        head.appendChild(el("span", "tag " + (chk.ok ? "tag-ok" : "tag-bad"), chk.ok ? "Verifier ✓ pass" : "Verifier ✗ fail"));
+      }
+      box.appendChild(head);
+      box.appendChild(el("p", "pt-text", (i + 1) + ". " + s(p.text)));
+      if (p.llm_text) {
+        var q = el("div", "llm");
+        q.appendChild(el("div", "label", "Llama wrote"));
+        q.appendChild(el("div", "snip", p.llm_text));
+        box.appendChild(q);
+      }
+      arr(chk.problems).forEach(function (pr) { box.appendChild(el("div", "problem", pr)); });
+      container.appendChild(box);
+    });
+  }
+
+  /* SVG ring gauge: sweeps from 0 to score; optional tick at the threshold. */
+  function drawRing(box, frac, thr, word, sub) {
+    clear(box);
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 120 120");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    var track = document.createElementNS(NS, "circle");
+    track.setAttribute("class", "ring-track");
+    track.setAttribute("cx", "60"); track.setAttribute("cy", "60"); track.setAttribute("r", "50");
+    svg.appendChild(track);
+    var fg = document.createElementNS(NS, "circle");
+    fg.setAttribute("class", "ring-fg");
+    fg.setAttribute("cx", "60"); fg.setAttribute("cy", "60"); fg.setAttribute("r", "50");
+    fg.setAttribute("transform", "rotate(-90 60 60)");
+    fg.style.strokeDashoffset = String(RING_C);
+    svg.appendChild(fg);
+    if (isNum(thr) && thr >= 0 && thr <= 1) {
+      var tick = document.createElementNS(NS, "line");
+      tick.setAttribute("class", "ring-tick");
+      tick.setAttribute("x1", "60"); tick.setAttribute("y1", "2");
+      tick.setAttribute("x2", "60"); tick.setAttribute("y2", "16");
+      tick.setAttribute("transform", "rotate(" + (clamp(thr, 0, 1) * 360) + " 60 60)");
+      svg.appendChild(tick);
+    }
+    box.appendChild(svg);
+    var c = el("div", "ring-c");
+    c.appendChild(el("div", "ring-word", word));
+    if (sub) c.appendChild(el("div", "ring-sub", sub));
+    box.appendChild(c);
+    box.setAttribute("role", "img");
+    box.setAttribute("aria-label", "Risk " + s(word) + (isNum(frac) ? ", score " + fmt(frac, 4) : "") +
+      (isNum(thr) ? ", threshold " + fmt(thr, 4) : ""));
+
+    var target = isNum(frac) ? RING_C * (1 - clamp(frac, 0, 1)) : RING_C;
+    if (reduce || !isNum(frac)) {
+      fg.style.strokeDashoffset = String(target);
+    } else {
+      void svg.getBoundingClientRect();
+      requestAnimationFrame(function () { fg.style.strokeDashoffset = String(target); });
+    }
+  }
+
+  /* Pipeline nodes for the stages the backend timed, plus a proportional bar. */
+  function drawPipe(pipeEl, barEl, legendEl, t, llmNote) {
+    clear(pipeEl); clear(barEl); clear(legendEl);
+    var names = [
+      ["Canonicalise", "canonicalise"], ["Detect", "detect"], ["Evidence", "evidence"],
+      ["Explain", "llm_total"], ["Verify", "verify"]
+    ];
+    var stages = [];
+    names.forEach(function (n, k) {
+      if (isNum(t[n[1]])) stages.push({ name: n[0], ms: Math.max(0, t[n[1]]), k: k });
+    });
+    stages.forEach(function (st, i) {
+      var li = el("li", "node");
+      li.style.setProperty("--i", String(i));
+      li.style.setProperty("--c", "var(--s" + (st.k + 1) + ")");
+      li.appendChild(el("span", "dot"));
+      li.appendChild(el("span", "lbl", st.name));
+      pipeEl.appendChild(li);
+    });
+    var total = stages.reduce(function (a, st) { return a + st.ms; }, 0);
+    stages.forEach(function (st) {
+      var seg = el("span", "seg");
+      seg.style.flex = (total > 0 ? st.ms : 1) + " 0 0px";
+      seg.style.setProperty("--c", "var(--s" + (st.k + 1) + ")");
+      seg.title = st.name + " " + fmt(st.ms, 1) + " ms";
+      barEl.appendChild(seg);
+      var li = el("li", "", st.name + " " + fmt(st.ms, 1) + " ms" + (llmNote && st.name === "Explain" ? " (not called)" : ""));
+      li.style.setProperty("--c", "var(--s" + (st.k + 1) + ")");
+      legendEl.appendChild(li);
+    });
+    if (!stages.length) legendEl.appendChild(el("li", "", "No stage timings returned."));
+  }
+
+  function animateIn(container) {
+    Array.prototype.slice.call(container.children).forEach(function (k, i) {
+      k.classList.remove("rise");
+      void k.offsetWidth;
+      k.style.setProperty("--d", (i * 60) + "ms");
+      k.classList.add("rise");
+    });
+  }
+
+  /* ---------- SMS ---------- */
+  function renderSms(d, text) {
+    var dec = isObj(d.decision) ? d.decision : {};
+    var tm = isObj(d.timings_ms) ? d.timings_ms : {};
+    var adv = isObj(d.advisory) ? d.advisory : {};
+    var evidence = arr(d.evidence);
+    var res = $("smsRes");
+    res.className = "results " + riskClass(dec.risk);
+
+    drawRing($("smsRing"), dec.score, dec.threshold, s(dec.risk));
+    $("smsAction").textContent = s(dec.action);
+    var skipped = !!adv.llm_skipped_low_risk;
+    kv($("smsKv"), [
+      ["Score", fmt(dec.score, 4) + " (threshold " + fmt(dec.threshold, 4) + ")"],
+      ["Scam state", s(dec.scam_state) + " / " + s(dec.evidence_count) + " rule hit(s)"],
+      ["Advisory mode", s(adv.mode)],
+      ["Explainer", skipped ? "not called (LOW risk, template only)" : arr(d.llm_calls).length + " call(s)"],
+      ["Total", fmt(tm.total, 0) + " ms"]
+    ]);
+
+    buildPreview($("smsPreview"), text, evidence);
+    renderEvidence($("smsEv"), evidence);
+
+    $("smsRemCard").hidden = renderRem($("smsRem"), d.remediation) === 0;
+
+    var sum = isObj(adv.summary) ? adv.summary : {};
+    $("advSummary").textContent = s(sum.text);
+    $("advSource").textContent = "source: " + s(sum.source) + (typeof sum.check === "string" ? " (" + sum.check + ")" : "");
+    renderPoints($("advPoints"), adv.points);
+    var g2 = arr(isObj(d.verifier) ? d.verifier.g2_rejected : null);
+    $("advG2").textContent = g2.length
+      ? "Attribution guard rejected " + g2.length + " sentence(s); the template was shown instead."
+      : "Attribution guard: nothing rejected.";
+
+    drawPipe($("smsPipe"), $("smsBar"), $("smsLegend"), tm, skipped);
+    var calls = arr(tm.llm_calls);
+    var llmCalls = arr(d.llm_calls);
+    $("smsCalls").textContent = calls.length
+      ? "Per call (ms): " + calls.map(function (x, i) {
+          var c = llmCalls[i];
+          return tm.llm_cached > 0 && c && c.cached ? "cached" : fmt(x, 0);
+        }).join(", ")
+      : "No explainer call for this decision.";
+
+    var dev = isObj(d.device) ? d.device : null;
+    $("smsDeviceCard").hidden = !dev;
+    if (dev) {
+      var st = isObj(dev.start) ? dev.start : {}, en = isObj(dev.end) ? dev.end : {};
+      var en2 = isObj(dev.energy) ? dev.energy : {};
+      tiles($("smsDevice"), [
+        ["SoC temp", fmt(st.temp_c) + " → " + fmt(en.temp_c) + " °C", "start → end"],
+        ["Throttled", s(st.throttled) + " → " + s(en.throttled), "start → end"],
+        ["Energy", fmt(en2.energy_j, 2) + " J", s(en2.method)],
+        ["Mean power", fmt(en2.mean_w, 2) + " W", "this request"],
+        ["Service RSS", fmt(dev.rss_mb, 0) + " MB", "resident memory"]
+      ]);
+    }
+
+    animateIn(res);
+  }
+
+  /* ---------- Link ---------- */
+  function renderLink(d) {
+    var um = isObj(d.url_model) ? d.url_model : {};
+    var evidence = arr(d.evidence);
+    var res = $("linkRes");
+    res.className = "results " + riskClass(d.risk);
+    var score = um.enabled && isNum(um.score) ? um.score : null;
+    drawRing($("linkRing"), score, um.enabled ? um.threshold : null, s(d.risk));
+
+    var v = d.verdict === "no_signal" ? "no signal" : s(d.verdict);
+    var vEl = $("linkVerdict");
+    vEl.textContent = v;
+    vEl.className = "verdict " + (d.verdict === "phishing" ? "bad" : d.verdict === "suspicious" ? "warn" : "ok");
+
+    kv($("linkKv"), [
+      ["Risk", s(d.risk)],
+      ["Domain", um.domain || (d.url_count ? "n/a" : "no link found")],
+      ["URL model score", !um.enabled ? "off (no threshold in registry)" :
+        (score === null ? "no link" : fmt(score, 4) + " (threshold " + fmt(um.threshold, 4) + ")")],
+      ["Rule hits", evidence.length ? evidence.map(function (e) { return prettyType(e.type); }).join(", ") : "none"],
+      ["Total", fmt(isObj(d.timings_ms) ? d.timings_ms.total : null, 0) + " ms"]
+    ]);
+    renderEvidence($("linkEv"), evidence);
+    $("linkRemCard").hidden = renderRem($("linkRem"), d.remediation) === 0;
+    animateIn(res);
+  }
+
+  /* ---------- Network ---------- */
+  function renderAlert(parent, a) {
+    var dec = isObj(a.decision) ? a.decision : {};
+    var ver = isObj(a.verifier) ? a.verifier : {};
+    var adv = isObj(a.advisory) ? a.advisory : {};
+    var card = el("article", "alert");
+    card.className = "alert " + riskClass(dec.risk);
+    card.appendChild(el("div", "label", "Host " + s(a.src)));
+    card.appendChild(el("div", "alert-h", s(dec.risk) + " / " + s(dec.state) + " / " + s(dec.family)));
+    var k = el("div", "kv");
+    card.appendChild(k);
+    kv(k, [
+      ["Attack score (max)", fmt(dec.p_attack, 4)],
+      ["Flagged flows", s(dec.flagged_flows) + " of " + s(dec.flows_from_host)],
+      ["Distinct destination ports", s(dec.distinct_dst_ports)],
+      ["Verifier", ver.ok ? "passed" : "rejected: " + arr(ver.reasons).join("; ")]
+    ]);
+    card.appendChild(el("div", "label", "Evidence"));
+    var evBox = el("div", "tags");
+    arr(a.evidence).forEach(function (e) {
+      evBox.appendChild(el("span", "tag tag-rule", s(e.id) + " " + prettyType(e.type) + " (weight " + fmt(e.weight, 3) + ")"));
+    });
+    card.appendChild(evBox);
     card.appendChild(el("div", "label", "Advisory (template)"));
-    card.appendChild(el("div", "", a.advisory.summary));
-    card.appendChild(el("div", "note", "Action: " + a.advisory.action));
+    card.appendChild(el("p", "pt-text", s(adv.summary)));
+    card.appendChild(el("div", "note", "Action: " + s(adv.action)));
     card.appendChild(el("div", "label", "Examples"));
-    a.examples.forEach(function (x) {
-      card.appendChild(el("div", "note", (x.dst || "?") + ":" + (x.dst_port === null ? "?" : x.dst_port) +
-        " " + x.family + " p=" + fmt(x.p_attack, 4) + " " + x.state));
+    arr(a.examples).forEach(function (x) {
+      var port = (x.dst_port === null || x.dst_port === undefined) ? "?" : x.dst_port;
+      card.appendChild(el("div", "note", s(x.dst || "?") + ":" + port + " " + s(x.family) +
+        " p=" + fmt(x.p_attack, 4) + " " + s(x.state)));
     });
     parent.appendChild(card);
   }
 
   function renderNet(d) {
-    $("netResult").hidden = false;
-    var sum = $("netSummary");
-    sum.textContent = "";
-    row(sum, "Overall", d.decision.risk + " / " + d.decision.state);
-    row(sum, "Flows processed", d.flows_processed + " (" + d.flow_source + ")");
-    row(sum, "Flows per second", fmt(d.flows_per_s, 1));
-    row(sum, "Alerts (hosts)", d.decision.alerts + " of " + d.decision.hosts_seen + " seen");
-    var alerts = $("netAlerts");
-    alerts.textContent = "";
-    (d.alerts || []).forEach(function (a) { renderAlert(alerts, a); });
-    $("netNone").textContent = d.alerts && d.alerts.length ? "" :
-      "No host alert in this capture.";
-    var rem = [];
-    (d.alerts || []).forEach(function (a) { rem = rem.concat(a.remediation || []); });
-    var seen = {};
+    var dec = isObj(d.decision) ? d.decision : {};
+    var t = isObj(d.timings_ms) ? d.timings_ms : {};
+    var dev = isObj(d.device) ? d.device : {};
+    var res = $("netRes");
+    res.className = "results " + riskClass(dec.risk);
+
+    var frac = isNum(dec.hosts_seen) && dec.hosts_seen > 0 && isNum(dec.alerts) ? dec.alerts / dec.hosts_seen : null;
+    drawRing($("netRing"), frac, null, s(dec.risk), "hosts alerting");
+    $("netState").textContent = s(dec.risk) + " / " + s(dec.state);
+    kv($("netKv"), [
+      ["Flows processed", s(d.flows_processed) + " (" + s(d.flow_source) + ")"],
+      ["Flows per second", fmt(d.flows_per_s, 1)],
+      ["Alerts (hosts)", s(dec.alerts) + " of " + s(dec.hosts_seen) + " seen"]
+    ]);
+
+    var alerts = arr(d.alerts);
+    var box = $("netAlerts");
+    clear(box);
+    alerts.forEach(function (a) { renderAlert(box, a); });
+    $("netNone").textContent = alerts.length ? "" : "No host alert in this capture.";
+
+    var rem = [], seen = {};
+    alerts.forEach(function (a) { rem = rem.concat(arr(a.remediation)); });
     rem = rem.filter(function (x) { if (seen[x.code]) return false; seen[x.code] = true; return true; });
-    $("netRemediationCard").hidden = rem.length === 0;
-    renderRemediation($("netRemediation"), rem);
+    $("netRemCard").hidden = renderRem($("netRem"), rem) === 0;
 
-    var t = d.timings_ms, dev = d.device;
-    var tt = $("netTimes");
-    tt.textContent = "";
-    row(tt, "Request wall time", fmt(d.wall_ms, 1) + " ms");
-    row(tt, "Parse", fmt(t.parse, 1) + " ms");
-    row(tt, "Score (all flows)", fmt(t.score, 1) + " ms");
-    row(tt, "Per flow p50 / p95", fmt(t.per_flow_p50, 3) + " / " + fmt(t.per_flow_p95, 3) + " ms");
-    row(tt, "Host alerts", fmt(t.host_alerts, 1) + " ms");
-    row(tt, "Remediation and verify", fmt(t.remediation_and_verify, 1) + " ms");
-    row(tt, "Temperature", fmt(dev.start.temp_c, 1) + " to " + fmt(dev.end.temp_c, 1) + " C");
-    row(tt, "Energy this request", fmt(dev.energy.energy_j, 2) + " J (" + dev.energy.method + ")");
-    row(tt, "Service RSS", fmt(dev.rss_mb, 0) + " MB");
-    $("netTiming").hidden = false;
+    var st = isObj(dev.start) ? dev.start : {}, en = isObj(dev.end) ? dev.end : {};
+    var en2 = isObj(dev.energy) ? dev.energy : {};
+    kv($("netTimes"), [
+      ["Request wall time", fmt(d.wall_ms, 1) + " ms"],
+      ["Parse", fmt(t.parse, 1) + " ms"],
+      ["Score (all flows)", fmt(t.score, 1) + " ms"],
+      ["Per flow p50 / p95", fmt(t.per_flow_p50, 3) + " / " + fmt(t.per_flow_p95, 3) + " ms"],
+      ["Host alerts", fmt(t.host_alerts, 1) + " ms"],
+      ["Remediation and verify", fmt(t.remediation_and_verify, 1) + " ms"]
+    ]);
+    tiles($("netDevice"), [
+      ["SoC temp", fmt(st.temp_c, 1) + " → " + fmt(en.temp_c, 1) + " °C", "start → end"],
+      ["Energy", fmt(en2.energy_j, 2) + " J", s(en2.method)],
+      ["Service RSS", fmt(dev.rss_mb, 0) + " MB", "resident memory"]
+    ]);
+    animateIn(res);
   }
 
-  function renderLink(d) {
-    $("linkResult").hidden = false;
-    var verdict = d.verdict === "no_signal" ? "no signal" : d.verdict;
-    var vEl = $("linkVerdict");
-    vEl.textContent = verdict;
-    vEl.className = "big " + (d.verdict === "phishing" ? "bad" :
-      d.verdict === "suspicious" ? "risk-MEDIUM" : "ok");
-    $("linkRisk").textContent = d.risk;
-    $("linkRisk").className = "risk-" + d.risk;
-    $("linkTotal").textContent = fmt(d.timings_ms.total, 0) + " ms";
-    var m = d.url_model;
-    $("linkDomain").textContent = m.domain || (d.url_count ? "n/a" : "no link found");
-    $("linkScore").textContent = !m.enabled ? "off (no threshold in registry)" :
-      (m.score === null ? "no link" : fmt(m.score, 4) + " (threshold " + fmt(m.threshold, 4) + ")");
-    $("linkRules").textContent = d.evidence.length ? d.evidence.map(function (e) { return e.type; }).join(", ") : "none";
-    var ev = $("linkEvidence"); ev.textContent = "";
-    d.evidence.forEach(function (e) {
-      var p = el("div", "point");
-      p.appendChild(el("span", "pill", e.id + " " + e.type + " w=" + fmt(e.weight, 2)));
-      p.appendChild(el("div", "text", "matched: " + e.text));
-      ev.appendChild(p);
+  /* ---------- requests ---------- */
+  function parseResp(r) {
+    return r.text().then(function (txt) {
+      var j = {};
+      try { j = txt ? JSON.parse(txt) : {}; } catch (e) { j = { error: "unexpected response from the service" }; }
+      return { status: r.status, body: j };
     });
-    renderRemediation($("linkRemediation"), d.remediation);
   }
+  function postJson(url, obj) {
+    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(obj) })
+      .then(parseResp);
+  }
+  function postPcap(url, file) {
+    return fetch(url, { method: "POST", headers: { "Content-Type": "application/vnd.tcpdump.pcap" }, body: file })
+      .then(parseResp);
+  }
+
+  /* One code path for the three requests: busy state, 200 render, 503 hot-Pi banner, errors. */
+  function runReq(c) {
+    clearBanner();
+    c.btn.disabled = true;
+    c.status.textContent = c.busy;
+    c.skel.hidden = false;
+    c.res.setAttribute("aria-busy", "true");
+    var finish = function () {
+      c.btn.disabled = false;
+      c.skel.hidden = true;
+      c.res.removeAttribute("aria-busy");
+    };
+    return c.send().then(function (r) {
+      var b = isObj(r.body) ? r.body : {};
+      if (r.status === 200) {
+        try {
+          c.res.hidden = false;
+          c.onOk(b);
+          c.status.textContent = "done";
+        } catch (err) {
+          banner("bad", "Could not show the result: " + err);
+          c.status.textContent = "";
+        }
+      } else {
+        if (r.status === 503) banner("bad", c.hot(b));
+        else banner("bad", b.error || ("request failed (" + r.status + ")"));
+        c.status.textContent = "";
+      }
+    }, function (err) {
+      banner("bad", "Could not reach the service: " + err);
+      c.status.textContent = "";
+    }).then(finish);
+  }
+
+  function hotText(body, tail) {
+    if (isNum(body.temp_c)) {
+      return "The Pi is too hot (" + fmt(body.temp_c) + " C" +
+        (isNum(body.limit_c) ? ", limit " + fmt(body.limit_c) + " C" : "") + "). " + tail;
+    }
+    return "The Pi is too hot. " + tail;
+  }
+
+  /* ---------- tabs ---------- */
+  var TABS = ["sms", "link", "net"];
+  function showTab(name, focus) {
+    if (TABS.indexOf(name) === -1) name = "sms";
+    TABS.forEach(function (t) {
+      var on = t === name;
+      var b = $("tab-" + t);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+      b.tabIndex = on ? 0 : -1;
+      $("panel-" + t).hidden = !on;
+    });
+    clearBanner();
+    if (focus) $("tab-" + name).focus();
+  }
+  TABS.forEach(function (t) {
+    $("tab-" + t).addEventListener("click", function () { showTab(t, false); });
+  });
+  $("tab-sms").parentNode.addEventListener("keydown", function (ev) {
+    var i = TABS.indexOf(ev.target.id.replace("tab-", ""));
+    if (i < 0) return;
+    var next = null;
+    if (ev.key === "ArrowRight") next = (i + 1) % TABS.length;
+    else if (ev.key === "ArrowLeft") next = (i + TABS.length - 1) % TABS.length;
+    else if (ev.key === "Home") next = 0;
+    else if (ev.key === "End") next = TABS.length - 1;
+    if (next === null) return;
+    ev.preventDefault();
+    showTab(TABS[next], true);
+  });
+
+  /* ---------- theme ---------- */
+  function currentTheme() {
+    var set = document.documentElement.getAttribute("data-theme");
+    if (set === "light" || set === "dark") return set;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  function paintThemeBtn() {
+    var next = currentTheme() === "dark" ? "light" : "dark";
+    var b = $("themeBtn");
+    b.textContent = currentTheme() === "dark" ? "Dark" : "Light";
+    b.setAttribute("aria-label", "Switch to " + next + " theme");
+  }
+  try {
+    var saved = localStorage.getItem("rakshak-theme");
+    if (saved === "light" || saved === "dark") document.documentElement.setAttribute("data-theme", saved);
+  } catch (e) {}
+  paintThemeBtn();
+  $("themeBtn").addEventListener("click", function () {
+    var next = currentTheme() === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("rakshak-theme", next); } catch (e) {}
+    paintThemeBtn();
+  });
+
+  /* ---------- health chips (optional; the page works without it) ---------- */
+  function loadHealth() {
+    fetch("/health", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (h) {
+        var svc = $("chipSvc");
+        svc.textContent = "Service up";
+        svc.className = "chip chip-ok";
+        if (isObj(h.device) && isNum(h.device.temp_c)) {
+          var limit = isNum(h.temp_limit_c) ? h.temp_limit_c : null;
+          var chipT = $("chipTemp");
+          chipT.textContent = "SoC " + fmt(h.device.temp_c, 1) + " °C" + (limit !== null ? " / limit " + fmt(limit, 0) + " °C" : "");
+          chipT.className = "chip " + (limit !== null && h.device.temp_c >= limit ? "chip-bad" : "chip-ok");
+          chipT.hidden = false;
+        }
+        if (h.detector_only_mode) $("chipLlm").textContent = "Explainer off (detector only)";
+      })
+      .catch(function () {
+        var svc = $("chipSvc");
+        svc.textContent = "Service not reachable";
+        svc.className = "chip chip-bad";
+      });
+  }
+
+  /* ---------- wiring ---------- */
+  var smsEl = $("sms");
+  function updateCount() { $("smsCount").textContent = smsEl.value.length + " / 2000"; }
+  smsEl.addEventListener("input", updateCount);
+  updateCount();
+
+  document.querySelectorAll("[data-sample]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      smsEl.value = SAMPLES[b.getAttribute("data-sample")] || "";
+      updateCount();
+      clearBanner();
+    });
+  });
+  document.querySelectorAll("[data-link-sample]").forEach(function (b) {
+    b.addEventListener("click", function () { $("linkText").value = LINK_SAMPLE; clearBanner(); });
+  });
+
+  $("go").addEventListener("click", function () {
+    var text = smsEl.value;
+    if (!text.trim()) { banner("warn", "Paste an SMS first."); return; }
+    runReq({
+      btn: $("go"), status: $("status"), skel: $("smsSkel"), res: $("smsRes"),
+      busy: "running on the Pi...",
+      send: function () { return postJson("/analyze", { sms: text }); },
+      onOk: function (d) { renderSms(d, text); },
+      hot: function (b) { return hotText(b, "The explainer was not run. Try again when it has cooled."); }
+    });
+  });
 
   $("linkGo").addEventListener("click", function () {
     var text = $("linkText").value;
     if (!text.trim()) { banner("warn", "Paste a link first."); return; }
-    clearBanner();
-    var btn = $("linkGo"); btn.disabled = true; $("linkStatus").textContent = "checking on the Pi...";
-    fetch("/analyze_url", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({url: text})
-    }).then(function (r) {
-      return r.json().then(function (j) { return {status: r.status, body: j}; });
-    }).then(function (res) {
-      if (res.status === 200) { renderLink(res.body); $("linkStatus").textContent = "done"; return; }
-      if (res.status === 503 && res.body.temp_c !== undefined) {
-        banner("bad", "The Pi is too hot (" + fmt(res.body.temp_c) + " C). The link was not checked.");
-      } else {
-        banner("bad", res.body.error || ("request failed (" + res.status + ")"));
-      }
-      $("linkStatus").textContent = "";
-    }).catch(function (err) {
-      banner("bad", "Could not reach the service: " + err);
-      $("linkStatus").textContent = "";
-    }).then(function () { btn.disabled = false; });
+    runReq({
+      btn: $("linkGo"), status: $("linkStatus"), skel: $("linkSkel"), res: $("linkRes"),
+      busy: "checking on the Pi...",
+      send: function () { return postJson("/analyze_url", { url: text }); },
+      onOk: renderLink,
+      hot: function (b) { return hotText(b, "The link was not checked. Try again when it has cooled."); }
+    });
+  });
+
+  $("pcapFile").addEventListener("change", function () {
+    var f = this.files[0];
+    $("pcapName").textContent = f ? f.name + " (" + Math.max(1, Math.round(f.size / 1024)) + " KB)" : "";
   });
 
   $("netGo").addEventListener("click", function () {
-    var file = $("pcapFile").files[0];
-    if (!file) { banner("warn", "Choose a .pcap file first."); return; }
-    if (file.size > 20 * 1024 * 1024) { banner("warn", "The pcap is larger than 20 MB."); return; }
-    clearBanner();
-    var btn = $("netGo"); btn.disabled = true; $("netStatus").textContent = "running on the Pi...";
-    fetch("/analyze_flows", {
-      method: "POST",
-      headers: {"Content-Type": "application/vnd.tcpdump.pcap"},
-      body: file
-    }).then(function (r) {
-      return r.json().then(function (j) { return {status: r.status, body: j}; });
-    }).then(function (res) {
-      if (res.status === 200) { renderNet(res.body); $("netStatus").textContent = "done"; return; }
-      if (res.status === 503 && res.body.temp_c !== undefined) {
-        banner("bad", "The Pi is too hot (" + fmt(res.body.temp_c) + " C). The network analysis was not run.");
-      } else {
-        banner("bad", res.body.error || ("request failed (" + res.status + ")"));
-      }
-      $("netStatus").textContent = "";
-    }).catch(function (err) {
-      banner("bad", "Could not reach the service: " + err);
-      $("netStatus").textContent = "";
-    }).then(function () { btn.disabled = false; });
+    var f = $("pcapFile").files[0];
+    if (!f) { banner("warn", "Choose a .pcap file first."); return; }
+    if (f.size > MAX_PCAP) { banner("warn", "The pcap is larger than 20 MB."); return; }
+    runReq({
+      btn: $("netGo"), status: $("netStatus"), skel: $("netSkel"), res: $("netRes"),
+      busy: "running on the Pi...",
+      send: function () { return postPcap("/analyze_flows", f); },
+      onOk: renderNet,
+      hot: function (b) { return hotText(b, "The network analysis was not run. Try again when it has cooled."); }
+    });
   });
+
+  if (/^#(link|net)$/.test(location.hash)) showTab(location.hash.slice(1) === "net" ? "net" : "link", false);
+  loadHealth();
 })();
 </script>
 </body>
