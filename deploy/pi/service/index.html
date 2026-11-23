@@ -1104,6 +1104,8 @@ footer p+p{margin-top:4px}
       : "Template text. Llama's wording was rejected or not used.";
     $("advFoot").textContent = skipped
       ? "measured: explainer not run · total " + fmt(tm.total, 0) + " ms"
+      : ex && ex.status === "ready" && isNum(ex.wall_ms)
+      ? "measured on this Pi: llm " + fmt(ex.wall_ms, 0) + " ms · " + arr(d.llm_calls).length + " call(s) · in the background after the verdict"
       : ex && !arr(tm.llm_calls).length
       ? "measured on this Pi: verdict in " + fmt(tm.total, 0) + " ms · explanation is separate (verdict-first)"
       : "measured on this Pi: llm " + fmt(tm.llm_total, 0) + " ms · " + arr(tm.llm_calls).length + " call(s) · " +
@@ -1140,7 +1142,7 @@ footer p+p{margin-top:4px}
     }
     animateIn(res);
     explToken++;
-    if (pendingUrl) pollExplanation(pendingUrl, explToken, 0);
+    if (pendingUrl) pollExplanation(pendingUrl, explToken, 0, d);
   }
 
   /* Verdict-first: the verdict arrives at once; the explanation is fetched by id until it is ready. */
@@ -1166,40 +1168,76 @@ footer p+p{margin-top:4px}
     if (ex.status === "error") return "The explainer failed; the template answer stands.";
     return ex.reason ? "The explainer was not used (" + ex.reason + ")." : "The explainer was not used.";
   }
-  function pollExplanation(url, token, tries) {
+  function setExplainerFallbackUi(msg) {
+    $("advSource").textContent = msg;
+    if (smsKvRows.length > 2) {
+      smsKvRows[2] = ["Explainer", "0 call(s) (template fallback)"];
+      kv($("smsKv"), smsKvRows);
+    }
+    $("smsCalls").textContent = "No explainer call completed; template answer stands.";
+  }
+  function pollExplanation(url, token, tries, targetDoc) {
     if (token !== explToken) return;            /* a newer check replaced this one */
     fetch(url).then(parseResp).then(function (r) {
       if (token !== explToken) return;
       var b = isObj(r.body) ? r.body : {};
       if (r.status === 200 && b.status === "pending" && tries < 180) {
-        setTimeout(function () { pollExplanation(url, token, tries + 1); }, 700);
+        setTimeout(function () { pollExplanation(url, token, tries + 1, targetDoc); }, 700);
         return;
       }
-      showExplanation(r.status, b);
+      showExplanation(r.status, b, targetDoc);
     }, function () {
-      if (token === explToken) $("advSource").textContent = "Template text. The explanation could not be fetched from the service.";
+      if (token !== explToken) return;
+      if (isObj(targetDoc)) {
+        targetDoc.explanation = { status: "error", id: null, reason: "fetch_failed" };
+      }
+      setExplainerFallbackUi("Template text. The explanation could not be fetched from the service.");
     });
   }
-  function showExplanation(status, b) {
+  function showExplanation(status, b, targetDoc) {
     if (status === 200 && b.status === "ready" && isObj(b.advisory)) {
       var pts = arr(b.advisory.points);
       var ver = isObj(b.verifier) ? b.verifier : {};
+      var bTm = isObj(b.timings_ms) ? b.timings_ms : {};
+      var bCalls = arr(b.llm_calls);
+      if (isObj(targetDoc)) {
+        targetDoc.advisory = b.advisory;
+        targetDoc.verifier = ver;
+        targetDoc.llm_calls = bCalls;
+        targetDoc.explanation = {
+          status: "ready",
+          id: b.id || (isObj(targetDoc.explanation) ? targetDoc.explanation.id : null),
+          explanation_source: b.explanation_source || "llm",
+          wall_ms: b.wall_ms
+        };
+        if (isObj(targetDoc.timings_ms)) {
+          targetDoc.timings_ms.llm_calls = arr(bTm.llm_calls);
+          if (isNum(bTm.llm_total)) targetDoc.timings_ms.llm_total = bTm.llm_total;
+          if (isNum(bTm.llm_cached)) targetDoc.timings_ms.llm_cached = bTm.llm_cached;
+        }
+      }
       renderReceipt(pts, arr(ver.g2_rejected));
       var ok = verifiedLlmPoints(pts);
       $("advSource").textContent = ok > 0
         ? "The summary is template text. Llama wrote " + ok + " point(s) that the verifier passed, shown in the receipt below."
         : "Template text. Llama's wording was rejected or not used.";
-      $("advFoot").textContent = "measured on this Pi: llm " + fmt(b.wall_ms, 0) + " ms · " + arr(b.llm_calls).length + " call(s) · in the background after the verdict";
+      $("advFoot").textContent = "measured on this Pi: llm " + fmt(b.wall_ms, 0) + " ms · " + bCalls.length + " call(s) · in the background after the verdict";
       /* The call count and per-call times come from the finished job, not the verdict response. */
       if (smsKvRows.length > 2) {
-        smsKvRows[2] = ["Explainer", arr(b.llm_calls).length + " call(s)"];
+        smsKvRows[2] = ["Explainer", bCalls.length + " call(s)"];
         kv($("smsKv"), smsKvRows);
       }
-      $("smsCalls").textContent = callsText(isObj(b.timings_ms) ? b.timings_ms : {}, arr(b.llm_calls));
+      $("smsCalls").textContent = callsText(bTm, bCalls);
     } else if (status === 404) {
-      $("advSource").textContent = "Template text. The explanation is no longer available.";
+      if (isObj(targetDoc)) {
+        targetDoc.explanation = { status: "expired", id: null, reason: "not_found" };
+      }
+      setExplainerFallbackUi("Template text. The explanation is no longer available.");
     } else {
-      $("advSource").textContent = "Template text. " + explainNote(b);
+      if (isObj(targetDoc)) {
+        targetDoc.explanation = { status: b.status || "error", id: null, reason: b.reason };
+      }
+      setExplainerFallbackUi("Template text. " + explainNote(b));
     }
   }
 

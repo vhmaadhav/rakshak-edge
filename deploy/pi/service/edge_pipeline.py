@@ -459,7 +459,7 @@ class EdgeAnalyzer:
             )
         g2 = [
             {
-                "evidence_id": package.evidence[c["index"]].id,
+                "evidence_id": llm_package.evidence[c["index"]].id,
                 "sentence": c["sentence"],
                 "problem": c["problem"],
             }

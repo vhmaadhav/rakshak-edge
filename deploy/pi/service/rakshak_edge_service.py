@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import multiprocessing as mp
 import os
 import queue
@@ -171,6 +172,7 @@ COUNTER_SLOTS = (
     "messages_total",
     "overloaded",
     "expired",
+    "refused_cooling",
 )
 ENDPOINT_SLOTS = (
     "/",
@@ -309,13 +311,17 @@ class Service:
         # One HTTP request is counted by the handler, one batch by analyse_batch, one message per
         # message scored (/analyze: 1; /analyze_batch: its items).
         self.counters = counters if counters is not None else SharedCounters()
-        self.refused = 0
         self._log_lock = threading.Lock()
         # One handle for the life of the process (opening the file per line cost a syscall round
         # trip per message). Line-buffered, so each record is on disk when its request returns.
         self._log_handle = (
             open(self.log_path, "a", encoding="utf-8", buffering=1) if log_path else None
         )
+
+    @property
+    def refused(self) -> int:
+        """Service-wide count of cooling refusals, backed by SharedCounters."""
+        return self.counters.get("refused_cooling")
 
     def _log(self, record: dict[str, Any]) -> None:
         line = json.dumps(record, ensure_ascii=False, sort_keys=True)
@@ -516,7 +522,14 @@ class Service:
             for j, (text, (result, pending)) in enumerate(zip(chunk, pairs, strict=True)):
                 i = c0 + j
                 item = self._verdict_item(
-                    f"{request_id}-{i}", len(text), result, pending, None, None, log=False
+                    f"{request_id}-{i}",
+                    len(text),
+                    result,
+                    pending,
+                    start,
+                    None,
+                    log=False,
+                    include_device=False,
                 )
                 item["index"] = i
                 items.append(item)
@@ -551,6 +564,7 @@ class Service:
         t0: float | None,
         *,
         log: bool = True,
+        include_device: bool = True,
     ) -> dict[str, Any]:
         explanation = self._schedule_explanation(request_id, pending, start)
         wall_ms = None if t0 is None else round((time.perf_counter() - t0) * 1000.0, 3)
@@ -561,7 +575,7 @@ class Service:
             "explanation": explanation,
             "wall_ms": wall_ms,
         }
-        if start is not None:
+        if include_device and start is not None:
             body["device"] = {"start": start, "rss_mb": rss_mb(), "rss_peak_mb": rss_mb("VmHWM")}
         if not log:
             return body
@@ -594,8 +608,7 @@ class Service:
             return {"status": "ready", "id": None}
         temp = (start or {}).get("temp_c")
         if temp is not None and temp >= self.temp_limit:
-            with self._stats_lock:
-                self.refused += 1
+            self.counters.add("refused_cooling")
             self._log(
                 {
                     "event": "refused_cooling",
@@ -700,9 +713,12 @@ class Service:
     def explanation(self, eid: str, wait: float = 0.0) -> tuple[int, dict[str, Any]]:
         """GET /explanation/<id>. ``wait`` (seconds, query ``?wait=``) holds the answer until the
         job has finished, for benchmarks; the default answers at once."""
+        if not eid or eid.startswith("_"):
+            return 404, {"error": "unknown or expired explanation id", "id": eid}
+        clamped_wait = max(0.0, min(wait, 900.0)) if math.isfinite(wait) else 0.0
+        deadline = time.monotonic() + clamped_wait
         if self.store is not None:
             entry = self.store.get(eid)
-            deadline = time.monotonic() + max(0.0, min(wait, 900.0))
             while (
                 entry is not None
                 and entry.get("status") == "pending"
@@ -715,10 +731,20 @@ class Service:
                 return 404, {"error": "unknown or expired explanation id", "id": eid}
             return 200, self._view(eid, dict(entry))
         with self._explanations_lock:
-            entry = self._explanations.get(eid)
-            if entry is None:
-                return 404, {"error": "unknown or expired explanation id", "id": eid}
-            entry = dict(entry)
+            raw_entry = self._explanations.get(eid)
+            entry = dict(raw_entry) if raw_entry is not None else None
+        while (
+            entry is not None
+            and entry.get("status") == "pending"
+            and not self._stale(entry)
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.02)
+            with self._explanations_lock:
+                raw_entry = self._explanations.get(eid)
+                entry = dict(raw_entry) if raw_entry is not None else None
+        if entry is None:
+            return 404, {"error": "unknown or expired explanation id", "id": eid}
         return 200, self._view(eid, entry)
 
     def wait_explanations(self) -> None:
@@ -729,7 +755,7 @@ class Service:
         """503 "cooling" when the SoC is at or above the limit (the caller holds the lock)."""
         temp = start.get("temp_c")
         if temp is not None and temp >= self.temp_limit:
-            self.refused += 1
+            self.counters.add("refused_cooling")
             self._log(
                 {
                     "event": "refused_cooling",
@@ -961,6 +987,11 @@ def make_handler(service: Service, index_html: bytes, limits: RequestLimits | No
                     408, {"error": f"request body not received within {limits.read_timeout_s:g} s"}
                 )
                 return None
+            finally:
+                try:
+                    self.connection.settimeout(self.timeout)
+                except OSError:
+                    pass
             if len(out) != length:
                 self._reject(400, {"error": "body is shorter than Content-Length"})
                 return None

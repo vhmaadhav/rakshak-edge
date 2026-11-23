@@ -19,7 +19,8 @@ from rbench import schema as S
 
 def make_tiny_onnx(path: Path) -> str:
     import numpy as np
-    import onnx
+
+    onnx = pytest.importorskip("onnx")
     from onnx import TensorProto, helper, numpy_helper
 
     rng = np.random.default_rng(0)
