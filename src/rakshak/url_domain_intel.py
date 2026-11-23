@@ -167,12 +167,31 @@ def extract_domain_features(url: str) -> dict[str, float]:
     return f
 
 
+@lru_cache(maxsize=1)
+def _official_brand_domains() -> frozenset[str]:
+    brands = load_brands()
+    return frozenset(d.lower() for info in brands.values() for d in info["domains"])
+
+
+def is_official_brand_domain(url: str) -> bool:
+    """True when ``url`` resolves to a curated official brand domain with no obfuscation."""
+    _scheme, host, _path, _query, _ = _split(url)
+    reg = _registered(host)
+    if not reg or reg not in _official_brand_domains():
+        return False
+    if "xn--" in host or any(ord(c) > 127 for c in host):
+        return False
+    authority = re.split(r"[/?#]", url.split("//", 1)[-1], maxsplit=1)[0]
+    return "@" not in authority
+
+
 def domain_signals(url: str) -> list[str]:
     """Human-readable offline domain-intelligence flags for a single URL."""
     f = extract_domain_features(url)
     _scheme, host, _path, _query, _ = _split(url)
     reg = _registered(host)
     tld = _tld_of(host) if host else ""
+    official = is_official_brand_domain(url)
     out: list[str] = []
     if f.get("brand_host_mismatch", 0.0) > 0:
         out.append("brand_in_host_mismatch")
@@ -192,7 +211,7 @@ def domain_signals(url: str) -> list[str]:
         out.append("free_hosting_platform")
     if tld in RISKY_TLDS or f.get("tld_risky", 0.0) > 0:
         out.append("risky_tld")
-    if f.get("suspicious_token_count", 0.0) >= 2:
+    if not official and f.get("suspicious_token_count", 0.0) >= 2:
         out.append("multi_phishing_tokens")
     return out
 
@@ -299,6 +318,7 @@ class HybridUrlScorer:
         *,
         onnx_weight: float = 0.5,
         domain_weight: float = 0.5,
+        onnx_logit_clip: float = 4.0,
         reputation_guard: ReputationGuard | None = None,
         popular_logit_penalty: float = 0.0,
     ) -> None:
@@ -310,6 +330,7 @@ class HybridUrlScorer:
             )
         self.onnx_weight = float(onnx_weight)
         self.domain_weight = float(domain_weight)
+        self.onnx_logit_clip = float(onnx_logit_clip)
         self.reputation_guard = reputation_guard
         self.popular_logit_penalty = float(popular_logit_penalty)
 
@@ -331,12 +352,14 @@ class HybridUrlScorer:
                 penalty = self.popular_logit_penalty
 
         if p_onnx is not None and z_domain is not None:
-            z = self.onnx_weight * _logit(p_onnx) + self.domain_weight * z_domain - penalty
+            lo = max(-self.onnx_logit_clip, min(self.onnx_logit_clip, _logit(p_onnx)))
+            z = self.onnx_weight * lo + self.domain_weight * z_domain - penalty
             return _sigmoid(z), rep_reason
         if z_domain is not None:
             return _sigmoid(z_domain - penalty), rep_reason
         assert p_onnx is not None
-        return _sigmoid(_logit(p_onnx) - penalty), rep_reason
+        lo = max(-self.onnx_logit_clip, min(self.onnx_logit_clip, _logit(p_onnx)))
+        return _sigmoid(lo - penalty), rep_reason
 
     def score_urls(self, urls: Sequence[str]) -> list[float]:
         urls_list = list(urls)

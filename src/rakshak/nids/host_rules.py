@@ -39,6 +39,8 @@ AUTH_WEIGHT = 0.9
 DNS_PORT = 53
 DNS_WINDOW_MS = 60_000
 DNS_MIN_QUERIES = 5
+DNS_SLOW_WINDOW_MS = 300_000  # optional 5-minute horizon for low-and-slow DNS tunneling
+DNS_SLOW_MIN_DISTINCT = 6
 DNS_LABEL_LEN = 40
 DNS_NAME_LEN = 100
 DNS_ENTROPY_BITS = 3.8
@@ -201,13 +203,25 @@ def _qualifying_in_windows_distinct(
     return out
 
 
-def evaluate(flows: Iterable[Mapping[str, Any]], *, dns_min_distinct: int = 1) -> list[RuleHit]:
+def evaluate(
+    flows: Iterable[Mapping[str, Any]],
+    *,
+    dns_min_distinct: int = 1,
+    dns_slow_window_ms: int | None = None,
+    dns_slow_min_distinct: int = DNS_SLOW_MIN_DISTINCT,
+) -> list[RuleHit]:
     """Rule hits for one request. ``flows`` must be in request order (the index is the position).
 
     ``dns_min_distinct`` defaults to 1 (exact pre-registered 2026-11-07 rule). Setting it > 1
     (e.g. 3) additionally requires at least that many distinct normalized DNS query names inside
     the 60 s window, suppressing repeated lookups of a single long CDN/asset hostname while
     preserving DNS tunneling detection (which varies encoded subdomain labels across queries).
+
+    ``dns_slow_window_ms`` defaults to None (off). When set (e.g. ``DNS_SLOW_WINDOW_MS`` = 300 s),
+    a secondary low-and-slow horizon also fires ``dns_tunnel`` when at least
+    ``dns_slow_min_distinct`` (default 6) distinct suspicious DNS query names occur within that
+    longer window, catching throttled beacons (1 query every 20–55 s) without triggering on
+    repeated single-hostname CDN lookups.
     """
     auth: dict[tuple[str, str | None, int], list[tuple[float, int]]] = {}
     dns: dict[str, list[tuple[float, int, str]]] = {}
@@ -248,6 +262,11 @@ def evaluate(flows: Iterable[Mapping[str, Any]], *, dns_min_distinct: int = 1) -
         matched = _qualifying_in_windows_distinct(
             events, DNS_WINDOW_MS, DNS_MIN_QUERIES, max(1, int(dns_min_distinct))
         )
+        if dns_slow_window_ms is not None and int(dns_slow_window_ms) > DNS_WINDOW_MS:
+            slow_min = max(2, int(dns_slow_min_distinct))
+            matched |= _qualifying_in_windows_distinct(
+                events, float(dns_slow_window_ms), slow_min, slow_min
+            )
         if matched:
             hits.append(
                 RuleHit(
