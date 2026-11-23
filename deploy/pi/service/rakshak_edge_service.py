@@ -62,8 +62,9 @@ sys.path[:0] = [
 
 from edge_decision import (  # noqa: E402
     DEFAULT_DETECTOR_ONLY_MODE,
+    DEFAULT_VERIFY_THRESHOLD,
     DETECTOR_ONLY_MODES,
-    URL_EVIDENCE_MODE,
+    URL_ACTIVE_MODES,
 )
 from edge_device import EnergyWindow, read_snapshot  # noqa: E402
 from edge_pipeline import (  # noqa: E402
@@ -238,6 +239,7 @@ class Service:
         log_path: Path | None,
         models: dict[str, Any],
         detector_only_mode: str = DEFAULT_DETECTOR_ONLY_MODE,
+        verify_threshold: float = DEFAULT_VERIFY_THRESHOLD,
         hinglish_mode: str = DEFAULT_HINGLISH_MODE,
         device_fn=read_snapshot,
         energy_factory=EnergyWindow,
@@ -279,6 +281,7 @@ class Service:
         self.log_path = log_path
         self.models = models
         self.detector_only_mode = detector_only_mode
+        self.verify_threshold = float(verify_threshold)
         self.hinglish_mode = hinglish_mode
         self.device_fn = device_fn
         self.energy_factory = energy_factory
@@ -340,12 +343,13 @@ class Service:
             "temp_limit_c": self.temp_limit,
             "models": self.models,
             "detector_only_mode": self.detector_only_mode,
+            "verify_threshold": self.verify_threshold,
             "url_model": {
                 # Diagnostic only (no per-request field in /analyze). Quiet mode never scores
-                # URLs for /analyze; /analyze_url works in every mode.
+                # URLs for /analyze; balanced adds corroborated URLs; /analyze_url works always.
                 "enabled": bool((self.models.get(URL_MODEL_ID) or {}).get("enabled")),
                 "threshold": (self.models.get(URL_MODEL_ID) or {}).get("threshold"),
-                "evidence_visible": self.detector_only_mode == URL_EVIDENCE_MODE,
+                "evidence_visible": self.detector_only_mode in URL_ACTIVE_MODES,
             },
             "hinglish_mode": self.hinglish_mode,
             "response_mode": self.response_mode,
@@ -1443,8 +1447,29 @@ def main(argv: list[str] | None = None) -> int:
         "--detector-only-mode",
         choices=DETECTOR_ONLY_MODES,
         default=os.environ.get("RAKSHAK_DETECTOR_ONLY_MODE", DEFAULT_DETECTOR_ONLY_MODE),
-        help="quiet (default): a detector-only flag gets the no-warning path; "
-        "verify: UNCERTAIN / VERIFY_INDEPENDENTLY notice. Env RAKSHAK_DETECTOR_ONLY_MODE.",
+        help="quiet (default): detector-only flags stay LOW/IGNORE; balanced: high-confidence "
+        "detector-only flags (>= --verify-threshold) and corroborated URL hits produce "
+        "UNCERTAIN/VERIFY_INDEPENDENTLY; verify: every detector-only flag produces "
+        "UNCERTAIN/VERIFY_INDEPENDENTLY. Env RAKSHAK_DETECTOR_ONLY_MODE.",
+    )
+    p.add_argument(
+        "--verify-threshold",
+        type=float,
+        default=float(os.environ.get("RAKSHAK_VERIFY_THRESHOLD", str(DEFAULT_VERIFY_THRESHOLD))),
+        help="balanced mode only: student probability at or above which a detector-only flag "
+        "escalates to UNCERTAIN / VERIFY_INDEPENDENTLY. Env RAKSHAK_VERIFY_THRESHOLD.",
+    )
+    p.add_argument(
+        "--url-high-threshold",
+        type=float,
+        default=(
+            float(os.environ["RAKSHAK_URL_HIGH_THRESHOLD"])
+            if os.environ.get("RAKSHAK_URL_HIGH_THRESHOLD")
+            else None
+        ),
+        help="POST /analyze_url: optional high-confidence threshold for verdict='phishing' "
+        "(scores between url threshold and this value return verdict='suspicious', reducing "
+        "out-of-domain false alarms). Env RAKSHAK_URL_HIGH_THRESHOLD.",
     )
     p.add_argument(
         "--nids-alert",
@@ -1630,6 +1655,7 @@ def main(argv: list[str] | None = None) -> int:
         explainer_cache if explainer_cache is not None else llm,
         threshold,
         detector_only_mode=args.detector_only_mode,
+        verify_threshold=args.verify_threshold,
         hinglish_mode=args.hinglish_mode,
         url_scorer=url_scorer,
         url_threshold=url_threshold,
@@ -1657,11 +1683,14 @@ def main(argv: list[str] | None = None) -> int:
         log_path=Path(args.log) if args.log else None,
         models=info,
         detector_only_mode=args.detector_only_mode,
+        verify_threshold=args.verify_threshold,
         hinglish_mode=args.hinglish_mode,
         nids=nids,
         explainer_cache=explainer_cache,
         llm_runner=args.llm_runner,
-        url_check=lambda text: check_url(text, url_scorer, url_threshold),
+        url_check=lambda text: check_url(
+            text, url_scorer, url_threshold, high_threshold=args.url_high_threshold
+        ),
         response_mode=args.response_mode,
         response_mode_source=args.response_mode_source,
         explain_queue_depth=args.explain_queue_depth,

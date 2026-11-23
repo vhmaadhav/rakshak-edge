@@ -78,6 +78,7 @@ def llm_main(cfg: dict[str, Any], jobs: Any, store: Any, ready: Any) -> None:
     try:
         _set_placement(int(cfg["llm_nice"]), cfg.get("llm_cpus"))
         svc = _engine_modules()
+        from edge_decision import DEFAULT_VERIFY_THRESHOLD
         from edge_pipeline import EdgeAnalyzer
         from explainer_cache import CachedGenerator
         from rakshak_edge_service import (
@@ -107,6 +108,7 @@ def llm_main(cfg: dict[str, Any], jobs: Any, store: Any, ready: Any) -> None:
             explainer,
             threshold,
             detector_only_mode=cfg["detector_only_mode"],
+            verify_threshold=cfg.get("verify_threshold", DEFAULT_VERIFY_THRESHOLD),
             hinglish_mode=cfg["hinglish_mode"],
             url_scorer=url_scorer,
             url_threshold=url_threshold,
@@ -338,6 +340,7 @@ def build_verdict_service(cfg: dict[str, Any], store: Any, jobs: Any, counters: 
     the NIDS model, the explanation table, and the Service with the shared store and job queue.
     Returns (service, the servers' index.html bytes, the detector info dict)."""
     svc = _engine_modules()
+    from edge_decision import DEFAULT_VERIFY_THRESHOLD
     from edge_pipeline import EdgeAnalyzer, check_url
     from explanation_table import ExplanationTable
     from nids_pipeline import NidsAnalyzer
@@ -375,6 +378,7 @@ def build_verdict_service(cfg: dict[str, Any], store: Any, jobs: Any, counters: 
         None,  # the LLM lives in the explainer process; the verdict path never calls it
         threshold,
         detector_only_mode=cfg["detector_only_mode"],
+        verify_threshold=cfg.get("verify_threshold", DEFAULT_VERIFY_THRESHOLD),
         hinglish_mode=cfg["hinglish_mode"],
         url_scorer=url_scorer,
         url_threshold=url_threshold,
@@ -398,11 +402,14 @@ def build_verdict_service(cfg: dict[str, Any], store: Any, jobs: Any, counters: 
         log_path=Path(log_path) if log_path else None,
         models=info,
         detector_only_mode=cfg["detector_only_mode"],
+        verify_threshold=cfg.get("verify_threshold", DEFAULT_VERIFY_THRESHOLD),
         hinglish_mode=cfg["hinglish_mode"],
         nids=nids,
         explainer_cache=None,
         llm_runner=cfg["llm_runner"],
-        url_check=lambda text: check_url(text, url_scorer, url_threshold),
+        url_check=lambda text: check_url(
+            text, url_scorer, url_threshold, high_threshold=cfg.get("url_high_threshold")
+        ),
         response_mode="verdict_first",
         response_mode_source=cfg.get("response_mode_source", "flag"),
         jobs=jobs,
@@ -505,6 +512,8 @@ def cfg_from_args(args, root: Path) -> dict[str, Any]:
         "explainer_cache": args.explainer_cache,
         "batch_onnx": args.batch_onnx,
         "detector_only_mode": args.detector_only_mode,
+        "verify_threshold": args.verify_threshold,
+        "url_high_threshold": args.url_high_threshold,
         "hinglish_mode": args.hinglish_mode,
         "explainer_candidate": args.explainer_candidate,
         "explainer_cap": args.explainer_cap,

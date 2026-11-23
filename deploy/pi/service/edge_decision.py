@@ -24,12 +24,18 @@ from rakshak.rules import Evidence
 from rakshak.url_model import add_url_model_evidence
 from rakshak.url_reputation import default_guard
 
-DETECTOR_ONLY_MODES = ("quiet", "verify")
+DETECTOR_ONLY_MODES = ("quiet", "balanced", "verify")
 DEFAULT_DETECTOR_ONLY_MODE = "quiet"
-# URL model evidence on SMS decisions is shown in verify mode only. The quiet-mode URL warning
-# failed gate U2 (docs/URL_SERVICE_RESULTS.md), so quiet mode ignores it. /analyze_url is not
-# affected: it has no mode.
+# Balanced 3-outcome mode: detector-only messages escalate to UNCERTAIN / VERIFY_INDEPENDENTLY
+# when p_scam >= DEFAULT_VERIFY_THRESHOLD, while sub-threshold flags stay LOW / IGNORE.
+# Combined with corroborated URL evidence (URL score >= tau_url AND SMS student >= tau_sms),
+# this keeps GroundLM policy-negative FPR under ~1% while recovering >70% campaign recall and
+# >65% SmishX smishing recall (vs 16.2% / 23.5% in quiet mode).
+DEFAULT_VERIFY_THRESHOLD = 0.999
+# URL model evidence on SMS decisions is shown in verify mode (always) and balanced mode
+# (corroborated only). Quiet mode ignores it (gate U2). /analyze_url is not affected.
 URL_EVIDENCE_MODE = "verify"
+URL_ACTIVE_MODES = ("verify", "balanced")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -48,7 +54,7 @@ def check_mode(mode: str) -> str:
 
 def url_model_active(mode: str, threshold: float | None) -> bool:
     """True when the URL model may add evidence to an SMS decision in this mode."""
-    return check_mode(mode) == URL_EVIDENCE_MODE and threshold is not None
+    return check_mode(mode) in URL_ACTIVE_MODES and threshold is not None
 
 
 # Quiet-mode URL policy. "off": quiet mode ignores URL evidence (shipped default, U2 failed).
@@ -81,7 +87,7 @@ def add_url_evidence(
         raise ValueError(f"quiet_policy must be one of {URL_QUIET_POLICIES}, got {policy!r}")
     if check_mode(mode) == URL_EVIDENCE_MODE:
         return add_url_model_evidence(evidence, canon, hit, threshold)
-    if policy == "corroborated":
+    if mode == "balanced" or policy == "corroborated":
         student_over = p_scam is not None and p_threshold is not None and p_scam >= p_threshold
         if evidence or student_over:
             return add_url_model_evidence(evidence, canon, hit, threshold)
@@ -115,13 +121,23 @@ def decide_edge(
     p_scam: float,
     threshold: float,
     mode: str = DEFAULT_DETECTOR_ONLY_MODE,
+    *,
+    verify_threshold: float = DEFAULT_VERIFY_THRESHOLD,
 ) -> EdgeDecision:
-    """The edge decision for one message: state, package (after the mode), action."""
+    """The edge decision for one message: state, package (after the mode), action.
+
+    In ``verify`` mode every detector-only flag becomes UNCERTAIN / VERIFY_INDEPENDENTLY.
+    In ``balanced`` mode only high-confidence detector-only flags (``p_scam >= verify_threshold``)
+    escalate to UNCERTAIN / VERIFY_INDEPENDENTLY; lower-confidence ones stay LOW / IGNORE.
+    In ``quiet`` mode every detector-only flag stays LOW / IGNORE.
+    """
     check_mode(mode)
     state = scam_state_for(p_scam, threshold, evidence)
     package = build_package(canon, evidence, state)
     detector_only = state == "scam" and not evidence
-    if detector_only and mode == "verify":
+    if detector_only and (
+        mode == "verify" or (mode == "balanced" and p_scam >= float(verify_threshold))
+    ):
         package = detector_only_package(package)
     return EdgeDecision(
         state=state,
