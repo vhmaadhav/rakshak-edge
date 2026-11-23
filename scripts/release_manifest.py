@@ -335,6 +335,7 @@ def verify(manifest_path: Path, repo: Path) -> int:
         print(f"verify: {manifest_path} is not a {SCHEMA} manifest", file=sys.stderr)
         return 2
 
+    ok = 0
     failures = 0
     for a in manifest["artifacts"]:
         raw = a.get("path")
@@ -358,19 +359,26 @@ def verify(manifest_path: Path, repo: Path) -> int:
             failures += 1
         else:
             print(f"OK  {raw}")
+            ok += 1
 
     sums = manifest_path.parent / "SHA256SUMS"
     if sums.is_file():
         recorded = {a["path"]: a.get("sha256") for a in manifest["artifacts"] if a.get("sha256")}
+        seen_paths: set[str] = set()
         for line in sums.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
-            digest, _, raw = line.partition("  ")
-            if recorded.get(raw) != digest:
-                print(f"FAIL  SHA256SUMS line does not match the manifest: {raw}")
+            digest, sep, raw = line.partition("  ")
+            if not sep or recorded.get(raw) != digest:
+                print(f"FAIL  SHA256SUMS line does not match the manifest: {raw or line}")
                 failures += 1
+            else:
+                seen_paths.add(raw)
+        for missing_path in sorted(set(recorded) - seen_paths):
+            print(f"FAIL  SHA256SUMS is missing manifest entry: {missing_path}")
+            failures += 1
     total = len(manifest["artifacts"])
-    print(f"verify: {total - failures} of {total} ok, {failures} failing")
+    print(f"verify: {ok} of {total} ok, {failures} failing")
     return 1 if failures else 0
 
 
@@ -425,7 +433,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"wrote {manifest_path}")
     print(f"wrote {sums_path}")
     print(f"summary: {manifest['summary']}")
-    if bad and not args.allow_missing:
+    non_missing_bad = [a for a in bad if a["status"] != "missing"]
+    if non_missing_bad or (bad and not args.allow_missing):
         return 1
     return 0
 

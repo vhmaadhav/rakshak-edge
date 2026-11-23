@@ -95,6 +95,26 @@ def flows_from_body(
     for i, f in enumerate(flows):
         if not isinstance(f, dict) or not isinstance(f.get("src_ip"), str):
             raise FlowRequestError(f"flow {i} must be an object with a string 'src_ip'")
+        ts = f.get("bidirectional_first_seen_ms")
+        if ts is not None:
+            if isinstance(ts, bool):
+                raise FlowRequestError(
+                    f"flow {i} field 'bidirectional_first_seen_ms' must be numeric"
+                )
+            try:
+                float(ts)
+            except (TypeError, ValueError):
+                raise FlowRequestError(
+                    f"flow {i} field 'bidirectional_first_seen_ms' must be numeric"
+                ) from None
+        dport = f.get("dst_port")
+        if dport is not None:
+            if isinstance(dport, bool):
+                raise FlowRequestError(f"flow {i} field 'dst_port' must be an integer")
+            try:
+                int(dport)
+            except (TypeError, ValueError):
+                raise FlowRequestError(f"flow {i} field 'dst_port' must be an integer") from None
     return flows, "json"
 
 
