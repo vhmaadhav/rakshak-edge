@@ -264,3 +264,76 @@ def test_android_artifacts_read_the_repo_that_was_asked_for(tmp_path: Path) -> N
     assert by_name["android_sms_student"]["path"] == model.relative_to(tmp_path).as_posix()
     assert by_name["android_brands"]["sha256"] == sha(b"{}")
     assert by_name["android_brands"]["path"] == data.relative_to(tmp_path).as_posix()
+
+
+def test_allow_missing_does_not_excuse_pin_mismatch(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    write(repo / "models" / "good.onnx", b"actual-bytes")
+    registry = write(
+        repo / "registry.toml",
+        f"""
+schema = "rbench-registry/1"
+
+[[models]]
+id = "pinned_bad"
+kind = "onnx_sms"
+enabled = true
+source = "models/good.onnx"
+path = "models/good.onnx"
+sha256 = "{"0" * 64}"
+
+[[models]]
+id = "absent"
+kind = "pte_llm"
+enabled = true
+path = "models/absent.pte"
+sha256 = "{"1" * 64}"
+""".encode(),
+    )
+    out = tmp_path / "out"
+    code = rm.main(
+        [
+            "--repo",
+            str(repo),
+            "--registry",
+            str(registry),
+            "--out-dir",
+            str(out),
+            "--allow-missing",
+        ]
+    )
+    assert code == 1, "--allow-missing must never hide a pin_mismatch"
+
+
+def test_verify_detects_missing_sha256sums_entry_and_keeps_ok_non_negative(
+    tmp_path: Path, capsys
+) -> None:
+    f = write(tmp_path / "a.txt", b"one")
+    out = tmp_path / "out"
+    assert (
+        rm.main(
+            [
+                "--repo",
+                str(tmp_path),
+                "--no-discover",
+                "--out-dir",
+                str(out),
+                "--artifact",
+                str(f) + "@x:y",
+            ]
+        )
+        == 0
+    )
+    manifest = out / "release_manifest.json"
+    # Truncating SHA256SUMS must fail verification.
+    (out / "SHA256SUMS").write_text("", encoding="utf-8")
+    assert rm.verify(manifest, tmp_path) == 1
+    assert "missing manifest entry" in capsys.readouterr().out
+
+    # Extra bad lines in SHA256SUMS must not make the reported ok count negative.
+    (out / "SHA256SUMS").write_text(
+        f"{sha(b'one')}  a.txt\n{sha(b'x')}  bogus1\n{sha(b'y')}  bogus2\n",
+        encoding="utf-8",
+    )
+    assert rm.verify(manifest, tmp_path) == 1
+    assert "verify: 1 of 1 ok, 2 failing" in capsys.readouterr().out

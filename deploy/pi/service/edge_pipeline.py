@@ -25,6 +25,8 @@ from typing import Any, Protocol
 
 from edge_decision import (  # noqa: F401 - scam_state_for and detector_only_package re-exported
     DEFAULT_DETECTOR_ONLY_MODE,
+    DEFAULT_TX_VERIFY_THRESHOLD,
+    DEFAULT_VERIFY_THRESHOLD,
     add_url_evidence,
     check_mode,
     decide_edge,
@@ -38,7 +40,7 @@ from rbench.slot import HINGLISH_LANG, SLOT_MAX_NEW_TOKENS, generate_slot_adviso
 
 from rakshak.canonicalize import canonicalize
 from rakshak.datasets.lang import detect_lang
-from rakshak.evidence import EvidencePackage, build_package, choose_action
+from rakshak.evidence import Action, EvidencePackage, build_package, choose_action
 from rakshak.remediation import remediation_for, remediation_problems
 from rakshak.rules import run_rules
 from rakshak.url_features import registered_domain
@@ -186,6 +188,8 @@ class EdgeAnalyzer:
         max_new_tokens: int = SLOT_MAX_NEW_TOKENS,
         clock: Callable[[], float] = time.perf_counter,
         detector_only_mode: str = DEFAULT_DETECTOR_ONLY_MODE,
+        verify_threshold: float = DEFAULT_VERIFY_THRESHOLD,
+        tx_verify_threshold: float | None = None,
         hinglish_mode: str = DEFAULT_HINGLISH_MODE,
         url_scorer: UrlScorer | None = None,
         url_threshold: float | None = None,
@@ -196,7 +200,7 @@ class EdgeAnalyzer:
         """``url_scorer`` and ``url_threshold`` together turn the URL model on. With either one
         None (the registry has no threshold for url_student) the URL path is off and the
         decision is the same as before it existed. The URL model adds evidence in verify mode
-        only: in quiet mode the scorer is never called (edge_decision.URL_EVIDENCE_MODE).
+        (always) and balanced mode (corroborated only); quiet mode never calls the scorer.
 
         ``explanation_table`` (verdict-first only, see explanation_table.py) answers the explainer
         from a lookup when every point has an entry. It never changes the decision."""
@@ -212,6 +216,10 @@ class EdgeAnalyzer:
         self.detector = detector
         self.llm = llm
         self.threshold = float(threshold)
+        self.verify_threshold = float(verify_threshold)
+        self.tx_verify_threshold = (
+            None if tx_verify_threshold is None else float(tx_verify_threshold)
+        )
         self.max_new_tokens = max_new_tokens
         self.clock = clock
         self.detector_only_mode = check_mode(detector_only_mode)
@@ -252,9 +260,23 @@ class EdgeAnalyzer:
         t_detect = clock()
         hit = best_url_hit(canon.urls, self.url_scorer) if self.url_active else None
         evidence = add_url_evidence(
-            base_rules, canon, hit, self.url_threshold, self.detector_only_mode
+            base_rules,
+            canon,
+            hit,
+            self.url_threshold,
+            self.detector_only_mode,
+            p_scam=p,
+            p_threshold=self.threshold,
         )
-        dec = decide_edge(canon, evidence, p, self.threshold, self.detector_only_mode)
+        dec = decide_edge(
+            canon,
+            evidence,
+            p,
+            self.threshold,
+            self.detector_only_mode,
+            verify_threshold=self.verify_threshold,
+            tx_verify_threshold=self.tx_verify_threshold,
+        )
         t_evidence = clock()
         lang_detected = detect_lang(text)
         return Decided(
@@ -459,7 +481,7 @@ class EdgeAnalyzer:
             )
         g2 = [
             {
-                "evidence_id": package.evidence[c["index"]].id,
+                "evidence_id": llm_package.evidence[c["index"]].id,
                 "sentence": c["sentence"],
                 "problem": c["problem"],
             }
@@ -539,7 +561,7 @@ class EdgeAnalyzer:
         """
         t_start, t_canon, t_detect, t_evidence = stamps
         package, action, state = dec.package, dec.action, dec.state
-        quiet = self.detector_only_mode == "quiet"
+        quiet = action == Action.IGNORE
         if lang == HINGLISH_LANG:
             summary = (
                 DETECTOR_ONLY_QUIET_SUMMARY_HINGLISH if quiet else DETECTOR_ONLY_SUMMARY_HINGLISH
@@ -610,16 +632,20 @@ def check_url(
     scorer: UrlScorer | None,
     threshold: float | None,
     *,
+    high_threshold: float | None = None,
     clock: Callable[[], float] = time.perf_counter,
 ) -> dict[str, Any]:
     """POST /analyze_url: the URL score, the domain rules, a verdict and remediation for one link.
 
-    ``verdict`` is "phishing" when the URL model is at or above its threshold, or a brand-domain
-    mismatch fired; "suspicious" when only the shortened or suspicious-URL rules fired; otherwise
-    "no_signal". The state is never "scam" (there is no SMS student here), so the model alone
-    gives UNCERTAIN; a brand mismatch (weight 0.9) gives HIGH. No explainer runs.
+    ``verdict`` is "phishing" when a brand-domain mismatch fired, or when the URL model is at or
+    above ``high_threshold`` (or ``threshold`` when ``high_threshold`` is None); "suspicious" when
+    the URL model is between ``threshold`` and ``high_threshold`` or only the shortened /
+    suspicious-URL rules fired; otherwise "no_signal". The state is never "scam" (there is no SMS
+    student here), so the model alone gives UNCERTAIN; a brand mismatch (weight 0.9) gives HIGH.
+    No explainer runs.
     """
     active = scorer is not None and threshold is not None
+    high_thr = float(high_threshold) if (active and high_threshold is not None) else None
     t0 = clock()
     canon = canonicalize(url_text)
     t_canon = clock()
@@ -632,26 +658,53 @@ def check_url(
     action = choose_action(package)
     remediation = remediation_for(package, action.value, LANG)
     model_fired = any(e.type == URL_MODEL_TYPE for e in evidence)
+    model_high = model_fired and (
+        high_thr is None or (hit is not None and float(hit.score) >= high_thr)
+    )
     brand = any(e.type == "brand_domain_mismatch" for e in evidence)
-    if model_fired or brand:
+    domain_intel_doc: dict[str, Any] | None = None
+    intel_phish = False
+    intel_suspicious = False
+    assess_fn = getattr(scorer, "assess", None)
+    if active and callable(assess_fn) and hit is not None:
+        assessment = assess_fn(hit.url)
+        sigs = list(assessment.signals)
+        domain_intel_doc = {
+            "onnx_score": (
+                round(float(assessment.onnx_score), 4)
+                if assessment.onnx_score is not None
+                else None
+            ),
+            "domain_score": round(float(assessment.domain_score), 4),
+            "reputation": assessment.reputation,
+            "signals": sigs,
+        }
+        intel_phish = bool(set(sigs) & {"homograph_brand_spoof", "brand_in_host_mismatch"})
+        intel_suspicious = bool(
+            set(sigs) & {"idn_homograph", "ip_literal", "userinfo_at", "brand_in_path_mismatch"}
+        )
+    if model_high or brand or intel_phish:
         verdict = "phishing"
-    elif evidence:
+    elif evidence or intel_suspicious:
         verdict = "suspicious"
     else:
         verdict = "no_signal"
     t_end = clock()
-    return {
+    url_model_doc: dict[str, Any] = {
+        "enabled": active,
+        "threshold": round(float(threshold), 4) if active else None,
+        "score": round(hit.score, 4) if hit is not None else None,
+        "domain": (registered_domain(hit.url) or None) if hit is not None else None,
+        "fired": model_fired,
+    }
+    if high_thr is not None:
+        url_model_doc["high_threshold"] = round(high_thr, 4)
+    result: dict[str, Any] = {
         "verdict": verdict,
         "risk": package.risk.value,
         "action": action.value,
         "url_count": len(canon.urls),
-        "url_model": {
-            "enabled": active,
-            "threshold": round(float(threshold), 4) if active else None,
-            "score": round(hit.score, 4) if hit is not None else None,
-            "domain": (registered_domain(hit.url) or None) if hit is not None else None,
-            "fired": model_fired,
-        },
+        "url_model": url_model_doc,
         "evidence": [
             {"id": e.id, "type": e.type, "weight": round(e.weight, 3), "text": e.text}
             for e in evidence
@@ -664,3 +717,6 @@ def check_url(
             "total": _ms(t0, t_end),
         },
     }
+    if domain_intel_doc is not None:
+        result["domain_intel"] = domain_intel_doc
+    return result

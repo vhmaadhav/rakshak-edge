@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import multiprocessing as mp
 import os
 import queue
@@ -61,8 +62,10 @@ sys.path[:0] = [
 
 from edge_decision import (  # noqa: E402
     DEFAULT_DETECTOR_ONLY_MODE,
+    DEFAULT_TX_VERIFY_THRESHOLD,
+    DEFAULT_VERIFY_THRESHOLD,
     DETECTOR_ONLY_MODES,
-    URL_EVIDENCE_MODE,
+    URL_ACTIVE_MODES,
 )
 from edge_device import EnergyWindow, read_snapshot  # noqa: E402
 from edge_pipeline import (  # noqa: E402
@@ -171,6 +174,7 @@ COUNTER_SLOTS = (
     "messages_total",
     "overloaded",
     "expired",
+    "refused_cooling",
 )
 ENDPOINT_SLOTS = (
     "/",
@@ -236,6 +240,7 @@ class Service:
         log_path: Path | None,
         models: dict[str, Any],
         detector_only_mode: str = DEFAULT_DETECTOR_ONLY_MODE,
+        verify_threshold: float = DEFAULT_VERIFY_THRESHOLD,
         hinglish_mode: str = DEFAULT_HINGLISH_MODE,
         device_fn=read_snapshot,
         energy_factory=EnergyWindow,
@@ -277,6 +282,7 @@ class Service:
         self.log_path = log_path
         self.models = models
         self.detector_only_mode = detector_only_mode
+        self.verify_threshold = float(verify_threshold)
         self.hinglish_mode = hinglish_mode
         self.device_fn = device_fn
         self.energy_factory = energy_factory
@@ -309,13 +315,17 @@ class Service:
         # One HTTP request is counted by the handler, one batch by analyse_batch, one message per
         # message scored (/analyze: 1; /analyze_batch: its items).
         self.counters = counters if counters is not None else SharedCounters()
-        self.refused = 0
         self._log_lock = threading.Lock()
         # One handle for the life of the process (opening the file per line cost a syscall round
         # trip per message). Line-buffered, so each record is on disk when its request returns.
         self._log_handle = (
             open(self.log_path, "a", encoding="utf-8", buffering=1) if log_path else None
         )
+
+    @property
+    def refused(self) -> int:
+        """Service-wide count of cooling refusals, backed by SharedCounters."""
+        return self.counters.get("refused_cooling")
 
     def _log(self, record: dict[str, Any]) -> None:
         line = json.dumps(record, ensure_ascii=False, sort_keys=True)
@@ -334,12 +344,13 @@ class Service:
             "temp_limit_c": self.temp_limit,
             "models": self.models,
             "detector_only_mode": self.detector_only_mode,
+            "verify_threshold": self.verify_threshold,
             "url_model": {
                 # Diagnostic only (no per-request field in /analyze). Quiet mode never scores
-                # URLs for /analyze; /analyze_url works in every mode.
+                # URLs for /analyze; balanced adds corroborated URLs; /analyze_url works always.
                 "enabled": bool((self.models.get(URL_MODEL_ID) or {}).get("enabled")),
                 "threshold": (self.models.get(URL_MODEL_ID) or {}).get("threshold"),
-                "evidence_visible": self.detector_only_mode == URL_EVIDENCE_MODE,
+                "evidence_visible": self.detector_only_mode in URL_ACTIVE_MODES,
             },
             "hinglish_mode": self.hinglish_mode,
             "response_mode": self.response_mode,
@@ -516,7 +527,14 @@ class Service:
             for j, (text, (result, pending)) in enumerate(zip(chunk, pairs, strict=True)):
                 i = c0 + j
                 item = self._verdict_item(
-                    f"{request_id}-{i}", len(text), result, pending, None, None, log=False
+                    f"{request_id}-{i}",
+                    len(text),
+                    result,
+                    pending,
+                    start,
+                    None,
+                    log=False,
+                    include_device=False,
                 )
                 item["index"] = i
                 items.append(item)
@@ -551,6 +569,7 @@ class Service:
         t0: float | None,
         *,
         log: bool = True,
+        include_device: bool = True,
     ) -> dict[str, Any]:
         explanation = self._schedule_explanation(request_id, pending, start)
         wall_ms = None if t0 is None else round((time.perf_counter() - t0) * 1000.0, 3)
@@ -561,7 +580,7 @@ class Service:
             "explanation": explanation,
             "wall_ms": wall_ms,
         }
-        if start is not None:
+        if include_device and start is not None:
             body["device"] = {"start": start, "rss_mb": rss_mb(), "rss_peak_mb": rss_mb("VmHWM")}
         if not log:
             return body
@@ -594,8 +613,7 @@ class Service:
             return {"status": "ready", "id": None}
         temp = (start or {}).get("temp_c")
         if temp is not None and temp >= self.temp_limit:
-            with self._stats_lock:
-                self.refused += 1
+            self.counters.add("refused_cooling")
             self._log(
                 {
                     "event": "refused_cooling",
@@ -700,9 +718,12 @@ class Service:
     def explanation(self, eid: str, wait: float = 0.0) -> tuple[int, dict[str, Any]]:
         """GET /explanation/<id>. ``wait`` (seconds, query ``?wait=``) holds the answer until the
         job has finished, for benchmarks; the default answers at once."""
+        if not eid or eid.startswith("_"):
+            return 404, {"error": "unknown or expired explanation id", "id": eid}
+        clamped_wait = max(0.0, min(wait, 900.0)) if math.isfinite(wait) else 0.0
+        deadline = time.monotonic() + clamped_wait
         if self.store is not None:
             entry = self.store.get(eid)
-            deadline = time.monotonic() + max(0.0, min(wait, 900.0))
             while (
                 entry is not None
                 and entry.get("status") == "pending"
@@ -715,10 +736,20 @@ class Service:
                 return 404, {"error": "unknown or expired explanation id", "id": eid}
             return 200, self._view(eid, dict(entry))
         with self._explanations_lock:
-            entry = self._explanations.get(eid)
-            if entry is None:
-                return 404, {"error": "unknown or expired explanation id", "id": eid}
-            entry = dict(entry)
+            raw_entry = self._explanations.get(eid)
+            entry = dict(raw_entry) if raw_entry is not None else None
+        while (
+            entry is not None
+            and entry.get("status") == "pending"
+            and not self._stale(entry)
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.02)
+            with self._explanations_lock:
+                raw_entry = self._explanations.get(eid)
+                entry = dict(raw_entry) if raw_entry is not None else None
+        if entry is None:
+            return 404, {"error": "unknown or expired explanation id", "id": eid}
         return 200, self._view(eid, entry)
 
     def wait_explanations(self) -> None:
@@ -729,7 +760,7 @@ class Service:
         """503 "cooling" when the SoC is at or above the limit (the caller holds the lock)."""
         temp = start.get("temp_c")
         if temp is not None and temp >= self.temp_limit:
-            self.refused += 1
+            self.counters.add("refused_cooling")
             self._log(
                 {
                     "event": "refused_cooling",
@@ -961,6 +992,11 @@ def make_handler(service: Service, index_html: bytes, limits: RequestLimits | No
                     408, {"error": f"request body not received within {limits.read_timeout_s:g} s"}
                 )
                 return None
+            finally:
+                try:
+                    self.connection.settimeout(self.timeout)
+                except OSError:
+                    pass
             if len(out) != length:
                 self._reject(400, {"error": "body is shorter than Content-Length"})
                 return None
@@ -1200,13 +1236,13 @@ def load_nids(root: Path):
     return scorer, info
 
 
-def load_url_model(root: Path):
+def load_url_model(root: Path, *, hybrid: bool = False):
     """The URL student (url_student) through the same registry check as the SMS model.
 
     Returns (scorer or None, threshold or None, info). The path is OFF unless the registry has a
     threshold for url_student and the model and its side scaler are ready (every pinned file
-    hashed). Off means no URL evidence is ever added and /analyze is unchanged. The reason is
-    kept in info and logged at startup.
+    hashed). When ``hybrid=True``, wraps ``FrozenURLExpert`` with ``HybridUrlScorer`` (combining
+    the ONNX URL student with the offline domain-disjoint DomainIntelScorer).
     """
     from rbench.registry import load_registry, model_state
 
@@ -1226,7 +1262,17 @@ def load_url_model(root: Path):
             reason = f"model not ready: {state.get('status')}"
         else:
             t0 = time.perf_counter()
-            scorer = FrozenURLExpert((root / model.path).parent)
+            scorer: Any = FrozenURLExpert((root / model.path).parent)
+            if hybrid:
+                from rakshak.url_domain_intel import HybridUrlScorer, default_domain_intel
+
+                dom = default_domain_intel()
+                if dom is not None:
+                    scorer = HybridUrlScorer(scorer, dom)
+                    info["hybrid"] = True
+                    info["domain_intel_version"] = dom.meta.get("version")
+                else:
+                    info["hybrid"] = False
             info["enabled"] = True
             info["load_s"] = round(time.perf_counter() - t0, 3)
             return scorer, float(model.threshold), info
@@ -1412,8 +1458,54 @@ def main(argv: list[str] | None = None) -> int:
         "--detector-only-mode",
         choices=DETECTOR_ONLY_MODES,
         default=os.environ.get("RAKSHAK_DETECTOR_ONLY_MODE", DEFAULT_DETECTOR_ONLY_MODE),
-        help="quiet (default): a detector-only flag gets the no-warning path; "
-        "verify: UNCERTAIN / VERIFY_INDEPENDENTLY notice. Env RAKSHAK_DETECTOR_ONLY_MODE.",
+        help="quiet (default): detector-only flags stay LOW/IGNORE; balanced: high-confidence "
+        "detector-only flags (>= --verify-threshold) and corroborated URL hits produce "
+        "UNCERTAIN/VERIFY_INDEPENDENTLY; verify: every detector-only flag produces "
+        "UNCERTAIN/VERIFY_INDEPENDENTLY. Env RAKSHAK_DETECTOR_ONLY_MODE.",
+    )
+    p.add_argument(
+        "--verify-threshold",
+        type=float,
+        default=float(os.environ.get("RAKSHAK_VERIFY_THRESHOLD", str(DEFAULT_VERIFY_THRESHOLD))),
+        help="balanced mode only: student probability at or above which a non-transactional "
+        "detector-only flag escalates to UNCERTAIN / VERIFY_INDEPENDENTLY. "
+        "Env RAKSHAK_VERIFY_THRESHOLD.",
+    )
+    p.add_argument(
+        "--tx-verify-threshold",
+        type=float,
+        default=float(
+            os.environ.get("RAKSHAK_TX_VERIFY_THRESHOLD", str(DEFAULT_TX_VERIFY_THRESHOLD))
+        ),
+        help="balanced mode only: stricter threshold for transactional-looking detector-only "
+        "notices (bank/UPI/OTP/delivery/utility). Env RAKSHAK_TX_VERIFY_THRESHOLD.",
+    )
+    p.add_argument(
+        "--url-hybrid",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get("RAKSHAK_URL_HYBRID", "") == "1",
+        help="combine ONNX url_student with offline domain-disjoint DomainIntelScorer via "
+        "logit fusion and attach domain_intel signals to /analyze_url. Env RAKSHAK_URL_HYBRID=1.",
+    )
+    p.add_argument(
+        "--url-high-threshold",
+        type=float,
+        default=(
+            float(os.environ["RAKSHAK_URL_HIGH_THRESHOLD"])
+            if os.environ.get("RAKSHAK_URL_HIGH_THRESHOLD")
+            else None
+        ),
+        help="POST /analyze_url: optional high-confidence threshold for verdict='phishing' "
+        "(scores between url threshold and this value return verdict='suspicious', reducing "
+        "out-of-domain false alarms). Env RAKSHAK_URL_HIGH_THRESHOLD.",
+    )
+    p.add_argument(
+        "--nids-dns-min-distinct",
+        type=_positive_int,
+        default=int(os.environ.get("RAKSHAK_NIDS_DNS_MIN_DISTINCT", "1")),
+        help="network: minimum distinct suspicious DNS query names required in 60 s to fire "
+        "dns_tunnel (default 1 = pre-registered rule; 3 suppresses repeated single-hostname "
+        "CDN lookalikes). Env RAKSHAK_NIDS_DNS_MIN_DISTINCT.",
     )
     p.add_argument(
         "--nids-alert",
@@ -1589,7 +1681,7 @@ def main(argv: list[str] | None = None) -> int:
     explainer_cache = (
         CachedGenerator(llm, args.explainer_cache) if args.explainer_cache > 0 else None
     )
-    url_scorer, url_threshold, url_info = load_url_model(root)
+    url_scorer, url_threshold, url_info = load_url_model(root, hybrid=bool(args.url_hybrid))
     info[URL_MODEL_ID] = url_info
     from explanation_table import ExplanationTable
 
@@ -1599,6 +1691,8 @@ def main(argv: list[str] | None = None) -> int:
         explainer_cache if explainer_cache is not None else llm,
         threshold,
         detector_only_mode=args.detector_only_mode,
+        verify_threshold=args.verify_threshold,
+        tx_verify_threshold=args.tx_verify_threshold,
         hinglish_mode=args.hinglish_mode,
         url_scorer=url_scorer,
         url_threshold=url_threshold,
@@ -1618,6 +1712,7 @@ def main(argv: list[str] | None = None) -> int:
         scratch=root / "run" / "nids_uploads",
         flow_source=args.nids_flow_source,
         model_mode=args.net_model_mode,
+        dns_min_distinct=args.nids_dns_min_distinct,
     )
     service = Service(
         analyzer,
@@ -1626,11 +1721,14 @@ def main(argv: list[str] | None = None) -> int:
         log_path=Path(args.log) if args.log else None,
         models=info,
         detector_only_mode=args.detector_only_mode,
+        verify_threshold=args.verify_threshold,
         hinglish_mode=args.hinglish_mode,
         nids=nids,
         explainer_cache=explainer_cache,
         llm_runner=args.llm_runner,
-        url_check=lambda text: check_url(text, url_scorer, url_threshold),
+        url_check=lambda text: check_url(
+            text, url_scorer, url_threshold, high_threshold=args.url_high_threshold
+        ),
         response_mode=args.response_mode,
         response_mode_source=args.response_mode_source,
         explain_queue_depth=args.explain_queue_depth,

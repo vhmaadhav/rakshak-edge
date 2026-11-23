@@ -182,6 +182,21 @@ def test_dns_ignores_normal_names_and_missing_names():
     assert R.evaluate(missing) == []
 
 
+def test_dns_min_distinct_suppresses_repeated_cdn_lookalike_but_keeps_tunnel():
+    cdn = "assets-prod-eu-west-1-7f3a9c2e1b0d4a6f8e5c.cdn.example.net"
+    repeated = [dns_flow(i * 1000, cdn) for i in range(6)]
+    # Pre-registered default (dns_min_distinct=1) still fires
+    assert kinds(R.evaluate(repeated)) == ["dns_tunnel"]
+    # Hardened distinct-qname guard suppresses repeated single-hostname CDN lookups
+    assert R.evaluate(repeated, dns_min_distinct=3) == []
+    # Real DNS tunneling with distinct encoded subdomains still fires
+    tunnel = [
+        dns_flow(i * 1000, f"chunk{i:02d}-7f3a9c2e1b0d4a6f8e5c9a0b1c2d3e4f.tunnel.example.net")
+        for i in range(5)
+    ]
+    assert kinds(R.evaluate(tunnel, dns_min_distinct=3)) == ["dns_tunnel"]
+
+
 # --- dos flood: syn-only, count ----------------------------------------------------------------
 
 

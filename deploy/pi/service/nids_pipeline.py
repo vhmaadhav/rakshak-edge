@@ -95,6 +95,26 @@ def flows_from_body(
     for i, f in enumerate(flows):
         if not isinstance(f, dict) or not isinstance(f.get("src_ip"), str):
             raise FlowRequestError(f"flow {i} must be an object with a string 'src_ip'")
+        ts = f.get("bidirectional_first_seen_ms")
+        if ts is not None:
+            if isinstance(ts, bool):
+                raise FlowRequestError(
+                    f"flow {i} field 'bidirectional_first_seen_ms' must be numeric"
+                )
+            try:
+                float(ts)
+            except (TypeError, ValueError):
+                raise FlowRequestError(
+                    f"flow {i} field 'bidirectional_first_seen_ms' must be numeric"
+                ) from None
+        dport = f.get("dst_port")
+        if dport is not None:
+            if isinstance(dport, bool):
+                raise FlowRequestError(f"flow {i} field 'dst_port' must be an integer")
+            try:
+                int(dport)
+            except (TypeError, ValueError):
+                raise FlowRequestError(f"flow {i} field 'dst_port' must be an integer") from None
     return flows, "json"
 
 
@@ -120,6 +140,7 @@ class NidsAnalyzer:
         scratch: Path,
         flow_source: str = "auto",
         model_mode: str = NET_MODEL_MODE,
+        dns_min_distinct: int = 1,
         clock: Callable[[], float] = time.perf_counter,
     ) -> None:
         if flow_source not in FLOW_SOURCES:
@@ -134,6 +155,7 @@ class NidsAnalyzer:
         self.model_id = model_id
         self.scratch = scratch
         self.flow_source = flow_source
+        self.dns_min_distinct = max(1, int(dns_min_distinct))
         self.clock = clock
 
     def analyse_body(self, raw: bytes) -> dict[str, Any]:
@@ -160,7 +182,7 @@ class NidsAnalyzer:
             )
             per_flow.append((clock() - t) * 1000.0)
         t_score1 = clock()
-        hits = host_rules.evaluate(ordered)
+        hits = host_rules.evaluate(ordered, dns_min_distinct=self.dns_min_distinct)
         alerts = host_alerts(decisions, hits, mode=self.model_mode)
         # The watchlist is the alert-mode list of uncertain-only hosts. Quiet mode reports those
         # hosts as model_only advisories instead, so the list is empty there.

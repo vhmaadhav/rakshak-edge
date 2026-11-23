@@ -212,3 +212,35 @@ def test_template_only_path_still_one_point_per_type(monkeypatch):
     assert len(out["advisory"]["points"]) == 1
     assert out["advisory"]["points"][0]["count"] == 6
     assert out["verifier"]["final_contract_ok"] is True
+
+
+def test_g2_rejected_uses_collapsed_evidence_id_not_raw_index(monkeypatch):
+    """When earlier duplicate types are collapsed, g2_rejected must still report the true ID."""
+
+    class SecondCallScamLLM:
+        def __init__(self):
+            self.calls = 0
+
+        def generate(self, prompt, max_new_tokens=64, stop_when=None):
+            self.calls += 1
+            if self.calls == 1:
+                sentence = " is asking the reader to claim a prize."
+            else:
+                sentence = " is a scam trying to steal your money."
+            if stop_when is not None:
+                stop_when(sentence)
+            return sentence, {
+                "wall_ms": 10.0,
+                "new_tokens": 8,
+                "prompt_tokens": 50,
+                "stop_hit": True,
+            }
+
+    items = _row4_items() + _row28_items()  # 6 prize_lottery items, then 2 shortened_url items
+    # Low detector score + rule evidence gives UNCERTAIN risk so G2 attribution guard applies.
+    monkeypatch.setattr(edge_pipeline, "run_rules", lambda canon: list(items))
+    analyser = EdgeAnalyzer(FakeDetector(0.1), SecondCallScamLLM(), THRESHOLD)
+    out = analyser.analyse(TEXT)
+    g2 = out["verifier"]["g2_rejected"]
+    assert len(g2) == 1
+    assert g2[0]["evidence_id"] == "shortened_url:0"

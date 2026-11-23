@@ -99,3 +99,11 @@ def test_truncated_record_is_ignored_not_fatal():
     good = _pcap([(1000, frame)])
     flows = flows_from_pcap_bytes(good + struct.pack("<IIII", 1, 0, 100, 100) + b"\x00" * 10)
     assert len(flows) == 1
+
+
+def test_ipv4_packet_with_invalid_ihl_is_ignored():
+    # Version 4, IHL 0 (< 5, invalid) should be skipped rather than parsing IP header bytes as L4.
+    bad_ip = struct.pack(
+        ">BBHHHBBH4s4s", 0x40, 0, 20, 0, 0, 64, 6, 0, b"\x0a\x00\x00\x01", b"\x0a\x00\x00\x02"
+    )
+    assert flows_from_pcap_bytes(_pcap([(1000, ETH + bad_ip)])) == []

@@ -515,3 +515,102 @@ def test_worker_processes_report_exact_service_wide_totals():
     assert health["messages_total"] == 30  # 2 x 5 batches x 3 messages
     assert health["explain_jobs"]["overloaded"] == 2
     assert health["explain_jobs"]["expired"] == 0
+
+
+def test_batch_cooling_refuses_explainer_jobs_and_shares_refused_counter():
+    jobs: queue.Queue = queue.Queue(maxsize=8)
+    store: dict = {}
+    counters = svc.SharedCounters()
+    hot_service = svc.Service(
+        FakeAnalyzer(pending=True),
+        threads=1,
+        temp_limit=75.0,
+        log_path=None,
+        models={},
+        device_fn=lambda: {"temp_c": 81.0},
+        response_mode="verdict_first",
+        jobs=jobs,
+        store=store,
+        counters=counters,
+    )
+    observer = _svc(FakeAnalyzer(pending=False), counters=counters)
+
+    status, body = hot_service.analyse_batch(["m0", "m1", "m2"])
+    assert status == 200 and body["count"] == 3
+    assert all(
+        item["explanation"] == {"status": "refused_cooling", "id": None} for item in body["items"]
+    )
+    assert all("device" not in item for item in body["items"])
+    assert jobs.empty(), "hot batch must not enqueue explainer jobs"
+    assert hot_service.refused == 3
+    assert observer.health()["refused_cooling"] == 3
+
+
+def test_explanation_endpoint_blocks_internal_store_keys():
+    store = {
+        "_llm": {"status": "ready", "pid": 1234},
+        "_jobs": {"completed": 1},
+        "_workers": {"llm": {"restarts": 0, "failed": False}},
+    }
+    service = _svc(FakeAnalyzer(), jobs=queue.Queue(), store=store)
+    for key in ("", "_llm", "_jobs", "_workers"):
+        code, doc = service.explanation(key)
+        assert code == 404 and "unknown" in doc["error"]
+
+
+def test_in_process_explanation_honors_wait_and_handles_non_finite_wait():
+    started, release = threading.Event(), threading.Event()
+
+    class BlockingAnalyzer(FakeAnalyzer):
+        def explain_pending(self, pending):
+            started.set()
+            release.wait(timeout=10)
+            return super().explain_pending(pending)
+
+    service = _svc(BlockingAnalyzer(pending=True))
+    status, verdict = service.analyse_verdict("msg")
+    assert status == 200
+    eid = verdict["explanation"]["id"]
+    assert started.wait(timeout=5)
+
+    # Non-finite wait does not block or raise.
+    code, pending_doc = service.explanation(eid, wait=float("nan"))
+    assert code == 200 and pending_doc["status"] == "pending"
+
+    def finish_soon():
+        time.sleep(0.08)
+        release.set()
+
+    threading.Thread(target=finish_soon, daemon=True).start()
+    code, done = service.explanation(eid, wait=5.0)
+    assert code == 200 and done["status"] == "ready"
+    service.wait_explanations()
+
+
+def test_keep_alive_socket_timeout_is_restored_after_slow_post():
+    limits = svc.RequestLimits(max_body_bytes=1024, read_timeout_s=0.4)
+    service = _svc(FakeAnalyzer(pending=False))
+    with live_server(service, limits) as (base, _):
+        port = int(base.rsplit(":", 1)[1])
+        body = json.dumps({"sms": "hello"}).encode("utf-8")
+        head = (
+            b"POST /analyze HTTP/1.1\r\n"
+            b"Host: 127.0.0.1\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Connection: keep-alive\r\n"
+            + f"Content-Length: {len(body)}\r\n\r\n".encode()
+        )
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+            # First request uses ~75% of read_timeout_s (leaves ~0.1s on the body deadline).
+            sock.sendall(head + body[:3])
+            time.sleep(0.30)
+            sock.sendall(body[3:])
+            resp1 = sock.recv(65536)
+            assert resp1.startswith(b"HTTP/1.1 200 ")
+
+            # Pause longer than the ~0.1s residual deadline, but well under read_timeout_s (0.4s).
+            time.sleep(0.20)
+            head2 = head.replace(b"Connection: keep-alive", b"Connection: close")
+            sock.sendall(head2 + body)
+            resp2 = sock.recv(65536)
+            assert resp2.startswith(b"HTTP/1.1 200 ")

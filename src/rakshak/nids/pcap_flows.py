@@ -165,6 +165,8 @@ def _parse_packet(
     if ip[0] >> 4 != 4:
         return None
     ihl = (ip[0] & 0x0F) * 4
+    if ihl < 20 or len(ip) < ihl:
+        return None
     proto = ip[9]
     src = socket.inet_ntoa(ip[12:16])
     dst = socket.inet_ntoa(ip[16:20])

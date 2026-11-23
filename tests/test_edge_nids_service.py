@@ -270,6 +270,18 @@ def test_missing_network_model_is_503(tmp_path):
 def test_flow_body_errors(tmp_path):
     with pytest.raises(ValueError):
         flows_from_body(b'{"flows": [{"src_ip": 5}]}', "auto", tmp_path)
+    with pytest.raises(ValueError, match="bidirectional_first_seen_ms"):
+        flows_from_body(
+            b'{"flows": [{"src_ip": "10.0.0.1", "bidirectional_first_seen_ms": "bad"}]}',
+            "auto",
+            tmp_path,
+        )
+    with pytest.raises(ValueError, match="dst_port"):
+        flows_from_body(
+            b'{"flows": [{"src_ip": "10.0.0.1", "dst_port": "http"}]}',
+            "auto",
+            tmp_path,
+        )
     with pytest.raises(ValueError):
         flows_from_body(b"\xa1\xb2\xc3\xd4" + b"\x00" * 20, "auto", tmp_path)  # bad link type
     with pytest.raises(ValueError):

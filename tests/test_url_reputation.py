@@ -39,6 +39,14 @@ def test_ip_and_userinfo():
     assert _guard().check("http://192.168.1.10/pay").reason == "ip"
     assert _guard().check("http://amazon.in@evil.example/x").reason in {"userinfo", "not_popular"}
     assert not _guard().check("http://amazon.in@evil.example/x").established
+    assert _guard().check("http://google.com@evil.example?x=1").reason == "userinfo"
+
+
+def test_at_sign_in_query_or_fragment_without_path_slash_is_not_userinfo():
+    r_query = _guard().check("https://google.com?email=user@example.com")
+    assert r_query.established and r_query.reason == "popular"
+    r_frag = _guard().check("https://sbi.co.in#section@1")
+    assert r_frag.established and r_frag.reason == "popular"
 
 
 def test_unknown_domain():

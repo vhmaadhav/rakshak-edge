@@ -78,6 +78,7 @@ def llm_main(cfg: dict[str, Any], jobs: Any, store: Any, ready: Any) -> None:
     try:
         _set_placement(int(cfg["llm_nice"]), cfg.get("llm_cpus"))
         svc = _engine_modules()
+        from edge_decision import DEFAULT_VERIFY_THRESHOLD
         from edge_pipeline import EdgeAnalyzer
         from explainer_cache import CachedGenerator
         from rakshak_edge_service import (
@@ -100,13 +101,17 @@ def llm_main(cfg: dict[str, Any], jobs: Any, store: Any, ready: Any) -> None:
         )
         cache = int(cfg["explainer_cache"])
         explainer = CachedGenerator(llm, cache) if cache > 0 else llm
-        url_scorer, url_threshold, url_info = svc.load_url_model(root)
+        url_scorer, url_threshold, url_info = svc.load_url_model(
+            root, hybrid=bool(cfg.get("url_hybrid", False))
+        )
         info[URL_MODEL_ID] = url_info
         analyzer = EdgeAnalyzer(
             _DetectorAdapter(detector_runner, batch_onnx=bool(cfg["batch_onnx"])),
             explainer,
             threshold,
             detector_only_mode=cfg["detector_only_mode"],
+            verify_threshold=cfg.get("verify_threshold", DEFAULT_VERIFY_THRESHOLD),
+            tx_verify_threshold=cfg.get("tx_verify_threshold"),
             hinglish_mode=cfg["hinglish_mode"],
             url_scorer=url_scorer,
             url_threshold=url_threshold,
@@ -338,6 +343,7 @@ def build_verdict_service(cfg: dict[str, Any], store: Any, jobs: Any, counters: 
     the NIDS model, the explanation table, and the Service with the shared store and job queue.
     Returns (service, the servers' index.html bytes, the detector info dict)."""
     svc = _engine_modules()
+    from edge_decision import DEFAULT_VERIFY_THRESHOLD
     from edge_pipeline import EdgeAnalyzer, check_url
     from explanation_table import ExplanationTable
     from nids_pipeline import NidsAnalyzer
@@ -366,7 +372,9 @@ def build_verdict_service(cfg: dict[str, Any], store: Any, jobs: Any, counters: 
     detector.load(root / ONNX_PATH, int(cfg["onnx_threads"]), {})
     info[DETECTOR_MODEL_ID]["load_s"] = round(time.perf_counter() - t0, 3)
     threshold = float(sms_model.threshold)
-    url_scorer, url_threshold, url_info = svc.load_url_model(root)
+    url_scorer, url_threshold, url_info = svc.load_url_model(
+        root, hybrid=bool(cfg.get("url_hybrid", False))
+    )
     info[URL_MODEL_ID] = url_info
     table_path = cfg.get("explanation_table")
     table = ExplanationTable.load(table_path) if table_path else None
@@ -375,6 +383,8 @@ def build_verdict_service(cfg: dict[str, Any], store: Any, jobs: Any, counters: 
         None,  # the LLM lives in the explainer process; the verdict path never calls it
         threshold,
         detector_only_mode=cfg["detector_only_mode"],
+        verify_threshold=cfg.get("verify_threshold", DEFAULT_VERIFY_THRESHOLD),
+        tx_verify_threshold=cfg.get("tx_verify_threshold"),
         hinglish_mode=cfg["hinglish_mode"],
         url_scorer=url_scorer,
         url_threshold=url_threshold,
@@ -389,6 +399,7 @@ def build_verdict_service(cfg: dict[str, Any], store: Any, jobs: Any, counters: 
         scratch=root / "run" / "nids_uploads",
         flow_source=cfg["nids_flow_source"],
         model_mode=cfg["net_model_mode"],
+        dns_min_distinct=int(cfg.get("nids_dns_min_distinct") or 1),
     )
     log_path = cfg.get("log")
     service = Service(
@@ -398,11 +409,14 @@ def build_verdict_service(cfg: dict[str, Any], store: Any, jobs: Any, counters: 
         log_path=Path(log_path) if log_path else None,
         models=info,
         detector_only_mode=cfg["detector_only_mode"],
+        verify_threshold=cfg.get("verify_threshold", DEFAULT_VERIFY_THRESHOLD),
         hinglish_mode=cfg["hinglish_mode"],
         nids=nids,
         explainer_cache=None,
         llm_runner=cfg["llm_runner"],
-        url_check=lambda text: check_url(text, url_scorer, url_threshold),
+        url_check=lambda text: check_url(
+            text, url_scorer, url_threshold, high_threshold=cfg.get("url_high_threshold")
+        ),
         response_mode="verdict_first",
         response_mode_source=cfg.get("response_mode_source", "flag"),
         jobs=jobs,
@@ -505,6 +519,11 @@ def cfg_from_args(args, root: Path) -> dict[str, Any]:
         "explainer_cache": args.explainer_cache,
         "batch_onnx": args.batch_onnx,
         "detector_only_mode": args.detector_only_mode,
+        "verify_threshold": args.verify_threshold,
+        "tx_verify_threshold": getattr(args, "tx_verify_threshold", None),
+        "url_hybrid": bool(getattr(args, "url_hybrid", False)),
+        "url_high_threshold": args.url_high_threshold,
+        "nids_dns_min_distinct": getattr(args, "nids_dns_min_distinct", 1),
         "hinglish_mode": args.hinglish_mode,
         "explainer_candidate": args.explainer_candidate,
         "explainer_cap": args.explainer_cap,

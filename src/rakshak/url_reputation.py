@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import ipaddress
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -104,7 +105,8 @@ class ReputationGuard:
             return Reputation(False, "no_host", "")
         if _is_ip(host):
             return Reputation(False, "ip", "")
-        if "@" in url.split("//", 1)[-1].split("/", 1)[0]:
+        authority = re.split(r"[/?#]", url.split("//", 1)[-1], maxsplit=1)[0]
+        if "@" in authority:
             return Reputation(False, "userinfo", private_registrable(host))
         reg = private_registrable(host)
         if reg in SHORTENERS or _host_matches(host, SHORTENERS):
