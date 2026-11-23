@@ -1,0 +1,94 @@
+\section{Reproducibility}\label{sec:repro}
+
+The report describes the repository at commit \texttt{6d9b60b}. Commits of branch \texttt{docs/}\allowbreak\texttt{submission-}\allowbreak\texttt{audit} sit on top of it (branch head \texttt{5add84c} when this text was drafted). Paths are relative to the repository root.
+
+\subsection{Pinned artifacts}
+
+\cref{tab:artifacts} lists the artifacts pinned in \repo{deploy/pi/bench/registry.toml}. The files are not stored in git. They are copied from \repo{kaggle/out/} on the laptop, and the Pi copies are checked against these pins.
+
+\begin{table}[t]
+\centering
+\caption{Pinned artifacts. SHA-256 values are shown in full. ``Not pinned'' means the registry gives no size. Sizes marked (S) are not pinned in the registry and are taken from \repo{docs/SYSTEM_V1.md}, section 1a. The disabled QLoRA model and the dataset entries under \repo{data/processed/} are omitted.}\label{tab:artifacts}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{2.9cm}>{\raggedright\arraybackslash}p{4.3cm}Y>{\raggedleft\arraybackslash}p{1.9cm}}
+\toprule
+Artifact & Path (bench root) & SHA-256 & Bytes \\
+\midrule
+\repo{sms_}\allowbreak{}\repo{student} & \repo{models/}\allowbreak{}\repo{sms_}\allowbreak{}\repo{student/}\allowbreak{}\repo{best_}\allowbreak{}\repo{student.}\allowbreak{}\repo{onnx} & \repo{5341e14ca02a523b}\allowbreak{}\repo{d746a71dd6790343}\allowbreak{}\repo{9e9e6c6f6fc3193f}\allowbreak{}\repo{a1c6f786953f2466} & \num{388127}\,(S) \\
+\addlinespace[1pt]
+\repo{sms_}\allowbreak{}\repo{student_}\allowbreak{}\repo{kd} & \repo{models/}\allowbreak{}\repo{sms_}\allowbreak{}\repo{student_}\allowbreak{}\repo{kd/}\allowbreak{}\repo{best_}\allowbreak{}\repo{student.}\allowbreak{}\repo{onnx} & \repo{684e5feedc584512}\allowbreak{}\repo{bc7226f4a4bfc594}\allowbreak{}\repo{13a007e1e24b35e9}\allowbreak{}\repo{d7728ed26bd58fcd} & not pinned \\
+\addlinespace[1pt]
+\repo{url_}\allowbreak{}\repo{student} & \repo{models/}\allowbreak{}\repo{url_}\allowbreak{}\repo{student/}\allowbreak{}\repo{best_}\allowbreak{}\repo{url_}\allowbreak{}\repo{student.}\allowbreak{}\repo{onnx} & \repo{1bbd2c57cb541a7c}\allowbreak{}\repo{bc287887ef51976d}\allowbreak{}\repo{54240a353655827a}\allowbreak{}\repo{511c63ec56213fc7} & \num{2741232}\,(S) \\
+\addlinespace[1pt]
+\repo{url_}\allowbreak{}\repo{student_}\allowbreak{}\repo{scaler} & \repo{models/}\allowbreak{}\repo{url_}\allowbreak{}\repo{student/}\allowbreak{}\repo{url_}\allowbreak{}\repo{side_}\allowbreak{}\repo{scaler.}\allowbreak{}\repo{json} & \repo{c6b3fc968b03339a}\allowbreak{}\repo{33052fe814a9bb85}\allowbreak{}\repo{1d3035cb302b0645}\allowbreak{}\repo{8955c2a5e5b6501e} & \num{2083}\,(S) \\
+\addlinespace[1pt]
+\repo{nids_}\allowbreak{}\repo{bot_}\allowbreak{}\repo{iot_}\allowbreak{}\repo{fp32} & \repo{models/}\allowbreak{}\repo{nids/}\allowbreak{}\repo{student_}\allowbreak{}\repo{bot_}\allowbreak{}\repo{iot_}\allowbreak{}\repo{fp32.}\allowbreak{}\repo{onnx} & \repo{0d5eea7ae96d6169}\allowbreak{}\repo{c4da719e3dfa50c4}\allowbreak{}\repo{a0b09f1f99549a11}\allowbreak{}\repo{46fb4755934088c8} & not pinned \\
+\addlinespace[1pt]
+\repo{nids_}\allowbreak{}\repo{bot_}\allowbreak{}\repo{iot_}\allowbreak{}\repo{int8} & \repo{models/}\allowbreak{}\repo{nids/}\allowbreak{}\repo{student_}\allowbreak{}\repo{bot_}\allowbreak{}\repo{iot_}\allowbreak{}\repo{int8.}\allowbreak{}\repo{onnx} & \repo{68aea284673af03c}\allowbreak{}\repo{00770c28bd7c028b}\allowbreak{}\repo{97107bb5f095fa57}\allowbreak{}\repo{6c2df574f2281a82} & not pinned \\
+\addlinespace[1pt]
+\repo{nids_}\allowbreak{}\repo{cse_}\allowbreak{}\repo{cic_}\allowbreak{}\repo{ids2018_}\allowbreak{}\repo{fp32} & \repo{models/}\allowbreak{}\repo{nids/}\allowbreak{}\repo{student_}\allowbreak{}\repo{cse_}\allowbreak{}\repo{cic_}\allowbreak{}\repo{ids2018_}\allowbreak{}\repo{fp32.}\allowbreak{}\repo{onnx} & \repo{0cb680ad904e2c37}\allowbreak{}\repo{855dc58cf110e916}\allowbreak{}\repo{a4169a35cf1fefaa}\allowbreak{}\repo{b70cbef2dc5b995c} & not pinned \\
+\addlinespace[1pt]
+\repo{nids_}\allowbreak{}\repo{cse_}\allowbreak{}\repo{cic_}\allowbreak{}\repo{ids2018_}\allowbreak{}\repo{int8} & \repo{models/}\allowbreak{}\repo{nids/}\allowbreak{}\repo{student_}\allowbreak{}\repo{cse_}\allowbreak{}\repo{cic_}\allowbreak{}\repo{ids2018_}\allowbreak{}\repo{int8.}\allowbreak{}\repo{onnx} & \repo{d3dfdcb16dcaa278}\allowbreak{}\repo{0cd39c56d4c156c1}\allowbreak{}\repo{93dc2c67caeb4e44}\allowbreak{}\repo{3fc0447e2f9b8d14} & \num{6729}\,(S) \\
+\addlinespace[1pt]
+\repo{nids_}\allowbreak{}\repo{ton_}\allowbreak{}\repo{iot_}\allowbreak{}\repo{fp32} & \repo{models/}\allowbreak{}\repo{nids/}\allowbreak{}\repo{student_}\allowbreak{}\repo{ton_}\allowbreak{}\repo{iot_}\allowbreak{}\repo{fp32.}\allowbreak{}\repo{onnx} & \repo{483dacd878eed448}\allowbreak{}\repo{945dbd8afce00b75}\allowbreak{}\repo{f25bf3c1507eee47}\allowbreak{}\repo{1563951e0a007603} & not pinned \\
+\addlinespace[1pt]
+\repo{nids_}\allowbreak{}\repo{ton_}\allowbreak{}\repo{iot_}\allowbreak{}\repo{int8} & \repo{models/}\allowbreak{}\repo{nids/}\allowbreak{}\repo{student_}\allowbreak{}\repo{ton_}\allowbreak{}\repo{iot_}\allowbreak{}\repo{int8.}\allowbreak{}\repo{onnx} & \repo{5319071de718ae25}\allowbreak{}\repo{35ac4f7b9f9db455}\allowbreak{}\repo{a428cfa69d249ef4}\allowbreak{}\repo{c360233cf022a9ba} & not pinned \\
+\addlinespace[1pt]
+\repo{nids_}\allowbreak{}\repo{unsw_}\allowbreak{}\repo{nb15_}\allowbreak{}\repo{fp32} & \repo{models/}\allowbreak{}\repo{nids/}\allowbreak{}\repo{student_}\allowbreak{}\repo{unsw_}\allowbreak{}\repo{nb15_}\allowbreak{}\repo{fp32.}\allowbreak{}\repo{onnx} & \repo{45abbff54b83c8db}\allowbreak{}\repo{7ac64fa1a0d201d1}\allowbreak{}\repo{7f2c263254d34d1e}\allowbreak{}\repo{d7c463c8886bf772} & not pinned \\
+\addlinespace[1pt]
+\repo{nids_}\allowbreak{}\repo{unsw_}\allowbreak{}\repo{nb15_}\allowbreak{}\repo{int8} & \repo{models/}\allowbreak{}\repo{nids/}\allowbreak{}\repo{student_}\allowbreak{}\repo{unsw_}\allowbreak{}\repo{nb15_}\allowbreak{}\repo{int8.}\allowbreak{}\repo{onnx} & \repo{ca365c6d49b63e84}\allowbreak{}\repo{27958375905b7110}\allowbreak{}\repo{d1b629b306eb2ef1}\allowbreak{}\repo{fa4aeac5ad31b6ed} & not pinned \\
+\addlinespace[1pt]
+\repo{llama32_}\allowbreak{}\repo{1b_}\allowbreak{}\repo{spinquant} & \repo{models/}\allowbreak{}\repo{llama32_}\allowbreak{}\repo{1b_}\allowbreak{}\repo{spinquant/}\allowbreak{}\repo{Llama-3.}\allowbreak{}\repo{2-1B-Instruct-SpinQuant_}\allowbreak{}\repo{INT4_}\allowbreak{}\repo{EO8.}\allowbreak{}\repo{pte} & \repo{8715cdba9e91f6be}\allowbreak{}\repo{de00cc5f2d6b1239}\allowbreak{}\repo{7b95225da5630c49}\allowbreak{}\repo{72a8da03001cda3b} & \num{1135951488} \\
+\addlinespace[1pt]
+\repo{llama32_}\allowbreak{}\repo{1b_}\allowbreak{}\repo{spinquant_}\allowbreak{}\repo{tokenizer} & \repo{models/}\allowbreak{}\repo{llama32_}\allowbreak{}\repo{1b_}\allowbreak{}\repo{spinquant/}\allowbreak{}\repo{tokenizer.}\allowbreak{}\repo{model} & \repo{82e9d31979e92ab9}\allowbreak{}\repo{29cd544440f129d9}\allowbreak{}\repo{ecd797b69e327f80}\allowbreak{}\repo{f17e1c50d5551b55} & \num{2183982} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Tests, release manifest and Android build}
+
+The project requires Python 3.11 or later. Run these from the repository root.
+
+\begin{verbatim}
+uv sync --locked
+uv run pytest
+uv run ruff check src tests
+\end{verbatim}
+
+On a fresh clone the test run gave 2,255 passed, 43 skipped and 4 failed. The 4 failures need Linux and also fail on \texttt{main}. The ruff check passes. \repo{scripts/offline_check.sh} needs \texttt{unshare} and so runs on Linux only.
+
+The release manifest is written by the following commands, again from the repository root. The second line adds the Pi files kept outside the repository. The third adds the debug APK.
+
+\begin{verbatim}
+python3 scripts/release_manifest.py --out-dir release
+python3 scripts/release_manifest.py --bench-root ~/rakshak-bench \
+    --out-dir release
+python3 scripts/release_manifest.py --artifact \
+    android/app/build/outputs/apk/debug/app-debug.apk@android:app \
+    --out-dir release
+python3 scripts/release_manifest.py --verify release/release_manifest.json
+sha256sum -c release/SHA256SUMS
+\end{verbatim}
+
+\repo{--verify} exits with status 0 when every file matches, 1 when a file is missing or changed, and 2 on a usage or format error. A clone without \repo{kaggle/out/} or the Llama files reports those entries as missing, and \repo{--allow-missing} lets the run finish.
+
+For the Android build, the student file is copied into the assets and its hash is checked first.
+
+\begin{verbatim}
+cd android
+cp <path to best_student.onnx> app/src/main/assets/sms_student.onnx
+sha256sum app/src/main/assets/sms_student.onnx
+# expected: 5341e14ca02a523bd746a71dd67903439e9e6c6f6fc3193fa1c6f786953f2466
+./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon
+\end{verbatim}
+
+\subsection{Pi bench and data}
+
+The bench tree is synchronised from the laptop with \repo{deploy/pi/bench/sync_bench.sh}. The service is started with \repo{deploy/pi/service/start_service.sh}. The validation suite takes the bench root as an argument, as in the following line.
+
+\begin{verbatim}
+python3 scripts/eval_validation_suite.py --root ~/rakshak-bench --suite all
+\end{verbatim}
+
+The synthetic holdout is generated by \repo{deploy/pi/service/make_holdout_pcaps.py}. It is scored by \repo{deploy/pi/service/run_holdout_nids.py} (\repo{docs/NIDS_EDGE.md}). The data tables under \repo{data/processed/} are git-ignored and are built by \texttt{python -m rakshak.datasets.build} (DATACARD).

@@ -1,0 +1,15 @@
+\section{Phase 2 plan}\label{sec:future}
+
+Each item answers a limitation in \cref{sec:limitations}. Items 1 and 2 need data the team does not hold yet. Each field run should have its gate written down before the run starts.
+
+\begin{enumerate}
+\item \textbf{Real network captures.} Run \repo{scripts/eval_validation_suite.py} with \repo{--suite field --field-pcaps} on consented LAN and router captures. This measures benign-session FPR on live traffic, the number the rules still lack (VALIDATION 4b).
+\item \textbf{Consented Indian SMS inbox.} Run \repo{--suite field --field-sms} on consented inbox exports. The gates in the repository are recall of at least 85\%, FPR of at most 3\%, and at least 200 rows. The set should include regional scripts and drift over time (VALIDATION 4b).
+\item \textbf{Native-speaker review.} Review the Hinglish remediation and advisory text, and label a Hinglish evaluation set with a native speaker.
+\item \textbf{Explanation on the phone.} Run the Llama \texttt{.pte} on the OnePlus 13R and record latency, verifier pass rate and fallback rate. No on-phone explanation figure will be quoted before then.
+\item \textbf{Explainer robustness on the Pi.} Run an injection test that places payloads inside matched spans, which the 150-pair test on the INT4 \texttt{.pte} did not cover, and build a raw-only ONNX to measure canonicaliser-off robustness. Both rows are missing today.
+\item \textbf{Thermal and power.} Repeat the 2.4 GHz runs with an active cooler and a 27 W supply. Run long jobs through \repo{deploy/pi/thermal_run.py} with its pause (75 \textdegree C), resume (65 \textdegree C) and kill (80 \textdegree C) limits, and test the 503 refusal live.
+\item \textbf{Model release.} Publish the SMS, URL and NIDS ONNX files and the \texttt{.pte} with their pinned hashes. Pin the QLoRA model after a verified download, and reconcile the two campaign F1 values, 0.9813 and 0.9749 (BASELINE, note 1).
+\item \textbf{Network model.} Add the student leave-one-dataset-out row. Decide whether any learned component may ever raise a network alert, since none does today.
+\item \textbf{URL quiet-mode decision.} Any change to URL evidence in quiet mode needs a new pre-registration, judged on GroundLM and on an independent legitimate set with links (URL, ``What a different choice would take'').
+\end{enumerate}

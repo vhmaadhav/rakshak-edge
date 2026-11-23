@@ -8,6 +8,13 @@ disagreed with the code, the code won and the document was corrected in the same
 
 Source: <https://arm-education.github.io/Arm-Developer-Labs/Bharat_AI_SoC_2026_27.html>, read 2026-11-23.
 
+Re-checked in a real browser on 23 Nov 2026: the 2026-27 page, the 1st-edition page and the blog. The edition is
+named "Bharat AI-SoC Challenge 2026–27" (the "Student Challenge" was the 1st edition). The pages give the Phase 1
+date but no time, no time zone, no submission form link, no repo-visibility rule, no licence rule, no report,
+video or app format rules and no scoring rubric. The only IP rules: entries must be original, "solely owned by
+the entrant(s)", and must not violate others' IP. <https://www.armbharatchallenge.com> fails with a certificate
+error (ERR_CERT_COMMON_NAME_INVALID) and was not read. No organiser email was found in the team's inbox.
+
 | Item | Value | Status |
 |---|---|---|
 | Phase 1 (Open Qualifying) deadline | **23 November 2026** | Confirmed on the page. **No time of day and no time zone are given.** No extension found on any organiser source |
@@ -40,10 +47,10 @@ already have it), and whether a private repo with judge access is acceptable.
 
 | Deliverable | State on 2026-11-23 | Blocking? |
 |---|---|---|
-| Source code (GitHub) | On GitHub, **repository is private**, no licence file | **Yes**, until visibility or judge access is settled |
-| Application | Pi service and Android app exist in source. **No APK or GitHub release exists**; the `release` build type has no signing config. This Mac has no Android SDK or JDK 17, so it was not built here | **Yes**: attach an installable APK (e.g. `app-benchmark.apk`, debug-signed) or say how judges get the app |
-| Demonstration video | Not in the repo, no link anywhere (`docs/START_HERE.md` placeholder) | **Yes** |
-| Technical report | Not in the repo, no link anywhere. `docs/SYSTEM_V1.md` (frozen 2026-11-12) is its stated source | **Yes** |
+| Source code (GitHub) | On GitHub, **repository is private**. Only the owner (vhmaadhav) can change visibility; Sachin's account has push but not admin rights. No LICENSE file; the rules do not require one, the team decides | **Yes**, until visibility or judge access is settled |
+| Application | Debug APK builds on this Mac (Gradle 9.8.0, JDK 17, platform android-37.2, build-tools 37.0.0). All 53 JVM unit tests pass. Package `org.rakshak.edge`, versionName 0.1.0, minSdk 28, targetSdk 36, arm64-v8a; ExecuTorch and ONNX Runtime native libraries included; the only permission is the app's own DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION. **Not released**: `sms_student.onnx` is not on this Mac, and without it the app fails every check. Draft release `v1.0.0-phase1` exists on vhmaadhav/rakshak-edge (draft, so only collaborators can see it) and will hold the APK, the report PDF and SHA256SUMS. The four model files were requested from Maadhav over agent-wire (thread `phase1-release`) | **Yes**: attach an installable APK with the model, or say how judges get the app |
+| Demonstration video | Not recorded. GitHub issue vhmaadhav/rakshak-edge#29 asks @vhmaadhav to record it, with a 10-part shot list. Hosting and linking will follow once it exists | **Yes** |
+| Technical report | Written in LaTeX in `report/` (`main.tex`, `sections/`), about 20 pages. Two fact-check passes were applied against the repo sources. The PDF will be attached to the GitHub release | **Yes**, until the PDF is on the release |
 
 ## 4. What a judge can run from a fresh clone
 
@@ -82,11 +89,13 @@ robustness recall 0.9803; URL OOD figures. Say so if a judge asks, or commit the
 ## 6. Before submitting
 
 - [ ] Confirm the cut-off time, time zone and form link with the organisers.
-- [ ] Decide repo visibility (public, or private with judge access) and add a `LICENSE` (README says one is needed before a public release).
-- [ ] Publish the three ONNX models (GitHub release assets, with the sha256 above) so the service and the app run from a clone.
-- [ ] Build and attach an installable APK to the same release.
-- [ ] Record the demo video and link it in `docs/START_HERE.md` "Release placeholders".
-- [ ] Write the technical report (from `docs/SYSTEM_V1.md` plus `docs/VALIDATION_REPORT.md` and `docs/benchmarks.md`) and link it.
+- [ ] Decide repo visibility (public, or private with judge access). Only the owner (vhmaadhav) can change it.
+- [ ] Choose a licence, or none. The rules do not require one; the team decides. No `LICENSE` file is added yet.
+- [ ] Maadhav uploads the four model files to release `v1.0.0-phase1`.
+- [ ] Rebuild the APK with `sms_student.onnx` and attach it to release `v1.0.0-phase1`.
+- [ ] Publish the release (it is a draft).
+- [ ] Record the demo video (#29) and link it in `docs/START_HERE.md` "Release placeholders".
+- [x] Write the technical report in `report/` (LaTeX, about 20 pages). PDF to be attached to the release.
 - [ ] Fill the team roles and affiliations in `README.md` "Team" (the page requires a Team Leader, and a Faculty Mentor for student teams).
 - [ ] Fill the frozen commit SHA and the release manifest hash in `docs/START_HERE.md`.
 - [ ] Close or update issue #1 (the 2026-11-01 handoff), which is out of date.

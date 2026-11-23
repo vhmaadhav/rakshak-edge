@@ -1,0 +1,94 @@
+\section{System overview}
+\label{sec:system}
+
+Rakshak-Edge has two targets. The Raspberry Pi~5 runs a resident HTTP service on loopback with endpoints for messages (\texttt{/analyze}), URLs (\texttt{/analyze\_url}), network flows (\texttt{/analyze\_flows}), explanations (\texttt{/explanation/<id>}) and health (\texttt{/health}). The Android app takes text by paste or from the share sheet and runs the quiet-mode decision on the phone, tested against the Python reference.
+
+\begin{figure}[t]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners=2pt, fill=gray!8, align=center, font=\footnotesize,
+              minimum width=2.4cm, minimum height=0.9cm, inner sep=3pt},
+  expert/.style={box, minimum width=3.6cm, minimum height=1.0cm, fill=blue!6},
+  dec/.style={box, minimum width=3.7cm, minimum height=1.6cm, fill=orange!12},
+  exp/.style={box, minimum width=3.6cm, fill=green!8},
+  arrow/.style={-{Stealth[length=2mm]}, thick},
+  dashedarrow/.style={-{Stealth[length=2mm]}, thick, dashed}
+]
+  % Input and canonicaliser
+  \node[box, minimum width=2.8cm] (inp) at (1.6,0) {Input\\SMS, shared text,\\link, network flows};
+  \node[box] (canon) at (5.0,0) {Security\\canonicaliser};
+  \draw[arrow] (inp) -- (canon);
+
+  % Three experts
+  \node[expert] (sms) at (9.0,2.0) {SMS student\\char-CNN (ONNX)};
+  \node[expert] (url) at (9.0,0.0) {URL student\\char-CNN (ONNX)\\+ optional domain-intel};
+  \node[expert] (rules) at (9.0,-2.0) {Deterministic rules\\+ evidence extractor};
+  \draw[arrow] (canon.east) -- (6.7,0);
+  \draw (6.7,2.0) -- (6.7,-2.0);
+  \draw[arrow] (6.7,2.0) -- (sms.west);
+  \draw[arrow] (6.7,0) -- (url.west);
+  \draw[arrow] (6.7,-2.0) -- (rules.west);
+
+  % Decision
+  \node[dec] (decision) at (13.6,0) {Decision with\\calibrated abstention\\SCAM / UNCERTAIN / SAFE\\modes: quiet, balanced, verify};
+  \draw (sms.east) -- (11.1,2.0);
+  \draw (url.east) -- (11.1,0);
+  \draw (rules.east) -- (11.1,-2.0);
+  \draw (11.1,2.0) -- (11.1,-2.0);
+  \draw[arrow] (11.1,0) -- (decision.west);
+
+  % Network flows use the rules-first NIDS path, which feeds the decision
+  \node[box, dashed, minimum width=2.8cm] (nids) at (5.0,-2.2) {NIDS rules-first path\\(network flows, Pi only)};
+  \draw[dashedarrow] (nids.south) -- (5.0,-2.9) -- (12.6,-2.9) -- (12.6,-0.8);
+
+  % Evidence package, explainer and verifier
+  \node[box, minimum width=3.4cm] (pkg) at (13.6,-3.8) {Evidence package\\risk, evidence IDs,\\allowed actions};
+  \draw[arrow] (decision.south) -- (pkg.north);
+  \node[exp] (llama) at (9.0,-3.8) {Llama 3.2 1B explainer\\ExecuTorch, INT4};
+  \draw[arrow] (pkg.west) -- (llama.east);
+  \node[box] (verif) at (5.0,-3.8) {Verifier\\(per sentence)};
+  \draw[arrow] (llama.west) -- (verif.east);
+  \node[box, minimum width=2.8cm] (outp) at (1.6,-3.8) {Verified sentences,\\else template};
+  \draw[arrow] (verif.west) -- (outp.east);
+
+  % Fixed remediation text and the response
+  \node[box, minimum width=3.4cm] (rem) at (13.6,-6.4) {Remediation\\(fixed text)};
+  \draw[arrow] (pkg.south) -- (rem.north);
+  \node[box, minimum width=6.2cm] (resp) at (8.1,-6.4) {Response: verdict, action, remediation,\\verified explanation or template};
+  \draw[arrow] (rem.west) -- (resp.east);
+  \draw[arrow] (outp.south) |- (resp.west);
+\end{tikzpicture}%
+}
+\caption{Rakshak-Edge pipeline. Solid arrows are the path for SMS, shared text and links. The dashed arrow is the network-flow path, which uses rules first and is described in \cref{sec:network}. The explainer receives only the evidence package, and each of its sentences passes the verifier before it reaches the response.}
+\label{fig:arch}
+\end{figure}
+
+The canonicaliser normalises the text (\cref{sec:detection}). Three experts then read it: the SMS student scores the message, the URL student scores each link with an optional offline domain-intelligence scorer, and the rule engine finds and extracts the evidence. The decision stage combines them into one of three states and applies the selected mode. Its output is an evidence package, the only input the explanation layer may use (\cref{sec:explanation}).
+
+The user sees one of three verdicts. On Android, HIGH and MEDIUM risk are shown as SCAM, UNCERTAIN as VERIFY and LOW as SAFE. A LOW result means that no known pattern was found, not that the message is safe, and the app says so on the screen.
+
+\begin{table}[t]
+\centering
+\caption{What runs where. ``Wired'' means the code is present and compiles; it has not been run on the phone.}
+\label{tab:targets}
+\small
+\begin{tabularx}{\linewidth}{Y Y Y}
+\toprule
+Component & Raspberry Pi 5 & Android app \\
+\midrule
+SMS student (ONNX Runtime) & yes & yes \\
+URL student and domain-intelligence scorer & yes (\texttt{/analyze} in verify mode; \texttt{/analyze\_url} in every mode) & no \\
+Canonicaliser, rules and evidence extraction & yes & yes \\
+Decision (quiet, balanced, verify) & all three modes & quiet only \\
+Remediation text & yes & yes \\
+Llama 3.2 1B explainer (ExecuTorch) & yes & wired; not run on the phone \\
+Verifier and template fallback & yes & yes \\
+Network flows (rules-first NIDS path) & yes & no \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\Cref{tab:targets} lists what each target runs. Sources: \repo{docs/SYSTEM_V1.md} section 1b and \repo{docs/ANDROID_APP.md} section 1. The Pi~5 has 4 GB of memory and four Cortex-A76 cores. The benchmarks in \repo{docs/benchmarks.md} ran it at \SI{2.4}{\giga\hertz} with the thermal governor active; during sustained soak runs the governor capped the clock at 1.5\,GHz (\repo{docs/BASELINE_PI.md}). The service refuses requests with HTTP 503 when the SoC reaches \SI{75.0}{\celsius} (\repo{deploy/pi/service/rakshak_edge_service.py}). The Android build targets \texttt{arm64-v8a} with minSdk 28 and was benchmarked on a OnePlus 13R running Android 16. All inference is on the CPU. Neither target uses a GPU or an NPU.
+
+\paragraph{Offline by construction.} The Pi service binds to loopback only. \repo{deploy/pi/service/start_service.sh} runs it inside a network namespace that has only a loopback interface and no route. The Android manifest removes \texttt{INTERNET} and \texttt{ACCESS\_NETWORK\_STATE} from the merged app. These are checks of the code and the build, and they have limits. The namespace check covers only the code paths the tests exercise, and native libraries can open sockets outside Python. The scope is stated in \repo{docs/OFFLINE_ASSURANCE.md}. Build, provisioning and operating steps are in \cref{sec:deployment}.

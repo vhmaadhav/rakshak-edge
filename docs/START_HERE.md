@@ -113,10 +113,10 @@ A missing file makes the write step exit 1 (use `--allow-missing` to keep going)
 
 The Phase 1 checklist, with the verified deadline and the status of each deliverable, is [SUBMISSION_CHECKLIST.md](SUBMISSION_CHECKLIST.md).
 
-- TODO(release): release APK link
-- TODO(release): demo video link
-- TODO(release): technical report link
-- TODO(release): frozen commit SHAs (repository, Pi code bundle, Android build) and the release manifest hash
+- APK: release v1.0.0-phase1 (draft; APK pending the SMS model file)
+- Demo video: pending, see issue #29
+- Technical report: `report/main.tex` (LaTeX source in this repo; PDF on release v1.0.0-phase1)
+- TODO(release): frozen commit SHAs (repository, Pi code bundle, Android build) and the release manifest hash. Filled when the release is published.
 
 ## Known limits
 

@@ -1,0 +1,46 @@
+\section{On-device deployment}\label{sec:deployment}
+
+Two targets run the same SMS detector and rules. A Raspberry Pi 5 (4 GB, four Cortex-A76 cores) serves an HTTP API. An Android phone runs the app locally, and the app declares no network permission.
+
+\subsection{Raspberry Pi 5 service}
+
+A dagger (\prose) marks a number measured on the Raspberry Pi 5 or the OnePlus 13R whose raw output is not committed to the repository. Such a number is quoted from the document named beside it and cannot be re-derived from git.
+
+The service is one resident process, \repo{deploy/pi/service/rakshak_edge_service.py}. It loads the models once, uses the standard library HTTP server, and binds only to loopback. Other bind addresses are refused.
+
+\begin{table}[t]
+\centering
+\caption{Routes of the Pi service. Source: \repo{rakshak_edge_service.py} and \repo{docs/PERF_FAST_INFERENCE.md}, operational limits.}\label{tab:routes}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{4.2cm}Y}
+\toprule
+Route & Purpose and limits \\
+\midrule
+\repo{GET /}, \repo{GET /health} & Minimal page with a network upload; model, memory and counter status \\
+\repo{POST /analyze} & One SMS: decision, evidence, advisory, remediation \\
+\repo{POST /analyze_batch} & 1 to 1,024 messages of up to 2,000 characters each \\
+\repo{POST /analyze_url} & One URL: score, domain rules, verdict, remediation, in every mode \\
+\repo{POST /analyze_flows} & A pcap body or a flow list: per-host alerts and remediation \\
+\repo{GET /explanation/<id>} & Explanation of a verdict-first request (pending, expired or fallback) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Isolation.} \repo{start_service.sh} runs the service under \repo{unshare -rn}, which leaves a network namespace with loopback only and no route. A relay outside the namespace maps \repo{127.0.0.1:8770} to a Unix socket. The offline proof on the device reported interfaces \texttt{lo} only, zero routes and a failed egress probe\prose.
+
+\paragraph{Response modes and workers.} The default mode is \texttt{sync}, where \repo{/analyze} waits for the explainer. In \texttt{verdict\_first} mode the verdict returns at once. The explanation then comes from a precomputed table of 68 keys (\repo{docs/PERF_FAST_INFERENCE.md}), where the verifier rejects 14 and the template is used instead, or from a background LLM process (Llama 3.2 1B~\cite{llama32}, a SpinQuant INT4 export~\cite{spinquant,etcommunity}, run by ExecuTorch~\cite{executorch}). \repo{--workers N} (default 1) starts N verdict processes that share the port through \texttt{SO\_REUSEPORT}, each with its own detector.
+
+\paragraph{Thermal behaviour.} The service reads the system-on-chip temperature before each request. At or above 75.0 \textdegree C it answers 503 \texttt{cooling}. The governor \repo{rakshak-thermald} caps the CPU clock: it lowers the cap by 100 MHz at a mean of 68 \textdegree C and sets it to 1,500 MHz at 73 \textdegree C. The 503 path was tested only with a mocked temperature (\repo{docs/EDGE_PIPELINE.md}, section 4).
+
+\subsection{Android app}
+
+The app is written in Kotlin with Jetpack Compose. A message arrives by paste or by the share sheet (\texttt{ACTION\_SEND}). The app canonicalises the text, applies the same 16 evidence types as the Python service (14 message rules plus the brand-domain and shortened-link checks), and runs the bundled student (388,127 bytes, copied in before the build, not in git) through ONNX Runtime Android 1.31.1~\cite{onnxruntime}. The screen shows HIGH or MEDIUM as SCAM, UNCERTAIN as VERIFY, and LOW as SAFE with the label ``no known pattern''. The optional Llama 3.2 1B explainer runs through ExecuTorch Android 1.5.1, from files pushed with \texttt{adb}. The manifest removes \texttt{INTERNET}, \texttt{ACCESS\_NETWORK\_STATE} and the ONNX Runtime telemetry provider. The build targets \texttt{minSdk} 28 and \texttt{arm64-v8a} only. The URL model and the network path are not ported.
+
+\subsection{Offline assurance}
+
+\repo{scripts/offline_check.sh} runs a pytest selection inside \repo{unshare -rn}, after a negative control that must fail to connect. It exits with status 3 where \texttt{unshare} is missing, as on macOS. A Python-level test (\repo{tests/test_no_egress.py}) is a regression guard, not a proof (\repo{docs/OFFLINE_ASSURANCE.md}). Neither check covers native libraries outside the selected paths, the Pi image, or the merged release manifest. On a phone, the benchmark build requested no \texttt{INTERNET}, network-state, SMS or storage permission\prose.
+
+\subsection{Artifact pinning}
+
+The registry \repo{deploy/pi/bench/registry.toml} lists the models and datasets the benchmark harness knows about. Each enabled model has a SHA-256 pin. A blank pin means ``not pinned'', and each disabled entry must give its reason. \repo{scripts/release_manifest.py} writes \repo{release_manifest.json} and \repo{SHA256SUMS}, with the git commit, branch, dirty flag, time, and the size and hash of each file. \cref{tab:artifacts} in \cref{sec:repro} lists the pins.

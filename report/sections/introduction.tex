@@ -1,0 +1,22 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Scams reach people through the channels they already trust. Text messages carry payment, delivery and bank notices, and some of them carry links to fake pages or ask the reader to share a one-time password. SMS phishing has been studied as a campaign-level problem, with shared tactics and infrastructure behind many messages~\cite{smishing}. Network intrusions reach a home or office as traffic that the people on the network cannot read. Most of the people who receive these messages and traffic are not security specialists, and the messages are written to look ordinary. A tool for them has to give a clear answer, explain it in plain language, and say when it does not know.
+
+Privacy and connectivity add two constraints. Messages often contain account, identity and payment details, and many users would not send them to a remote service. Connectivity is also not guaranteed where people use their phones for payments and for government services. A scam checker that needs a cloud call is therefore a weaker tool for the people who most need it, so the detector has to run on the device.
+
+Problem Statement 3 of the Bharat AI-SoC Challenge 2026--27 asks for on-device threat, phishing and scam detection on Arm hardware~\cite{ps3}. The brief requires inference on the device with no cloud dependency, and an advisory layer built on a Llama-family model run through ExecuTorch. This report documents the Phase~1 system that answers that brief.
+
+Rakshak-Edge answers the brief with three experts and one decision. The experts read the message, the links it contains and the rule evidence; the decision layer combines their outputs and abstains when they disagree or are weak. The explanation layer receives only an evidence package produced by the detector. A verifier checks every sentence the language model writes against that package, and a fixed template replaces any sentence that fails. The explainer cannot change the verdict. Network flows use a rules-first path, and the model on that path only adds evidence (\cref{sec:network}).
+
+The report separates what was measured from what was argued. Device measurements are marked with a dagger and are reported as the cited document gives them, because their raw logs are not committed to the repository. Known limits are listed in \cref{sec:limitations}.
+
+The contributions of this work are:
+\begin{itemize}
+  \item An on-device architecture that combines three experts, a verdict with calibrated abstention in three modes, and an evidence package that defines what the explanation may say. The Raspberry Pi~5 service and the Android app share the quiet-mode decision logic, and the Android code is tested against the Python reference on a fixed parity fixture.
+  \item A verifier-gated explanation path. A Llama~3.2 1B Instruct model run through ExecuTorch writes one sentence per evidence type. Each sentence is checked for grounding, for attribution of intent and for instructions, and a template replaces any sentence that fails.
+  \item An evaluation regime that keeps campaign-disjoint test sets, independent sets and in-sample sets apart, and that reports the pre-registered gates that failed as well as those that passed.
+  \item Device measurements on a Raspberry Pi~5 and on an Android phone, with the operating conditions stated, and an offline check that runs the service inside a network namespace that has only a loopback interface.
+\end{itemize}
+
+We do not claim novelty for the individual parts. Character-level neural classifiers, probability calibration and language-model explanations are established techniques. The contribution is their combination under the constraints above: on-device execution, no network route, and an explanation that can be checked.

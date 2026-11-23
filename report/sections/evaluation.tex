@@ -1,0 +1,229 @@
+\section{Evaluation}\label{sec:evaluation}
+
+Problem Statement 3 asks for on-device threat, phishing and scam detection~\cite{ps3}. Every number below is copied from a repository document, and each row gives its denominator. Source names such as BASELINE stand for files in \repo{docs/} (here \repo{docs/BASELINE.md}). GROUNDLM means \repo{docs/GROUNDLM_EDGE_FPR.md}. The others are VALIDATION, BENCH (\repo{benchmarks.md}), SYSTEM, URL, NIDS, XDATA, EDGE, PERF, PTE, BASELINE\allowbreak\_PI, ANDROID and DATACARD.
+
+\subsection{Data and splits}
+
+\begin{table}[t]
+\centering
+\caption{Evaluation sets. ``In-sample'' means that the rows informed a rule or threshold, or overlap the training data.}\label{tab:data}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{3.1cm}>{\raggedright\arraybackslash}p{4.9cm}Yp{2.2cm}}
+\toprule
+Set & Size (denominator) and use & Independence and known issues & Source \\
+\midrule
+Campaign-disjoint test & 22,145 (11,193 scam, 10,952 benign); SMS detector and system results & Campaign groups disjoint from training; source-style shortcuts remain & BASELINE; DATACARD \\
+Temporal & 11,029 (77 scam, all IMC25); drift check & 0.55\% id overlap; precision collapses at the shipped threshold & BASELINE \\
+Hinglish, \repo{lang_shift} & 1,677 (357 scam; 1,279 Devanagari, 398 Hinglish); language shift & 0\% overlap; language detector agrees with the source on about 51\% of Hinglish rows, so the shift is a lower bound & BASELINE; DATACARD \\
+SmishX (SOUPS 2025), \texttt{eval\_ok} & 1,107 (226 smishing, 275 spam, 606 legitimate); independent non-Indian check & 5.78\% text overlap (SYSTEM 2a); used in earlier review, so independent only for later changes & BENCH 2b; DATACARD \\
+GroundLM policy negatives & 1,294 negatives, 1,133 scoreable (161 hash-only); legitimate-message FPR & In-sample: informed the urgency downgrade and the \texttt{apk\_install} follow-up & GROUNDLM \\
+PhreshPhish official test & 168,060 (91,260 benign in the official test split); URL student & Training data of the URL student; threshold set on a 5\% carve & URL; DATACARD \\
+\texttt{url\_domain} test & 30,432 (22,957 scam); out-of-domain URL check & Registered domains disjoint from PhreshPhish & BASELINE \\
+NetFlow v2 test sets & 47,062 (UNSW-NB15), 148,023 (CSE-CIC-IDS2018), 32,272 (BoT-IoT), 97,844 (ToN-IoT); leave-one-dataset-out NIDS & Lab captures with label noise; deduplicated and capped & XDATA \\
+Synthetic holdout captures & 26 captures, 2,017 flows, RFC 1918 addresses; rule check & Built with scapy; parameters chosen at rule edges & NIDS \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Several sets informed design. GroundLM informed the urgency downgrade and the \texttt{apk\_install} follow-up. ScamShield test rows informed a widening in commit \texttt{dc223d3}, so the campaign audit subsets are in-sample for those rules (DATACARD, section 7). SmishX was used in earlier rule and policy work (BENCH, section 2b). Independent Indian held-out validation is still open. A label predicted from source alone reaches 0.718 accuracy, against 0.505 for a majority baseline (DATACARD, section 5). The shipped SMS model was trained on the campaign training rows only (BASELINE). The ScamShield, UCI and Mishra source-holdout and legacy splits overlap 70\% to 78\% with that pool, so no result from them is reported here. The public sources are the UCI SMS Spam Collection~\cite{ucisms}, PhreshPhish~\cite{phreshphish}, the UNSW-NB15~\cite{unswnb15} and CSE-CIC-IDS2018~\cite{cicids2018} datasets, and the NetFlow v2 feature sets of all four NIDS datasets~\cite{netflowv2}. The S\&P 2024 SMS data of Nahapetyan et al.~\cite{smishing} was not available and is not used.
+
+\subsection{SMS detector results}
+
+\begin{table}[t]
+\centering
+\caption{SMS student alone, shipped ONNX file, threshold 0.35127517580986023. Source: BASELINE unless stated.}\label{tab:sms}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{5.3cm}Yp{3.3cm}}
+\toprule
+Measure & Value (denominator) & Note \\
+\midrule
+F1, campaign test & 0.9813 [0.9794, 0.9830] (22,145) & Shipped file \\
+F1, campaign test, stored run log & 0.9749 (22,145) & Same run; unresolved \\
+PR-AUC; precision; recall; FPR, campaign test & 0.9977; 0.9824; 0.9803; 0.0180 (22,145) & Shipped file \\
+Clean recall; mean attack success rate & 0.9803; 0.0023 (11,193 scam) & Nine perturbation families, three seeds \\
+F1; FPR, Hinglish \repo{lang_shift} & 0.9860 [0.976, 0.994]; 0.0045 (1,677) & Stored per-split model: F1 0.356 \\
+F1; precision; recall, temporal & 0.4298; 0.276; 0.974 (11,029) & Shipped threshold: 1.8\% FPR \\
+Smishing recall, SmishX & 157 of 226 = 69.47\% [63.18, 75.11] & Independent \\
+Legitimate FPR, SmishX & 55 of 606 = 9.08\% [7.04, 11.63] & Independent \\
+Policy-negative FPR, GroundLM (student score only) & 471 of 1,133 = 41.57\% [38.73, 44.46] & In-sample \\
+Rules only: GroundLM FPR; SmishX recall; SmishX FPR & 12 of 1,133 = 1.06\%; 58 of 226 = 25.66\%; 30 of 606 = 4.95\% & GROUNDLM \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The campaign F1 has two values. The shipped ONNX file gives 0.9813, and the stored log of the training run gives 0.9749 on the same rows. The cause is not identified (BASELINE, note 1). SmishX recall uses the 226 smishing messages. Spam is promotion, so it is excluded from recall and from the legitimate FPR. Counting spam as positive gives 501 positives, the denominator of the balanced-mode SmishX recall below.
+
+\subsection{System-level visible warnings by mode}
+
+The decision layer sets what the user sees. The shipped default is \texttt{quiet}, in which a detector flag with no rule evidence gives no visible warning.
+
+\begin{table}[t]
+\centering
+\caption{Visible warnings by mode. Quiet and verify come from one laptop run of the decision path (GROUNDLM). balanced\_v3, the passive-transaction-aware mode that ships behind \repo{--detector-only-mode balanced} but is not the default, comes from a Pi 5 run with the URL scorer (VALIDATION 1a). The platforms and code paths differ. BENCH's verify figures (98.18\%, 2.47\%) come from another Pi run and are not used.}\label{tab:system}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{4.9cm}p{2.8cm}p{3.2cm}p{3.1cm}}
+\toprule
+Measure (denominator) & quiet (default) & balanced\_v3 & verify (visible warning) \\
+\midrule
+GroundLM policy negatives, visible warning (1,133) & 2 (0.18\%) & 17 (1.50\%)\prose & 472 (41.66\%) \\
+Campaign test, recall (11,193 positives) & 16.20\% & 88.60\%\prose & 98.12\% \\
+Campaign test, FPR (10,952 negatives) & 0.61\% & 0.83\%\prose & 2.22\% \\
+SmishX, recall on smishing (226) & 53 (23.45\%) & not reported & 173 (76.55\%) \\
+SmishX, recall on all positives (501) & not reported & 79.64\%\prose & not reported \\
+SmishX, legitimate FPR (606) & 22 (3.63\%) & 6.77\%\prose & 58 (9.57\%) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Quiet mode has the lowest visible false-positive rate, but it hides the student-only flags, including the bank and UPI notices. In verify mode all 161 bank and all 146 UPI legitimate messages in the GroundLM set are flagged (GROUNDLM). On a paired adversarial bank of 20 genuine Indian transactional notices and 20 imitating scams, quiet mode gave scam recall 90.0\% (18 of 20) and legitimate FPR 10.0\% (2 of 20)\prose. The balanced\_v3 mode gave 100.0\% (20 of 20) and 15.0\% (3 of 20)\prose, and verify flagged all 20 legitimate notices\prose (VALIDATION 1b). Changing the default is an open decision (EDGE, detector-only mode), and this report does not make it.
+
+\subsection{URL results}
+
+The \texttt{/analyze} path uses the URL student only in verify mode. The hybrid scorer, which fuses the URL student with a domain-disjoint lexical model, is opt-in (\repo{--url-hybrid}).
+
+\begin{table}[t]
+\centering
+\caption{URL results. $\tau_{\mathrm{url}}$ is 0.6308487409530461. Dagger rows come from the Pi 5 run.}\label{tab:url}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{4.4cm}>{\raggedright\arraybackslash}p{4.6cm}Y}
+\toprule
+Configuration & Set (denominator) & Result \\
+\midrule
+URL student, $\tau_{\mathrm{url}}$ & PhreshPhish official test (91,260 benign) & FPR 0.92\% [0.86, 0.99]; recall 92.0\%; precision 98.8\% (URL) \\
+URL student, $\tau_{\mathrm{url}}$ & \texttt{url\_domain} test (30,432) & FPR 69.4\%; recall 94.4\% (URL, not gated; the Pi run in BENCH 2c gives 69.42\%\prose) \\
+Hybrid at 0.6308 (suspicious) & \texttt{url\_domain} test, full (30,432) & Recall 94.00\%; FPR 5.97\%\prose; F1 0.9595\prose (BENCH 2c) \\
+Hybrid at 0.75 (phishing) & \texttt{url\_domain} test, full (30,432) & Recall 92.08\%; FPR 2.22\%\prose; F1 0.9552\prose (BENCH 2c) \\
+Hybrid at 0.75 & \texttt{url\_domain}, 4,000-row sample & Recall 93.05\%; FPR 1.37\%\prose (VALIDATION 3b) \\
+Hybrid at 0.75 & PhreshPhish official test, 10,000 rows & Recall 88.42\%; FPR 0.74\%\prose (BENCH 2c) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The 1.37\% and 2.22\% figures are hybrid results at 0.75 on different samples. The full-set figure, 2.22\%, is the one to quote. The URL student alone has an FPR of 69.4\% on that set, and its threshold does not transfer beyond PhreshPhish, which is why URL evidence stays out of quiet mode. In quiet-mode gate U2, URL evidence raised visible warnings on GroundLM from 2 to 5 of 1,133, against a limit of 4, so the gate failed. Showing URL evidence in quiet mode would raise SmishX visible recall from 53 to 181 of 226 smishing messages, or to 143 with corroborated URL hits only (URL, gates U2 and U3). On the Pi, the added p95 of verify over quiet was 2.35 ms\prose, and the server-side total for \texttt{/analyze\_url} was 4.79 ms (p50) and 5.75 ms (p95)\prose{} on 2026-11-12 (SYSTEM 2c). The first figure is confounded by temperature, because the SMS batches ran above the 65 \textdegree C abort limit (rule: start below 55 \textdegree C, abort at 65 \textdegree C; URL, thermal note).
+
+\subsection{Network results}
+
+The synthetic holdout has 26 captures and 2,017 flows, built with scapy from RFC 1918 addresses. Its files and counts were fixed before scoring (NIDS). Re-running the committed generator with the rules only on 23 November 2026 reproduced the rules-first rows of \cref{tab:nids} (11 of 11 attacks; 1 of 6 benign by default, 0 of 6 with \repo{--nids-dns-min-distinct 3}); the model-only and combined rows were not re-run.
+
+\begin{table}[t]
+\centering
+\caption{Synthetic holdout: 11 attack instances and 6 benign captures. ``Family correct'' means the alert carries the expected family. Dagger rows come from the Pi 5 run.}\label{tab:nids}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{6.3cm}p{2.9cm}p{2.3cm}Y}
+\toprule
+Configuration & Attacks detected (family correct) & Benign alerting & Source \\
+\midrule
+Rules first, default, laptop & 11 of 11 (11) & 1 of 6 & NIDS \\
+Rules first, default, Pi 5 & 11 of 11 (11)\prose & 1 of 6\prose & BENCH 2d \\
+Rules first, \repo{--nids-dns-min-distinct 3}, Pi 5 & 11 of 11 (11)\prose & 0 of 6\prose & BENCH 2d \\
+Min-distinct 3 plus \repo{--nids-dns-slow-window-s 300}, Pi 5 & 11 of 11 (11); 9 of 9 boundary exact\prose & 0 of 6\prose & VALIDATION 2b \\
+Model only (not the default), laptop & 4 of 11 (0) & 5 of 6 & NIDS \\
+Combined, \repo{--net-model-mode alert}, not default, laptop & 11 of 11 (11) & 6 of 6 & NIDS \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Rules first detect every attack, with the right family. The one benign alert in the default configuration is \repo{ho\_benign\_cdn\_lookalike\_6.pcap}, which makes six lookups of a 42-character label in 40 s. That meets the length rule on purpose. The model alone detects 4 of 11 attacks, all labelled \texttt{dos\_ddos}, and alerts on 5 of 6 benign captures, so it raises no alert on this evidence.
+
+\begin{table}[t]
+\centering
+\caption{DNS boundary cases, synthetic (VALIDATION 2a, Pi 5 run). Columns: the default rule; \repo{--nids-dns-min-distinct 3}; that setting with the 300 s window. Fire: alert. Clean: no alert. FP: benign alert.}\label{tab:dns}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{6.2cm}p{2.9cm}p{1.6cm}p{2.0cm}p{2.1cm}}
+\toprule
+Case & Queries in span & Default & Min-distinct 3 & Plus 300 s \\
+\midrule
+Fast tunnel, 5 queries every 10--15 s & 5 in 40--60 s & Fire & Fire & Fire \\
+Fast tunnel, 5 queries every 16 or 20 s & 5 in 64--80 s & Miss & Miss & Miss \\
+Low and slow, 6 queries every 20--55 s & 6 in 100--275 s & Miss & Miss & Fire \\
+Low and slow, 6 queries every 65 or 90 s & 6 in 325--450 s & Miss & Miss & Miss \\
+Benign CDN, 1 of 6 names distinct in 30 s & 6 in 25 s & FP & Clean & Clean \\
+2 of 6 names distinct in 30 s & 6 in 25 s & Fire & Clean & Clean \\
+3 of 6 names distinct in 30 s & 6 in 25 s & Fire & Fire & Fire \\
+24-character hex labels (evasion floor) & 8 in 14 s & Miss & Miss & Miss \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The default rule catches a fast tunnel, but it misses slow beacons and alerts on a benign CDN lookalike. The distinct-name guard removes the lookalike alerts. The 300 s window catches beacons spaced 20 to 55 s apart. Beacons slower than one query per 60 s, and short low-entropy hexadecimal labels, evade every variant. Labels of 39 and 40 characters were also tested: the 40-character label fires under all three settings, and the 39-character label fires under none.
+
+The learned model was tested by leave-one-dataset-out on NetFlow v2 copies of four datasets, with three seeds per arm (XDATA). \cref{tab:xdata} gives the baseline, the arm that passes the pre-registered gate (\repo{lgbm/c}), and the best MLP arm.
+
+\begin{table}[t]
+\centering
+\caption{Leave-one-dataset-out NIDS, seed means. FPR is the false-positive rate on benign flows of each target. Source: XDATA; \repo{docs/results/nids\_xdata/metrics.json} agrees.}\label{tab:xdata}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{2.9cm}p{1.6cm}p{2.7cm}Y Y Y Y}
+\toprule
+Arm & Mean MCC & Worst-target MCC & FPR UNSW & FPR CSE-CIC & FPR BoT & FPR ToN \\
+\midrule
+\repo{lgbm/a}, baseline & $-0.108$ & $-0.467$ (UNSW) & 0.623 & 0.933 & 0.060 & 0.006 \\
+\repo{lgbm/c}, gate pass & 0.051 & $-0.181$ (BoT) & 0.060 & 0.011 & 0.222 & 0.999 \\
+\repo{mlp/d}, best MLP & 0.053 & $-0.344$ (CSE-CIC) & 0.574 & 0.595 & 0.897 & 0.082 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\repo{lgbm/c} passes the three gate criteria. Its FPR check, which is reported but is not a gate criterion, fails on all four targets, and the thresholds were not changed to meet it. XDATA concludes that the pass does not support deployment. The shipped CSE-trained detector has F1 0.297 on UNSW-NB15, 0.332 on BoT-IoT and 0.718 on ToN-IoT, and several ROC-AUC values across the twelve pairs are below 0.5 (NIDS). A shipped alert is therefore a signal to check, not a verdict.
+
+\subsection{Explainer faithfulness}
+
+The explainer writes sentences for evidence advisories. A verifier checks that each sentence cites evidence the detector produced, applies the attribution guard, and falls back to the template on failure. The model never changes risk or action.
+
+\begin{table}[t]
+\centering
+\caption{Explainer checks. Dagger rows come from the Pi 5 run.}\label{tab:explain}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{5.2cm}p{6.4cm}Y}
+\toprule
+Check & Result (denominator) & Source \\
+\midrule
+Raw point pass after the one-call-per-type fix & 26 of 33 (79\%)\prose & EDGE 3c \\
+Raw point pass, earlier run & 27 of 33 (82\%)\prose & BASELINE\_PI C \\
+Unterminated calls & 4 of 31 (12.9\%)\prose & BASELINE\_PI C \\
+Final output passing the contract & 30 of 30 evidence rows\prose & EDGE 3c \\
+Slot pass, injection pairs & 28 of 34 evidence rows (82\%, Wilson 95\% [66.5, 91.7]); 37 of 43 points (86\%)\prose & PTE \\
+Harmful flips under injection & 0 of 150 pairs; prompts identical in 150 of 150\prose & PTE \\
+Hinglish, LLM mode, raw pass & 8 of 37 (22\%)\prose & EDGE 5 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The injection result is structural: the payload never reaches the explainer prompt, which is built from sanitised evidence facts. The gate passed its pre-registered criteria, but the slot-pass result rests on 34 evidence-bearing rows, out of the 68 rows on which the model ran. The raw pass rate was 79\% to 82\% in the two Pi runs, and the cause of the difference is not identified (SYSTEM, section 6).
+
+\subsection{Device performance on Raspberry Pi 5 and Android}
+
+The Pi measurements used a USB supply and no active cooler. Energy values are PMIC readings and are not calibrated. The table-hit latencies are for verdict-first mode. The synchronous path, which waits for the explainer, is slower: with the default \texttt{direct} runner its 100-request soak on clean power gave a median of 956 ms\prose and a p95 of 2,152 ms\prose (EDGE, clean-power runs).
+
+\begin{table}[t]
+\centering
+\caption{Raspberry Pi 5 measurements. Device values carry a dagger. Rows come from different runs, named in the last column.}\label{tab:pi}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{5.2cm}p{1.6cm}Yp{2.7cm}}
+\toprule
+Workload & Size & Result & Source \\
+\midrule
+\repo{/analyze}, English, quiet, verdict-first & 40 rows & Time to verdict p50 4.11 ms\prose, p95 10.04 ms\prose; 23 of 27 table hits\prose & BENCH 2a \\
+\repo{/analyze}, Hinglish, template & 40 rows & Time to verdict p50 3.66 ms\prose, p95 5.34 ms\prose & BENCH 2a \\
+Sequential \repo{/analyze}, verdict-first & n/a & 250 messages/s\prose & PERF \\
+Four workers, 16 clients, batched & n/a & 1,050 messages/s\prose & PERF \\
+GroundLM batch, quiet & 1,133 & 2.34 s\prose; 483.7 messages/s\prose; 6.23 W\prose; 16.79 mJ per message\prose & BENCH 2a \\
+Campaign ONNX batch, one thread & 22,145 & 46.26 s\prose; 478.7 messages/s\prose; 3.22 W\prose; 7.76 mJ per message\prose & BENCH 2a \\
+NIDS holdout, nfstream and INT8 & 2,017 flows & 5,930.6 flows/s\prose; per-capture p50 58.4 ms\prose, p95 301.1 ms\prose & BENCH 2a \\
+Idle power; service RSS & n/a & 1.52 W\prose (PMIC); 163.7 MB\prose & BENCH 2a \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The soak reached 70.8 \textdegree C\prose (SYSTEM 2c, from BASELINE\_PI), and 76.3 \textdegree C\prose at peak in the performance branch with the governor stopped (PERF). Earlier runs had an under-voltage flag, \texttt{0x50000}, set from boot (EDGE, section 4). The later runs reported \texttt{0x0}\prose.
+
+On one OnePlus 13R running Android 16 (30 runs per mode, one device run, raw output not committed), the request-to-verdict time was 580.8 ms\prose (p50) and 684.9 ms\prose (p95) in the cold share, and 33.0 ms\prose and 44.7 ms\prose in the warm share. The ONNX run took 1.08 ms\prose and 1.09 ms\prose, and peak RSS was 221.2 MiB\prose and 257.6 MiB\prose. All 30 frames committed in each mode\prose. Llama was not run on the phone. The JVM tests passed on the same build, including 318 parity rows, but they run on the JVM regex engine, so Android's regex behaviour is not verified (BENCH, section 1; ANDROID). The app's 53 JVM unit tests passed in a build on 23 November 2026.
