@@ -3,10 +3,12 @@
 Offline scam-SMS and link checker for Android (package `org.rakshak.edge`, minSdk 28, arm64-v8a).
 Design, parity method, versions and open items: [`docs/ANDROID_APP.md`](../docs/ANDROID_APP.md).
 
-Status: **builds, and all 27 JVM unit tests pass** (headless, InstaBox VM, 2026-11-20). The 27
-include 8 parity tests over the 318-row Python fixture. No on-device run is recorded in this tree,
-so there are no device latency numbers yet. Device results, when they exist, are tracked in
-[`docs/RESULTS_INDEX.md`](../docs/RESULTS_INDEX.md). Details are in `docs/ANDROID_APP.md`.
+Status: **builds** (headless, InstaBox VM, 2026-11-20). `app/src/test` has 53 JVM unit tests (UnitTest 19,
+ParityTest 8 over the 318-row Python fixture, HistoryStoreTest 13, ModelImporterTest 13); the 2026-11-20
+build log covered the first 27, the other 26 were added on 2026-11-22. One on-device detector benchmark
+(OnePlus 13R, Android 16, `app-benchmark.apk`) is reported in [`docs/benchmarks.md`](../docs/benchmarks.md)
+section 1; its raw output is not committed. Llama has not been run on the phone. Details are in
+`docs/ANDROID_APP.md`.
 
 ## 1. Build box (Debian 13, x86_64)
 

@@ -25,7 +25,7 @@ The initial transactional-aware `balanced` policy (`balanced_v2`) applied a stri
 | ↳ **No-rule transactional subset** (`is_tx & no_ev`) | 3,391 (`3,245` / `146`) | — | **Rec 86.07%**, **FPR 0.68%** (`1/146`), Prec **99.96%**, **F1 0.9250** |
 | **GroundLM policy negatives** (legit SMS) | 1,133 (`0` / `1,133`) | FPR **0.18%** (`2`) | **FPR 1.50%** (`17 / 1,133`) |
 | **GroundLM positive scams** (external) | 91 (`91` / `0`) | Rec 12.09% (`11`) | **Rec 53.85%** (`49 / 91`) · **TX scams: `25 / 25` (`100.0%`)**, **no-rule TX: `23 / 23` (`100.0%`)** |
-| **SmishX `eval_ok`** (independent) | 1,107 (`501` / `606`) | Rec 18.76%, FPR **3.63%**, F1 0.3047 | **Rec 79.64%**, FPR **6.77%**, **F1 0.8480** · TX rec `66.27%` (no-rule TX `51.72%`) |
+| **SmishX `eval_ok`** (independent; positives = 226 smishing + 275 spam) | 1,107 (`501` / `606`) | Rec 18.76%, FPR **3.63%**, F1 0.3047 | **Rec 79.64%**, FPR **6.77%**, **F1 0.8480** · TX rec `66.27%` (no-rule TX `51.72%`) |
 
 ### 1b. Paired adversarial Indian transactional stress bank (`40` EN + Hinglish messages)
 

@@ -1,11 +1,14 @@
 # Android app (Rakshak Edge): architecture, parity and open items
 
-Status (2026-11-20): **compiles, and all 27 JVM unit tests pass, including the 8 parity tests over
-the 318-row Python fixture.** Built headless on the InstaBox VM (Debian x86_64, JDK 21, Gradle 9.8.0
+Status (2026-11-20): **compiles, and the 27 JVM unit tests that existed then pass, including the 8 parity
+tests over the 318-row Python fixture.** (`app/src/test` now has 53; HistoryStoreTest and ModelImporterTest
+were added on 2026-11-22.) Built headless on the InstaBox VM (Debian x86_64, JDK 21, Gradle 9.8.0
 wrapper, AGP 9.5.1, platform android-37.2, build-tools 37.0.0) with
 `./gradlew :app:assembleDebug :app:testDebugUnitTest`. Debug APK: 78,719,078 bytes (arm64-v8a only,
 ExecuTorch and ONNX Runtime native libraries included, no student ONNX and no Llama files inside).
-**Not run on a device, no screenshots, no latency numbers.** The parity tests run on the JVM's
+**Device run (added 2026-11-23):** a detector-only benchmark on a OnePlus 13R (Android 16) is reported in
+[benchmarks.md](benchmarks.md) section 1; its raw output is not committed, and Llama was not run on the
+phone. No screenshots are committed. The parity tests run on the JVM's
 `java.util.regex`, not Android's regex engine.
 
 ## 1. What the app does
@@ -130,7 +133,8 @@ that KGP version without extra configuration is unverified (see section 5).
   The ExecuTorch and ONNX Runtime calls below compile against the real AARs (1.5.1, 1.31.1), so
   their signatures are right. Their runtime behaviour is still unchecked. The VM build used
   `org.gradle.jvmargs=-Xmx1536m` and `org.gradle.workers.max=3` (not committed) to fit the 7 GB VM.
-- **Not run.** No device test, no screenshots, no timing. No latency numbers exist for the app.
+- **Device run: detector only.** See [benchmarks.md](benchmarks.md) section 1 (OnePlus 13R; raw output not
+  committed). No device test of the Llama explainer and no screenshots.
 - **API calls checked only at compile time:**
   - ExecuTorch `LlmModule(String, String, Float)`, `load()`, `resetContext()`, `stop()`,
     `close()` and the 7-argument `generate(prompt, seqLen, callback, echo, temperature, numBos,

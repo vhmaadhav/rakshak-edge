@@ -49,7 +49,7 @@ Start with [docs/START_HERE.md](docs/START_HERE.md) (what runs where and how rea
 | Part | Where | What |
 |---|---|---|
 | Core library | `src/rakshak/` | canonicaliser, rules, evidence package, verifier, URL features, fusion, NIDS rules, models |
-| Pi 5 service | `deploy/pi/service/` | stdlib HTTP service (`/analyze`, `/analyze_url`, `/analyze_flows`, `/health`) and an offline web page |
+| Pi 5 service | `deploy/pi/service/` | stdlib HTTP service (`/analyze`, `/analyze_batch`, `/analyze_url`, `/analyze_flows`, `/explanation/<id>`, `/health`) and an offline web page |
 | Pi tooling | `deploy/pi/` | install scripts, thermal governor, dashboard, benchmark harness (`bench/`) |
 | Android app | `android/` | Kotlin + Compose app, ONNX Runtime detector, ExecuTorch explainer; Python parity tests |
 | Training and evaluation | `kaggle/`, `colab/` | job launchers; all training ran on Kaggle or Colab |
@@ -145,7 +145,9 @@ Detector numbers come from a campaign-disjoint test split with campaign-clustere
 | Verdict-first (verdict only) | 5.5 ms | 0 verdict flips over 5,080 messages with the FP32 ONNX model |
 | Verdict-first throughput | up to 1,050 msg/s | 4 workers, 16 clients, batching |
 
-**Android on-device benchmark:** see [docs/benchmarks.md](docs/benchmarks.md).
+**Android on-device benchmark:** see [docs/benchmarks.md](docs/benchmarks.md) (detector only; Llama not run on the phone).
+
+Raw Pi and Android benchmark logs are kept on the devices and are not committed; the numbers above are as reported in the linked documents.
 
 Everything else is indexed in [docs/RESULTS_INDEX.md](docs/RESULTS_INDEX.md), and the frozen system description is [docs/SYSTEM_V1.md](docs/SYSTEM_V1.md).
 

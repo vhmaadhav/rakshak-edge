@@ -14,8 +14,8 @@ Measured on 2026-11-23 with `android/tools/benchmark_android.py run --mode both 
 
 | Mode (30 runs each) | Frame-committed | Request → verdict frame (p50 / p95) | Pure compute stages (p50) | Peak RSS |
 |---|---:|---:|---|---:|
-| **Cold share** | 30 / 30 (`0` dropped) | **580.8 ms** / **684.9 ms** | `detector_load` 65.6 ms · `rules_regex_compile` 344.5 ms · `onnx_run` **1.08 ms** (`onnx_total` 1.86 ms) · `decision` 14.8 ms | **221.2 MB** (`226,552 KiB`) |
-| **Warm share** (5 warmup + 30 runs) | 30 / 30 (`0` dropped) | **33.0 ms** / **44.7 ms** (full Compose UI render) | `canonicalize` 0.56 ms · `rules` 1.07 ms · `onnx_run` **1.09 ms** (`onnx_total` 1.39 ms) · `decision` 0.50 ms (**~3.5 ms compute**) | **257.6 MB** (`263,776 KiB`) |
+| **Cold share** | 30 / 30 (`0` dropped) | **580.8 ms** / **684.9 ms** | `detector_load` 65.6 ms · `rules_regex_compile` 344.5 ms · `onnx_run` **1.08 ms** (`onnx_total` 1.86 ms) · `decision` 14.8 ms | **221.2 MiB** (`226,552 KiB`) |
+| **Warm share** (5 warmup + 30 runs) | 30 / 30 (`0` dropped) | **33.0 ms** / **44.7 ms** (full Compose UI render) | `canonicalize` 0.56 ms · `rules` 1.07 ms · `onnx_run` **1.09 ms** (`onnx_total` 1.39 ms) · `decision` 0.50 ms (**~3.5 ms compute**) | **257.6 MiB** (`263,776 KiB`) |
 
 > **Scope note:** This run benchmarks the on-device ONNX detector, canonicaliser, rules engine, decision layer, and Compose UI frame commit on Android 16. On-device Llama 3.2 1B (`.pte`) explanation latency was not run on the phone in this pass (template fallback is active when `.pte` is absent).
 
@@ -62,7 +62,9 @@ To resolve the recall-vs-FPR trade-off of `quiet` mode without changing the froz
      - **Transactional-looking notices** (bank/UPI/OTP/delivery/utility/balance vocabulary): `--tx-verify-threshold` (default `0.999`), preventing legitimate transactional false alerts.
 3. **Quiet (`LOW` / `IGNORE`):** below the applicable threshold with no rule or corroborated URL evidence.
 
-| Dataset / Split | n | `quiet` (V1 default) | `balanced` v1 (flat `0.999`) | **`balanced` v2 default (`0.9566` / `0.999` tx-aware + hybrid URL)** | **`balanced` v2 cal-0.5% (`0.7064` / `0.999` + hybrid URL)** | `verify` (all flags) |
+> **Superseded:** the shipped `balanced` mode is the passive-transaction-aware `balanced_v3` logic (`deploy/pi/service/edge_decision.py`, `is_passive_transactional_notice`). Its numbers are in [VALIDATION_REPORT.md](VALIDATION_REPORT.md) section 1a (campaign Rec 88.60%, FPR 0.83%, F1 0.9355; GroundLM FPR 1.50%, 17 / 1,133). The v2 columns below are kept as history. SmishX `eval_ok` positives here are 501 = 226 smishing + 275 spam, so its recall is not comparable with the 226-smishing recall in the README.
+
+| Dataset / Split | n | `quiet` (V1 default) | `balanced` v1 (flat `0.999`) | **`balanced` v2 (`0.9566` / `0.999` tx-aware + hybrid URL; superseded, see note)** | **`balanced` v2 cal-0.5% (`0.7064` / `0.999` + hybrid URL)** | `verify` (all flags) |
 |---|---:|---|---|---|---|---|
 | **Campaign-disjoint SMS test** (`campaign.json`) | 22,145 | Rec 16.20%, FPR **0.61%**, F1 0.2774 | Rec 74.57%, FPR 0.73%, F1 0.8509 | **Rec 85.91% (+69.7 pp)**, **FPR 0.83%**, **F1 0.9202** | **Rec 89.78%**, **FPR 1.19%**, **F1 0.9404** | Rec 98.18%, FPR 2.47% |
 | **GroundLM policy negatives** (legit SMS) | 1,133 | FPR **0.18%** (`2`) | FPR 0.88% (`10`) | **FPR 0.97% (`11 / 1,133`)** | **FPR 1.24% (`14 / 1,133`)** | FPR 41.66% (`472`) |
