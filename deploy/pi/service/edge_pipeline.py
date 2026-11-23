@@ -667,6 +667,8 @@ def check_url(
     intel_suspicious = False
     assess_fn = getattr(scorer, "assess", None)
     if active and callable(assess_fn) and hit is not None:
+        from rakshak.url_domain_intel import is_official_brand_domain
+
         assessment = assess_fn(hit.url)
         sigs = list(assessment.signals)
         domain_intel_doc = {
@@ -679,10 +681,28 @@ def check_url(
             "reputation": assessment.reputation,
             "signals": sigs,
         }
+        # Suppress lexical-only suspicious_url false alerts on curated official brand domains
+        # when both hybrid score and domain-intel signals are clean.
+        if (
+            is_official_brand_domain(hit.url)
+            and not model_fired
+            and not sigs
+            and all(e.type == "suspicious_url" for e in evidence)
+        ):
+            evidence = []
+            state = "benign"
+            package = build_package(canon, evidence, state)
+            action = choose_action(package)
+            remediation = remediation_for(package, action.value, LANG)
         intel_phish = bool(set(sigs) & {"homograph_brand_spoof", "brand_in_host_mismatch"})
         intel_suspicious = bool(
             set(sigs) & {"idn_homograph", "ip_literal", "userinfo_at", "brand_in_path_mismatch"}
         )
+        # Independent-evidence guard: when DomainIntel strongly disagrees (<0.30) and zero
+        # structural signals fired, cap a single-source ONNX spike at "suspicious" rather than
+        # hard "phishing".
+        if model_high and not sigs and float(assessment.domain_score) < 0.30:
+            model_high = False
     if model_high or brand or intel_phish:
         verdict = "phishing"
     elif evidence or intel_suspicious:

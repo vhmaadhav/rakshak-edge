@@ -392,6 +392,7 @@ def build_verdict_service(cfg: dict[str, Any], store: Any, jobs: Any, counters: 
     )
     nids_scorer, nids_info = svc.load_nids(root)
     info[NET_MODEL_ID] = nids_info
+    slow_s = int(cfg.get("nids_dns_slow_window_s") or 0)
     nids = NidsAnalyzer(
         nids_scorer,
         alert=cfg["nids_alert"],
@@ -400,6 +401,7 @@ def build_verdict_service(cfg: dict[str, Any], store: Any, jobs: Any, counters: 
         flow_source=cfg["nids_flow_source"],
         model_mode=cfg["net_model_mode"],
         dns_min_distinct=int(cfg.get("nids_dns_min_distinct") or 1),
+        dns_slow_window_ms=(slow_s * 1000 if slow_s > 0 else None),
     )
     log_path = cfg.get("log")
     service = Service(
@@ -524,6 +526,7 @@ def cfg_from_args(args, root: Path) -> dict[str, Any]:
         "url_hybrid": bool(getattr(args, "url_hybrid", False)),
         "url_high_threshold": args.url_high_threshold,
         "nids_dns_min_distinct": getattr(args, "nids_dns_min_distinct", 1),
+        "nids_dns_slow_window_s": getattr(args, "nids_dns_slow_window_s", 0),
         "hinglish_mode": args.hinglish_mode,
         "explainer_candidate": args.explainer_candidate,
         "explainer_cap": args.explainer_cap,

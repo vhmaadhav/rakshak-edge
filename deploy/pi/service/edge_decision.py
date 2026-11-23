@@ -50,6 +50,23 @@ _TX_NOTICE_RE = re.compile(
     r")\b",
     re.I,
 )
+# Action / solicitation cues (fixed domain semantics, never tuned on test text):
+# Legitimate transactional notices (bank debit/credit alerts, passive order/refund notices,
+# protective OTPs) inform the user passively, whereas transactional-style scams solicit an
+# immediate action (call/click/verify/unblock/pay/claim or dial a phone number). Excluding
+# passive terms like "refund" and UPI VPA handles (10 digits followed by '@') prevents false
+# positives on legitimate Indian utility/merchant notifications.
+_ACTION_CUE_RE = re.compile(
+    r"\b(?:"
+    r"call|contact|ring|dial|whatsapp|reply|text back|sms back|click|tap|visit|open link|"
+    r"verify|confirm|update|reactivate|re-activate|unblock|unlock|kyc|suspend(?:ed)?|"
+    r"block(?:ed)?|deactivat(?:e|ed|ion)|disconnect(?:ed|ion)?|freeze|frozen|expired?|"
+    r"urgent|immediately|today|within \d+ (?:hr|hour|min)|last chance|final notice|"
+    r"claim|collect|won|winner|prize|reward|lottery|cashback|bonus|approved|"
+    r"free|congratulations|selected|shortlisted|apply now|pay now|overdue|penalty|fine|challan"
+    r")\b|(?:(?<![\d@])(?:\+91[\s-]?)?[6-9]\d{9}(?!\d|@)|\b1800[\s-]?\d{3,4}[\s-]?\d{3,4}\b)",
+    re.I,
+)
 # URL model evidence on SMS decisions is shown in verify mode (always) and balanced mode
 # (corroborated only). Quiet mode ignores it (gate U2). /analyze_url is not affected.
 URL_EVIDENCE_MODE = "verify"
@@ -59,6 +76,16 @@ URL_ACTIVE_MODES = ("verify", "balanced")
 def is_transactional_notice(text: str) -> bool:
     """True when ``text`` matches transactional-notice vocabulary (bank/UPI/OTP/delivery)."""
     return bool(_TX_NOTICE_RE.search(text or ""))
+
+
+def is_action_solicitation(text: str) -> bool:
+    """True when ``text`` contains an action/urgency/callback solicitation cue."""
+    return bool(_ACTION_CUE_RE.search(text or ""))
+
+
+def is_passive_transactional_notice(text: str) -> bool:
+    """True when ``text`` looks like a passive transactional notice without action solicitation."""
+    return is_transactional_notice(text) and not is_action_solicitation(text)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -170,7 +197,9 @@ def decide_edge(
                 else float(tx_verify_threshold)
             )
             eff_thr = (
-                tx_thr if is_transactional_notice(canon.normalized) else float(verify_threshold)
+                tx_thr
+                if is_passive_transactional_notice(canon.normalized)
+                else float(verify_threshold)
             )
             if p_scam >= eff_thr:
                 package = detector_only_package(package)

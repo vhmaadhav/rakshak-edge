@@ -1508,6 +1508,14 @@ def main(argv: list[str] | None = None) -> int:
         "CDN lookalikes). Env RAKSHAK_NIDS_DNS_MIN_DISTINCT.",
     )
     p.add_argument(
+        "--nids-dns-slow-window-s",
+        type=_non_negative_int,
+        default=int(os.environ.get("RAKSHAK_NIDS_DNS_SLOW_WINDOW_S", "0")),
+        help="network: optional slow-tunnel DNS window in seconds (0 = off; e.g. 300 enables "
+        "a 5-minute horizon requiring >=6 distinct suspicious query names to catch low-and-slow "
+        "beacons). Env RAKSHAK_NIDS_DNS_SLOW_WINDOW_S.",
+    )
+    p.add_argument(
         "--nids-alert",
         type=float,
         default=NET_ALERT_THRESHOLD,
@@ -1713,6 +1721,9 @@ def main(argv: list[str] | None = None) -> int:
         flow_source=args.nids_flow_source,
         model_mode=args.net_model_mode,
         dns_min_distinct=args.nids_dns_min_distinct,
+        dns_slow_window_ms=(
+            args.nids_dns_slow_window_s * 1000 if args.nids_dns_slow_window_s > 0 else None
+        ),
     )
     service = Service(
         analyzer,

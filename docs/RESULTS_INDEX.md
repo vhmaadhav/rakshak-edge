@@ -62,6 +62,7 @@ What the user sees in quiet mode (default) and verify mode. Denominators are giv
 | Recall V2 (reputation-guarded URL evidence) | Gates G1–G5: GroundLM visible FP, SmishX TP and ham FP, campaign FPR, PhreshPhish recall; R3 fails G1, G3, G5; default unchanged | GroundLM, SmishX, campaign, PhreshPhish, `url_domain` | URL evidence in quiet mode | [RECALL_V2_RESULTS.md](RECALL_V2_RESULTS.md); JSON: [results/recall_v2/metrics.json](results/recall_v2/metrics.json) |
 | URL evidence in the Pi service | Gate U2 fails (5 / 1,133 visible, limit 4); U3 SmishX visible recall 53 → 181 in verify, 53 → 143 with corroboration | GroundLM; SmishX | URL evidence on `/analyze` | [URL_SERVICE_RESULTS.md](URL_SERVICE_RESULTS.md) |
 | Hard-negative arm, fused (policy view) | Visible FP caps and SmishX recall against control; killed | GroundLM, SmishX | Fusion policy | [TRANSACTIONAL_HARDNEG_FUSED_RESULTS.md](TRANSACTIONAL_HARDNEG_FUSED_RESULTS.md) |
+| Adversarial, boundary & Indian-context validation (P0/P2/P3/P4) | Passive-tx balanced SMS (campaign 88.6% rec / 0.83% FPR, paired Indian bank 20/20 rec), DNS low-and-slow multi-horizon (0/6 benign PCAPs, 4/6 slow beacons), URL hybrid adversarial (29/29 attacks, 1.37% OOD FPR), Indian SMS strata & field harness | Campaign test (22,145), GroundLM (1,133 neg / 91 pos), SmishX (1,107), paired Indian bank (40), 18 DNS boundaries + 26 PCAPs, 48 adversarial URLs + PhreshPhish/`url_domain` | SMS balanced v3, Hybrid URL, NIDS rules | [VALIDATION_REPORT.md](VALIDATION_REPORT.md) |
 
 ## 3. Explainer quality
 
