@@ -51,39 +51,47 @@ Measured on the Pi 5 (4 GB, 2.4 GHz, `throttled=0x0`, start `48.3–48.8 °C`, e
 
 Service verdict process RSS: **163.7 MB** (peak **163.7 MB**). HTTP-vs-direct parity: **0 flips across 1,299 overlapping rows** (`164` campaign + `1,133` GroundLM + `2` Hinglish). PMIC readings come from `vcgencmd pmic_read_adc` (not a calibrated wall meter).
 
-### 2b. SMS decision policy comparison: `quiet` vs `balanced` (3-outcome) vs `verify` (Pi 5 ONNX)
+### 2b. SMS decision policy comparison: `quiet` vs transactional-aware `balanced` vs `verify` (Pi 5 ONNX)
 
-To address the recall-vs-FPR trade-off of `quiet` mode without changing the frozen V1 default (`quiet`), `--detector-only-mode balanced` implements a 3-outcome policy:
+To resolve the recall-vs-FPR trade-off of `quiet` mode without changing the frozen V1 default (`quiet`), `--detector-only-mode balanced` implements a **transactional-aware 3-outcome policy**:
 1. **Alert (`HIGH` / `MEDIUM`):** deterministic rule evidence fires.
-2. **Caution (`UNCERTAIN` / `VERIFY_INDEPENDENTLY`):** high-confidence detector-only flag (`p_scam >= --verify-threshold`, default `0.999`) **or** corroborated URL hit (`p_url >= tau_url` and `p_scam >= tau_sms`).
-3. **Quiet (`LOW` / `IGNORE`):** below `--verify-threshold` with no rule or corroborated URL evidence.
+2. **Caution (`UNCERTAIN` / `VERIFY_INDEPENDENTLY`):**
+   - Corroborated URL hit (`p_url >= tau_url` and `p_scam >= tau_sms`), **or**
+   - Detector-only flag (`p_scam >= tau_sms`, no rule/URL hit) exceeding a two-tier threshold:
+     - **General non-transactional messages:** `--verify-threshold` (default `0.9566`, calibrated on `campaign` `cal` non-transactional no-rule negatives at FPR ≤ 0.1%, `n=5,334`; zero test/GroundLM leakage).
+     - **Transactional-looking notices** (bank/UPI/OTP/delivery/utility/balance vocabulary): `--tx-verify-threshold` (default `0.999`), preventing legitimate transactional false alerts.
+3. **Quiet (`LOW` / `IGNORE`):** below the applicable threshold with no rule or corroborated URL evidence.
 
-| Dataset / Split | n | Detector Alone | `quiet` (V1 default) | **`balanced` (`0.999` + corr. URL)** | `verify` (all flags) |
-|---|---:|---|---|---|---|
-| **Campaign-disjoint SMS test** (`campaign.json`) | 22,145 | F1 **0.9813**, Rec 98.03%, FPR 1.80% | Rec 16.2%, FPR **0.61%** | **Rec 74.6% (+58.4 pp)**, FPR **0.73%**, F1 **0.8509** | Rec 98.2%, FPR 2.47% |
-| **GroundLM policy negatives** (legit SMS) | 1,133 | FPR 41.57% (`471`) | FPR **0.18%** (`2`) | **FPR 0.88% (`10 / 1,133`)** | FPR 41.66% (`472`) |
-| **SmishX — all `eval_ok`** (independent) | 1,107 | F1 0.8344, Rec 79.4%, FPR 9.08% | Rec 18.8%, FPR **3.63%** | **Rec 78.0% (+59.2 pp)**, FPR **6.60%**, F1 **0.8391** | Rec 97.8%, FPR 11.72% |
-| **SmishX — smishing only** (independent) | 226 | Rec 69.47% (`157`) | Rec 23.4% (`53`) | **Rec 66.4% (+43.0 pp, `150`)** | Rec 95.6% (`216`) |
-| **SmishX — ham only** (independent) | 606 | FPR 9.08% (`55`) | FPR **3.63%** (`22`) | **FPR 6.60%** (`40`) | FPR 11.72% (`71`) |
-| **Hinglish `eval_ok` non-synthetic** (`sms.parquet`) | 1,380 | F1 0.9961, Rec 99.7%, FPR 2.63% | Rec 40.2%, FPR **0.88%** | **Rec 68.3% (+28.1 pp)**, FPR **0.88%**, F1 **0.8109** | Rec 99.7%, FPR 3.51% |
+| Dataset / Split | n | `quiet` (V1 default) | `balanced` v1 (flat `0.999`) | **`balanced` v2 default (`0.9566` / `0.999` tx-aware + hybrid URL)** | **`balanced` v2 cal-0.5% (`0.7064` / `0.999` + hybrid URL)** | `verify` (all flags) |
+|---|---:|---|---|---|---|---|
+| **Campaign-disjoint SMS test** (`campaign.json`) | 22,145 | Rec 16.20%, FPR **0.61%**, F1 0.2774 | Rec 74.57%, FPR 0.73%, F1 0.8509 | **Rec 85.91% (+69.7 pp)**, **FPR 0.83%**, **F1 0.9202** | **Rec 89.78%**, **FPR 1.19%**, **F1 0.9404** | Rec 98.18%, FPR 2.47% |
+| **GroundLM policy negatives** (legit SMS) | 1,133 | FPR **0.18%** (`2`) | FPR 0.88% (`10`) | **FPR 0.97% (`11 / 1,133`)** | **FPR 1.24% (`14 / 1,133`)** | FPR 41.66% (`472`) |
+| **SmishX — all `eval_ok`** (independent) | 1,107 | Rec 18.76%, FPR **3.63%**, F1 0.3047 | Rec 78.04%, FPR 6.60%, F1 0.8391 | **Rec 81.04%** (ONNX) / **78.64%** (hybrid), FPR **6.60%**, F1 **0.8574** / 0.8428 | **Rec 82.24%**, FPR 6.93%, **F1 0.8628** | Rec 97.80%, FPR 11.72% |
+| **Hinglish campaign test** (`campaign.json`) | 398 | Rec 27.81%, FPR **2.56%**, F1 0.4331 | Rec 67.19%, FPR 2.56%, F1 0.8007 | **Rec 84.38% (+56.6 pp)**, **FPR 2.56%**, **F1 0.9122** | **Rec 89.06%**, **FPR 2.56%**, **F1 0.9390** | Rec 99.38%, FPR 6.41% |
 
-> **Honest caveat:** GroundLM and SmishX informed earlier rule/policy design (`docs/RECALL_V2_RESULTS.md`), so these figures measure the trade-off on the known evaluation sets rather than an untouched production inbox.
+> **Honest caveat:** GroundLM and SmishX informed earlier rule/policy design (`docs/RECALL_V2_RESULTS.md`), so these figures measure the trade-off on the known evaluation sets rather than an untouched production inbox. Calibration of `0.9566` / `0.7064` used only `campaign` `cal` negatives.
 
-### 2c. URL 3-tier threshold analysis: PhreshPhish vs out-of-domain `url_domain` (Pi 5 ONNX)
+### 2c. Offline Hybrid URL Intelligence: PhreshPhish vs out-of-domain `url_domain` (Pi 5)
 
-`POST /analyze_url` supports an optional `--url-high-threshold` (env `RAKSHAK_URL_HIGH_THRESHOLD`) separating hard `"phishing"` verdicts (`>= high_threshold` or brand-domain mismatch) from soft `"suspicious"` cautions (`[tau_url, high_threshold)`):
+To eliminate the domain-shift false positives of the frozen ONNX `url_student` (which memorized PhreshPhish's deep-path benign distribution and spiked on root-homepage benign domains in `url_domain`), `--url-hybrid` (`src/rakshak/url_domain_intel.py`) combines two independent offline layers via calibrated logit fusion (`0.5 * logit(p_onnx) + 0.5 * logit(p_domain)`), with zero DNS or network access:
+1. **Lightweight ONNX URL model:** frozen `best_url_student.onnx`.
+2. **Domain Intelligence (`DomainIntelScorer`, `src/rakshak/data/url_domain_intel.npz`, 63 KB):** scheme-agnostic lexical/structural features (homograph/IDN, leetspeak brand spoofing, brand-in-host/path mismatch, free-hosting platforms, risky TLDs, shorteners) + 32,768 CRC32-hashed char(3–5) n-grams trained strictly **domain-disjoint** across multi-source URLs (zero registered-domain overlap with PhreshPhish test, `url_domain` cal, or `url_domain` test).
+3. **Three-outcome `/analyze_url` verdict (`--url-high-threshold`):** `"phishing"` (`>= high_threshold`, brand mismatch, or homograph brand spoof), `"suspicious"` (`[tau_url, high_threshold)` or structural risk signal), `"no_signal"` (safe).
 
-| Threshold | PhreshPhish `official.test` (4,000 sample) | `url_domain` OOD test (4,000 sample) |
-|---:|---|---|
-| `0.6308` (shipped `tau_url`) | Rec **90.95%**, FPR **0.80%**, Prec 99.13%, F1 0.9486 | Rec 94.78%, **FPR 70.65%** |
-| `0.9500` | Rec 82.30%, FPR 0.15%, Prec 99.82% | Rec 87.49%, FPR 22.66% |
-| `0.9800` | Rec 77.25%, FPR 0.05%, Prec 99.94% | Rec 83.62%, FPR 7.72% |
-| **`0.9900`** | Rec **72.50%**, FPR **0.05%**, Prec **99.93%** | Rec **80.79%**, **FPR 2.88%** (`24.5x` lower OOD FPR) |
+Measured on Raspberry Pi 5 (`5.64 ms/URL` / **177.2 URLs/s** single-URL full `HybridUrlScorer.assess`, `throttled=0x0`):
+
+| Model & Operating Point | PhreshPhish `official.test` (10,000) | `url_domain` OOD test (30,432 — full) |
+|---|---|---|
+| ONNX `url_student` alone @ `0.6308` (shipped) | AUC 0.9926 · Rec **92.53%** · FPR 0.82% · F1 0.9564 | AUC 0.9110 · Rec 94.35% · **FPR 69.42%** · F1 0.8698 |
+| ONNX `url_student` alone @ `0.9900` | Rec 74.95% · FPR 0.15% · F1 0.8560 | Rec 80.46% · FPR 3.09% · F1 0.8868 |
+| **Hybrid (`--url-hybrid`) @ `0.6308` (`suspicious`)** | **AUC 0.9915** · **Rec 90.75%** · **FPR 1.09%** · **F1 0.9451** | **AUC 0.9769** · **Rec 94.00%** · **FPR 5.97%** (`11.6x` lower) · **F1 0.9595** |
+| **Hybrid (`--url-hybrid`) @ `0.7500` (`phishing`)** | **Rec 88.42%** · **FPR 0.74%** · **F1 0.9342** | **Rec 92.08% (+11.6 pp vs ONNX@0.99)** · **FPR 2.22%** (`31.3x` lower) · **F1 0.9552** |
 
 ### 2d. NIDS 26-pcap multi-attack holdout on Pi 5 (synthetic captures)
 
-`run_holdout_nids.py` on `26` captures (`2,017` flows, `pcap_nfstream`, `student_cse_cic_ids2018_int8.onnx`):
-- **Rules-first (shipped default):** **11 / 11** attack instances detected with **11 / 11** exact family labels (`brute_force_ssh` 3/3, `brute_force_other` 1/1, `port_scan` 3/3, `dns_tunnel` 2/2, `dos_flood` 2/2), **9 / 9** near-threshold boundary captures exact, **1 / 6** benign captures alerted (`ho_benign_cdn_lookalike_6.pcap`).
+Evaluated on all `26` holdout captures (`2,017` flows, `pcap_nfstream`, `student_cse_cic_ids2018_int8.onnx`, Pi 5 `throttled=0x0`):
+- **Rules-first pre-registered baseline (`--nids-dns-min-distinct 1`, default):** **11 / 11** attack instances detected with **11 / 11** exact family labels (`brute_force_ssh` 3/3, `brute_force_other` 1/1, `port_scan` 3/3, `dns_tunnel` 2/2, `dos_flood` 2/2), **9 / 9** near-threshold boundary captures exact, **1 / 6** benign captures alerted (`ho_benign_cdn_lookalike_6.pcap`, 6 repeated lookups of a single long CDN hostname), **5,154.3 flows/s**.
+- **Rules-first with distinct-qname DNS guard (`--nids-dns-min-distinct 3`):** **0 / 6 benign captures alerted (`0.0%` session-level FPR)** while retaining **11 / 11** attack detections with **11 / 11** exact family labels and **9 / 9** boundary captures exact (**5,132.0 flows/s**).
 - **Model-only:** 4 / 11 detected (0 / 11 right family), 5 / 6 benign files alerted — confirming why NIDS remains rules-first until real-network validation exists ([NIDS_EDGE.md](NIDS_EDGE.md)).
 
 ### 2e. Historical Pi 5 baseline reference ([PERF_FAST_INFERENCE.md](PERF_FAST_INFERENCE.md), [BASELINE_PI.md](BASELINE_PI.md))

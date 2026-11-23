@@ -169,10 +169,48 @@ def _qualifying_in_windows(
     return out
 
 
-def evaluate(flows: Iterable[Mapping[str, Any]]) -> list[RuleHit]:
-    """Rule hits for one request. ``flows`` must be in request order (the index is the position)."""
+def _qualifying_in_windows_distinct(
+    events: list[tuple[float, int, str]],
+    window_ms: float,
+    min_count: int,
+    min_distinct: int,
+) -> set[int]:
+    """Like ``_qualifying_in_windows``, additionally requiring ``>= min_distinct`` distinct keys."""
+    if min_distinct <= 1:
+        return _qualifying_in_windows([(ts, idx) for ts, idx, _ in events], window_ms, min_count)
+    events = sorted(events)
+    n = len(events)
+    diff = [0] * (n + 1)
+    j = 0
+    for i in range(n):
+        if j < i:
+            j = i
+        while j + 1 < n and events[j + 1][0] - events[i][0] <= window_ms:
+            j += 1
+        if j - i + 1 >= min_count:
+            distinct = len({events[k][2] for k in range(i, j + 1)})
+            if distinct >= min_distinct:
+                diff[i] += 1
+                diff[j + 1] -= 1
+    out: set[int] = set()
+    run = 0
+    for k in range(n):
+        run += diff[k]
+        if run > 0:
+            out.add(events[k][1])
+    return out
+
+
+def evaluate(flows: Iterable[Mapping[str, Any]], *, dns_min_distinct: int = 1) -> list[RuleHit]:
+    """Rule hits for one request. ``flows`` must be in request order (the index is the position).
+
+    ``dns_min_distinct`` defaults to 1 (exact pre-registered 2026-11-07 rule). Setting it > 1
+    (e.g. 3) additionally requires at least that many distinct normalized DNS query names inside
+    the 60 s window, suppressing repeated lookups of a single long CDN/asset hostname while
+    preserving DNS tunneling detection (which varies encoded subdomain labels across queries).
+    """
     auth: dict[tuple[str, str | None, int], list[tuple[float, int]]] = {}
-    dns: dict[str, list[tuple[float, int]]] = {}
+    dns: dict[str, list[tuple[float, int, str]]] = {}
     dos: dict[tuple[str, str | None], list[tuple[float, int]]] = {}
     for idx, flow in enumerate(flows):
         src = flow.get("src_ip")
@@ -193,7 +231,8 @@ def evaluate(flows: Iterable[Mapping[str, Any]]) -> list[RuleHit]:
         if int(proto) == 17 and dport == DNS_PORT:
             name = flow.get("requested_server_name")
             if dns_name_is_suspicious(name if isinstance(name, str) else None):
-                dns.setdefault(src, []).append((ts, idx))
+                norm_name = str(name).strip().rstrip(".").lower()
+                dns.setdefault(src, []).append((ts, idx, norm_name))
         if int(proto) == 6 and _is_syn_only(flow):
             dos.setdefault((src, dst), []).append((ts, idx))
 
@@ -206,7 +245,9 @@ def evaluate(flows: Iterable[Mapping[str, Any]]) -> list[RuleHit]:
                 RuleHit(src, kind, AUTH_WEIGHT, RULE_SOURCE_WINDOW, dst, dport, frozenset(matched))
             )
     for src, events in dns.items():
-        matched = _qualifying_in_windows(events, DNS_WINDOW_MS, DNS_MIN_QUERIES)
+        matched = _qualifying_in_windows_distinct(
+            events, DNS_WINDOW_MS, DNS_MIN_QUERIES, max(1, int(dns_min_distinct))
+        )
         if matched:
             hits.append(
                 RuleHit(

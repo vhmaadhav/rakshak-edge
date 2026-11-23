@@ -101,7 +101,9 @@ def llm_main(cfg: dict[str, Any], jobs: Any, store: Any, ready: Any) -> None:
         )
         cache = int(cfg["explainer_cache"])
         explainer = CachedGenerator(llm, cache) if cache > 0 else llm
-        url_scorer, url_threshold, url_info = svc.load_url_model(root)
+        url_scorer, url_threshold, url_info = svc.load_url_model(
+            root, hybrid=bool(cfg.get("url_hybrid", False))
+        )
         info[URL_MODEL_ID] = url_info
         analyzer = EdgeAnalyzer(
             _DetectorAdapter(detector_runner, batch_onnx=bool(cfg["batch_onnx"])),
@@ -109,6 +111,7 @@ def llm_main(cfg: dict[str, Any], jobs: Any, store: Any, ready: Any) -> None:
             threshold,
             detector_only_mode=cfg["detector_only_mode"],
             verify_threshold=cfg.get("verify_threshold", DEFAULT_VERIFY_THRESHOLD),
+            tx_verify_threshold=cfg.get("tx_verify_threshold"),
             hinglish_mode=cfg["hinglish_mode"],
             url_scorer=url_scorer,
             url_threshold=url_threshold,
@@ -369,7 +372,9 @@ def build_verdict_service(cfg: dict[str, Any], store: Any, jobs: Any, counters: 
     detector.load(root / ONNX_PATH, int(cfg["onnx_threads"]), {})
     info[DETECTOR_MODEL_ID]["load_s"] = round(time.perf_counter() - t0, 3)
     threshold = float(sms_model.threshold)
-    url_scorer, url_threshold, url_info = svc.load_url_model(root)
+    url_scorer, url_threshold, url_info = svc.load_url_model(
+        root, hybrid=bool(cfg.get("url_hybrid", False))
+    )
     info[URL_MODEL_ID] = url_info
     table_path = cfg.get("explanation_table")
     table = ExplanationTable.load(table_path) if table_path else None
@@ -379,6 +384,7 @@ def build_verdict_service(cfg: dict[str, Any], store: Any, jobs: Any, counters: 
         threshold,
         detector_only_mode=cfg["detector_only_mode"],
         verify_threshold=cfg.get("verify_threshold", DEFAULT_VERIFY_THRESHOLD),
+        tx_verify_threshold=cfg.get("tx_verify_threshold"),
         hinglish_mode=cfg["hinglish_mode"],
         url_scorer=url_scorer,
         url_threshold=url_threshold,
@@ -393,6 +399,7 @@ def build_verdict_service(cfg: dict[str, Any], store: Any, jobs: Any, counters: 
         scratch=root / "run" / "nids_uploads",
         flow_source=cfg["nids_flow_source"],
         model_mode=cfg["net_model_mode"],
+        dns_min_distinct=int(cfg.get("nids_dns_min_distinct") or 1),
     )
     log_path = cfg.get("log")
     service = Service(
@@ -513,7 +520,10 @@ def cfg_from_args(args, root: Path) -> dict[str, Any]:
         "batch_onnx": args.batch_onnx,
         "detector_only_mode": args.detector_only_mode,
         "verify_threshold": args.verify_threshold,
+        "tx_verify_threshold": getattr(args, "tx_verify_threshold", None),
+        "url_hybrid": bool(getattr(args, "url_hybrid", False)),
         "url_high_threshold": args.url_high_threshold,
+        "nids_dns_min_distinct": getattr(args, "nids_dns_min_distinct", 1),
         "hinglish_mode": args.hinglish_mode,
         "explainer_candidate": args.explainer_candidate,
         "explainer_cap": args.explainer_cap,

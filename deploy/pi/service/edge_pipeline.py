@@ -25,6 +25,7 @@ from typing import Any, Protocol
 
 from edge_decision import (  # noqa: F401 - scam_state_for and detector_only_package re-exported
     DEFAULT_DETECTOR_ONLY_MODE,
+    DEFAULT_TX_VERIFY_THRESHOLD,
     DEFAULT_VERIFY_THRESHOLD,
     add_url_evidence,
     check_mode,
@@ -188,6 +189,7 @@ class EdgeAnalyzer:
         clock: Callable[[], float] = time.perf_counter,
         detector_only_mode: str = DEFAULT_DETECTOR_ONLY_MODE,
         verify_threshold: float = DEFAULT_VERIFY_THRESHOLD,
+        tx_verify_threshold: float | None = None,
         hinglish_mode: str = DEFAULT_HINGLISH_MODE,
         url_scorer: UrlScorer | None = None,
         url_threshold: float | None = None,
@@ -215,6 +217,9 @@ class EdgeAnalyzer:
         self.llm = llm
         self.threshold = float(threshold)
         self.verify_threshold = float(verify_threshold)
+        self.tx_verify_threshold = (
+            None if tx_verify_threshold is None else float(tx_verify_threshold)
+        )
         self.max_new_tokens = max_new_tokens
         self.clock = clock
         self.detector_only_mode = check_mode(detector_only_mode)
@@ -270,6 +275,7 @@ class EdgeAnalyzer:
             self.threshold,
             self.detector_only_mode,
             verify_threshold=self.verify_threshold,
+            tx_verify_threshold=self.tx_verify_threshold,
         )
         t_evidence = clock()
         lang_detected = detect_lang(text)
@@ -656,9 +662,30 @@ def check_url(
         high_thr is None or (hit is not None and float(hit.score) >= high_thr)
     )
     brand = any(e.type == "brand_domain_mismatch" for e in evidence)
-    if model_high or brand:
+    domain_intel_doc: dict[str, Any] | None = None
+    intel_phish = False
+    intel_suspicious = False
+    assess_fn = getattr(scorer, "assess", None)
+    if active and callable(assess_fn) and hit is not None:
+        assessment = assess_fn(hit.url)
+        sigs = list(assessment.signals)
+        domain_intel_doc = {
+            "onnx_score": (
+                round(float(assessment.onnx_score), 4)
+                if assessment.onnx_score is not None
+                else None
+            ),
+            "domain_score": round(float(assessment.domain_score), 4),
+            "reputation": assessment.reputation,
+            "signals": sigs,
+        }
+        intel_phish = bool(set(sigs) & {"homograph_brand_spoof", "brand_in_host_mismatch"})
+        intel_suspicious = bool(
+            set(sigs) & {"idn_homograph", "ip_literal", "userinfo_at", "brand_in_path_mismatch"}
+        )
+    if model_high or brand or intel_phish:
         verdict = "phishing"
-    elif evidence:
+    elif evidence or intel_suspicious:
         verdict = "suspicious"
     else:
         verdict = "no_signal"
@@ -672,7 +699,7 @@ def check_url(
     }
     if high_thr is not None:
         url_model_doc["high_threshold"] = round(high_thr, 4)
-    return {
+    result: dict[str, Any] = {
         "verdict": verdict,
         "risk": package.risk.value,
         "action": action.value,
@@ -690,3 +717,6 @@ def check_url(
             "total": _ms(t0, t_end),
         },
     }
+    if domain_intel_doc is not None:
+        result["domain_intel"] = domain_intel_doc
+    return result

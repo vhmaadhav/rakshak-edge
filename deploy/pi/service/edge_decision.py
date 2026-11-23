@@ -17,6 +17,7 @@ not changed (Kaggle evals depend on it). The mode decides what the user sees:
 from __future__ import annotations
 
 import dataclasses
+import re
 
 from rakshak.canonicalize import Canon
 from rakshak.evidence import Action, EvidencePackage, Risk, build_package, choose_action
@@ -26,16 +27,38 @@ from rakshak.url_reputation import default_guard
 
 DETECTOR_ONLY_MODES = ("quiet", "balanced", "verify")
 DEFAULT_DETECTOR_ONLY_MODE = "quiet"
-# Balanced 3-outcome mode: detector-only messages escalate to UNCERTAIN / VERIFY_INDEPENDENTLY
-# when p_scam >= DEFAULT_VERIFY_THRESHOLD, while sub-threshold flags stay LOW / IGNORE.
-# Combined with corroborated URL evidence (URL score >= tau_url AND SMS student >= tau_sms),
-# this keeps GroundLM policy-negative FPR under ~1% while recovering >70% campaign recall and
-# >65% SmishX smishing recall (vs 16.2% / 23.5% in quiet mode).
-DEFAULT_VERIFY_THRESHOLD = 0.999
+# Transactional-aware balanced 3-outcome mode:
+# Detector-only messages (p_scam >= threshold, no rule/URL hit) escalate to UNCERTAIN /
+# VERIFY_INDEPENDENTLY using a two-tier threshold:
+# - Non-transactional messages: DEFAULT_VERIFY_THRESHOLD (0.9566, calibrated on campaign cal
+#   non-transactional no-rule negatives at FPR <= 0.1%, n=5,334; zero test/GroundLM leakage).
+# - Transactional-looking notices (bank/UPI/OTP/delivery/utility/balance vocabulary, matching
+#   rakshak.fusion.transactional_profile.PATTERNS): DEFAULT_TX_VERIFY_THRESHOLD (0.999), which
+#   keeps GroundLM legitimate-transactional FPR under ~1% while lifting campaign recall to ~86%
+#   and Hinglish recall to ~88%.
+DEFAULT_VERIFY_THRESHOLD = 0.9566
+DEFAULT_TX_VERIFY_THRESHOLD = 0.999
+_TX_NOTICE_RE = re.compile(
+    r"\b(?:"
+    r"bank|a/c|acct|account|debit(?:ed)?|credit(?:ed)?|"
+    r"upi|vpa|imps|neft|rtgs|"
+    r"otp|one[ -]time password|verification code|"
+    r"parcel|courier|delivery|delivered|shipment|tracking|"
+    r"recharge|telecom|data pack|electricity|utility|bill|broadband|"
+    r"do not share|don.?t share|never share|share mat|mat share|"
+    r"balance|rs\.?|inr|emi|loan|statement|txn|transaction|order"
+    r")\b",
+    re.I,
+)
 # URL model evidence on SMS decisions is shown in verify mode (always) and balanced mode
 # (corroborated only). Quiet mode ignores it (gate U2). /analyze_url is not affected.
 URL_EVIDENCE_MODE = "verify"
 URL_ACTIVE_MODES = ("verify", "balanced")
+
+
+def is_transactional_notice(text: str) -> bool:
+    """True when ``text`` matches transactional-notice vocabulary (bank/UPI/OTP/delivery)."""
+    return bool(_TX_NOTICE_RE.search(text or ""))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -123,22 +146,34 @@ def decide_edge(
     mode: str = DEFAULT_DETECTOR_ONLY_MODE,
     *,
     verify_threshold: float = DEFAULT_VERIFY_THRESHOLD,
+    tx_verify_threshold: float | None = None,
 ) -> EdgeDecision:
     """The edge decision for one message: state, package (after the mode), action.
 
     In ``verify`` mode every detector-only flag becomes UNCERTAIN / VERIFY_INDEPENDENTLY.
-    In ``balanced`` mode only high-confidence detector-only flags (``p_scam >= verify_threshold``)
-    escalate to UNCERTAIN / VERIFY_INDEPENDENTLY; lower-confidence ones stay LOW / IGNORE.
+    In ``balanced`` mode detector-only flags escalate to UNCERTAIN / VERIFY_INDEPENDENTLY when
+    ``p_scam >= tx_verify_threshold`` for transactional-looking notices or
+    ``p_scam >= verify_threshold`` otherwise; lower-confidence flags stay LOW / IGNORE.
     In ``quiet`` mode every detector-only flag stays LOW / IGNORE.
     """
     check_mode(mode)
     state = scam_state_for(p_scam, threshold, evidence)
     package = build_package(canon, evidence, state)
     detector_only = state == "scam" and not evidence
-    if detector_only and (
-        mode == "verify" or (mode == "balanced" and p_scam >= float(verify_threshold))
-    ):
-        package = detector_only_package(package)
+    if detector_only:
+        if mode == "verify":
+            package = detector_only_package(package)
+        elif mode == "balanced":
+            tx_thr = (
+                max(DEFAULT_TX_VERIFY_THRESHOLD, float(verify_threshold))
+                if tx_verify_threshold is None
+                else float(tx_verify_threshold)
+            )
+            eff_thr = (
+                tx_thr if is_transactional_notice(canon.normalized) else float(verify_threshold)
+            )
+            if p_scam >= eff_thr:
+                package = detector_only_package(package)
     return EdgeDecision(
         state=state,
         package=package,

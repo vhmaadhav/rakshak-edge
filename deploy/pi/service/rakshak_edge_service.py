@@ -62,6 +62,7 @@ sys.path[:0] = [
 
 from edge_decision import (  # noqa: E402
     DEFAULT_DETECTOR_ONLY_MODE,
+    DEFAULT_TX_VERIFY_THRESHOLD,
     DEFAULT_VERIFY_THRESHOLD,
     DETECTOR_ONLY_MODES,
     URL_ACTIVE_MODES,
@@ -1235,13 +1236,13 @@ def load_nids(root: Path):
     return scorer, info
 
 
-def load_url_model(root: Path):
+def load_url_model(root: Path, *, hybrid: bool = False):
     """The URL student (url_student) through the same registry check as the SMS model.
 
     Returns (scorer or None, threshold or None, info). The path is OFF unless the registry has a
     threshold for url_student and the model and its side scaler are ready (every pinned file
-    hashed). Off means no URL evidence is ever added and /analyze is unchanged. The reason is
-    kept in info and logged at startup.
+    hashed). When ``hybrid=True``, wraps ``FrozenURLExpert`` with ``HybridUrlScorer`` (combining
+    the ONNX URL student with the offline domain-disjoint DomainIntelScorer).
     """
     from rbench.registry import load_registry, model_state
 
@@ -1261,7 +1262,17 @@ def load_url_model(root: Path):
             reason = f"model not ready: {state.get('status')}"
         else:
             t0 = time.perf_counter()
-            scorer = FrozenURLExpert((root / model.path).parent)
+            scorer: Any = FrozenURLExpert((root / model.path).parent)
+            if hybrid:
+                from rakshak.url_domain_intel import HybridUrlScorer, default_domain_intel
+
+                dom = default_domain_intel()
+                if dom is not None:
+                    scorer = HybridUrlScorer(scorer, dom)
+                    info["hybrid"] = True
+                    info["domain_intel_version"] = dom.meta.get("version")
+                else:
+                    info["hybrid"] = False
             info["enabled"] = True
             info["load_s"] = round(time.perf_counter() - t0, 3)
             return scorer, float(model.threshold), info
@@ -1456,8 +1467,25 @@ def main(argv: list[str] | None = None) -> int:
         "--verify-threshold",
         type=float,
         default=float(os.environ.get("RAKSHAK_VERIFY_THRESHOLD", str(DEFAULT_VERIFY_THRESHOLD))),
-        help="balanced mode only: student probability at or above which a detector-only flag "
-        "escalates to UNCERTAIN / VERIFY_INDEPENDENTLY. Env RAKSHAK_VERIFY_THRESHOLD.",
+        help="balanced mode only: student probability at or above which a non-transactional "
+        "detector-only flag escalates to UNCERTAIN / VERIFY_INDEPENDENTLY. "
+        "Env RAKSHAK_VERIFY_THRESHOLD.",
+    )
+    p.add_argument(
+        "--tx-verify-threshold",
+        type=float,
+        default=float(
+            os.environ.get("RAKSHAK_TX_VERIFY_THRESHOLD", str(DEFAULT_TX_VERIFY_THRESHOLD))
+        ),
+        help="balanced mode only: stricter threshold for transactional-looking detector-only "
+        "notices (bank/UPI/OTP/delivery/utility). Env RAKSHAK_TX_VERIFY_THRESHOLD.",
+    )
+    p.add_argument(
+        "--url-hybrid",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get("RAKSHAK_URL_HYBRID", "") == "1",
+        help="combine ONNX url_student with offline domain-disjoint DomainIntelScorer via "
+        "logit fusion and attach domain_intel signals to /analyze_url. Env RAKSHAK_URL_HYBRID=1.",
     )
     p.add_argument(
         "--url-high-threshold",
@@ -1470,6 +1498,14 @@ def main(argv: list[str] | None = None) -> int:
         help="POST /analyze_url: optional high-confidence threshold for verdict='phishing' "
         "(scores between url threshold and this value return verdict='suspicious', reducing "
         "out-of-domain false alarms). Env RAKSHAK_URL_HIGH_THRESHOLD.",
+    )
+    p.add_argument(
+        "--nids-dns-min-distinct",
+        type=_positive_int,
+        default=int(os.environ.get("RAKSHAK_NIDS_DNS_MIN_DISTINCT", "1")),
+        help="network: minimum distinct suspicious DNS query names required in 60 s to fire "
+        "dns_tunnel (default 1 = pre-registered rule; 3 suppresses repeated single-hostname "
+        "CDN lookalikes). Env RAKSHAK_NIDS_DNS_MIN_DISTINCT.",
     )
     p.add_argument(
         "--nids-alert",
@@ -1645,7 +1681,7 @@ def main(argv: list[str] | None = None) -> int:
     explainer_cache = (
         CachedGenerator(llm, args.explainer_cache) if args.explainer_cache > 0 else None
     )
-    url_scorer, url_threshold, url_info = load_url_model(root)
+    url_scorer, url_threshold, url_info = load_url_model(root, hybrid=bool(args.url_hybrid))
     info[URL_MODEL_ID] = url_info
     from explanation_table import ExplanationTable
 
@@ -1656,6 +1692,7 @@ def main(argv: list[str] | None = None) -> int:
         threshold,
         detector_only_mode=args.detector_only_mode,
         verify_threshold=args.verify_threshold,
+        tx_verify_threshold=args.tx_verify_threshold,
         hinglish_mode=args.hinglish_mode,
         url_scorer=url_scorer,
         url_threshold=url_threshold,
@@ -1675,6 +1712,7 @@ def main(argv: list[str] | None = None) -> int:
         scratch=root / "run" / "nids_uploads",
         flow_source=args.nids_flow_source,
         model_mode=args.net_model_mode,
+        dns_min_distinct=args.nids_dns_min_distinct,
     )
     service = Service(
         analyzer,

@@ -140,6 +140,7 @@ class NidsAnalyzer:
         scratch: Path,
         flow_source: str = "auto",
         model_mode: str = NET_MODEL_MODE,
+        dns_min_distinct: int = 1,
         clock: Callable[[], float] = time.perf_counter,
     ) -> None:
         if flow_source not in FLOW_SOURCES:
@@ -154,6 +155,7 @@ class NidsAnalyzer:
         self.model_id = model_id
         self.scratch = scratch
         self.flow_source = flow_source
+        self.dns_min_distinct = max(1, int(dns_min_distinct))
         self.clock = clock
 
     def analyse_body(self, raw: bytes) -> dict[str, Any]:
@@ -180,7 +182,7 @@ class NidsAnalyzer:
             )
             per_flow.append((clock() - t) * 1000.0)
         t_score1 = clock()
-        hits = host_rules.evaluate(ordered)
+        hits = host_rules.evaluate(ordered, dns_min_distinct=self.dns_min_distinct)
         alerts = host_alerts(decisions, hits, mode=self.model_mode)
         # The watchlist is the alert-mode list of uncertain-only hosts. Quiet mode reports those
         # hosts as model_only advisories instead, so the list is empty there.

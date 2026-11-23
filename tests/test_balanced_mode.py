@@ -162,3 +162,24 @@ def test_check_url_three_tier_verdict_with_high_threshold():
     high = check_url(url, _FixedUrlScorer(0.995), 0.63, high_threshold=0.99)
     assert high["verdict"] == "phishing"
     assert high["url_model"]["fired"] is True
+
+
+def test_balanced_mode_transactional_aware_two_tier_thresholds():
+    # General non-transactional message at p=0.97 escalates (default verify_threshold=0.9566)
+    general = canonicalize("Congratulations you have been shortlisted for our special offer today")
+    assert not edge_decision.is_transactional_notice(general.normalized)
+    dec_gen = edge_decision.decide_edge(general, [], 0.97, 0.35, mode="balanced")
+    assert dec_gen.package.risk == Risk.UNCERTAIN
+    assert dec_gen.action == Action.VERIFY_INDEPENDENTLY
+
+    # Transactional bank/UPI/OTP notice at p=0.97 stays quiet (default tx_verify_threshold=0.999)
+    tx = canonicalize("Rs. 450 debited from A/c XX1234 via UPI. Available balance Rs. 12400.")
+    assert edge_decision.is_transactional_notice(tx.normalized)
+    dec_tx_mid = edge_decision.decide_edge(tx, [], 0.97, 0.35, mode="balanced")
+    assert dec_tx_mid.package.risk == Risk.LOW
+    assert dec_tx_mid.action == Action.IGNORE
+
+    # Transactional notice at extreme confidence (p=0.9995) still escalates to verify
+    dec_tx_hi = edge_decision.decide_edge(tx, [], 0.9995, 0.35, mode="balanced")
+    assert dec_tx_hi.package.risk == Risk.UNCERTAIN
+    assert dec_tx_hi.action == Action.VERIFY_INDEPENDENTLY
