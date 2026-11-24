@@ -49,11 +49,16 @@ def upstream_paths(unix_path: str) -> list[str]:
     return found
 
 
+DEFAULT_CONNECT_TIMEOUT_S = 5.0
+DEFAULT_MAX_CONNECTIONS = 128
+
 _RR = itertools.count()
 _RR_LOCK = threading.Lock()
 
 
-def _connect(unix_path: str) -> socket.socket | None:
+def _connect(
+    unix_path: str, timeout: float = DEFAULT_CONNECT_TIMEOUT_S
+) -> socket.socket | None:
     """A connection to the next socket in round-robin order; the others are tried in turn when a
     worker's socket does not accept (for example a worker that is restarting)."""
     paths = upstream_paths(unix_path)
@@ -63,37 +68,75 @@ def _connect(unix_path: str) -> socket.socket | None:
         path = paths[(start + k) % len(paths)]
         upstream = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
+            upstream.settimeout(timeout)
             upstream.connect(path)
+            upstream.settimeout(None)
             return upstream
         except OSError:
             upstream.close()
     return None
 
 
-def _handle(client: socket.socket, unix_path: str) -> None:
+def _handle(
+    client: socket.socket,
+    unix_path: str,
+    sem: threading.BoundedSemaphore | None = None,
+    *,
+    connect_timeout: float = DEFAULT_CONNECT_TIMEOUT_S,
+) -> None:
     # Small responses must not wait for Nagle: the relay forwards each chunk as it arrives.
-    client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    upstream = _connect(unix_path)
-    if upstream is None:
+    upstream: socket.socket | None = None
+    try:
+        client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        upstream = _connect(unix_path, timeout=connect_timeout)
+        if upstream is None:
+            return
+        back = threading.Thread(target=_pipe, args=(upstream, client), daemon=True)
+        back.start()
+        _pipe(client, upstream)
+        back.join()
+    except OSError:
+        pass
+    finally:
         client.close()
-        return
-    back = threading.Thread(target=_pipe, args=(upstream, client), daemon=True)
-    back.start()
-    _pipe(client, upstream)
-    back.join()
-    client.close()
-    upstream.close()
+        if upstream is not None:
+            upstream.close()
+        if sem is not None:
+            sem.release()
 
 
-def serve(host: str, port: int, unix_path: str) -> None:
+def serve(
+    host: str,
+    port: int,
+    unix_path: str,
+    *,
+    max_connections: int = DEFAULT_MAX_CONNECTIONS,
+    connect_timeout: float = DEFAULT_CONNECT_TIMEOUT_S,
+) -> None:
     if host not in ("127.0.0.1", "localhost"):
         raise SystemExit("socket_bridge: listen on loopback only")
+    if max_connections < 1:
+        raise ValueError("max_connections must be at least 1")
+    sem = threading.BoundedSemaphore(int(max_connections))
     listener = socket.create_server((host, port))
     # Keep-alive clients reuse one connection per session, so the relay thread is per connection.
     try:
         while True:
             client, _ = listener.accept()
-            threading.Thread(target=_handle, args=(client, unix_path), daemon=True).start()
+            if not sem.acquire(blocking=False):
+                client.close()
+                continue
+            try:
+                threading.Thread(
+                    target=_handle,
+                    args=(client, unix_path, sem),
+                    kwargs={"connect_timeout": connect_timeout},
+                    daemon=True,
+                ).start()
+            except Exception:
+                sem.release()
+                client.close()
+                raise
     finally:
         listener.close()
 

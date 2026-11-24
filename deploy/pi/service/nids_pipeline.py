@@ -222,6 +222,10 @@ class NidsAnalyzer:
                 "alert_threshold": round(self.alert, 4),
                 "uncertain_threshold": round(self.uncertain, 4),
                 "features": 19,
+                "dns_min_distinct": self.dns_min_distinct,
+                "dns_slow_window_s": (
+                    int(self.dns_slow_window_ms // 1000) if self.dns_slow_window_ms else 0
+                ),
             },
             "decision": {
                 "risk": worst["decision"]["risk"] if worst else "LOW",

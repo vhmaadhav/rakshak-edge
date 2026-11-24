@@ -4,9 +4,11 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -15,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import org.rakshak.edge.analysis.DetectorOnlyMode
 
 /**
  * The permissions this app declares, read at runtime from its own package info. Null when the
@@ -51,6 +54,8 @@ internal fun ProofTab(
     detectorStatus: DetectorStatus,
     explainerInstalled: Boolean,
     permissions: Set<String>?,
+    detectorMode: DetectorOnlyMode,
+    onDetectorMode: (DetectorOnlyMode) -> Unit,
     onAbout: () -> Unit,
 ) {
     val c = LocalRakshakColors.current
@@ -82,6 +87,38 @@ internal fun ProofTab(
 
     FadeUp(1) {
         GlassCard {
+            SectionLabel("Detector-only policy")
+            Text(
+                text = "Controls messages flagged by the ONNX model when no deterministic rule matched.",
+                style = MaterialTheme.typography.bodySmall,
+                color = c.muted,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DetectorOnlyMode.entries.forEach { m ->
+                    FilterChip(
+                        selected = detectorMode == m,
+                        onClick = { onDetectorMode(m) },
+                        label = { Text(m.label) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            val policyNote = when (detectorMode) {
+                DetectorOnlyMode.QUIET -> "Quiet (default): detector-only flags stay LOW / IGNORE."
+                DetectorOnlyMode.BALANCED ->
+                    "Balanced: escalates at >= 0.9566, while passive bank/UPI/OTP notices require >= 0.999."
+                DetectorOnlyMode.VERIFY ->
+                    "Verify: escalates every detector-only flag (>= 0.3513) to Verify independently."
+            }
+            Text(text = policyNote, style = MaterialTheme.typography.bodySmall, color = c.text)
+        }
+    }
+
+    FadeUp(2) {
+        GlassCard {
             SectionLabel("On this phone")
             Text(text = detectorLine, style = MaterialTheme.typography.bodyMedium, color = c.text)
             Text(text = explainerLine, style = MaterialTheme.typography.bodyMedium, color = c.text)
@@ -93,7 +130,7 @@ internal fun ProofTab(
         }
     }
 
-    FadeUp(2) {
+    FadeUp(3) {
         GlassCard {
             Text(
                 text = "Proof-carrying explanation",
@@ -111,7 +148,7 @@ internal fun ProofTab(
         }
     }
 
-    FadeUp(3) {
+    FadeUp(4) {
         GlassCard {
             Text(
                 text = "Built with Llama",

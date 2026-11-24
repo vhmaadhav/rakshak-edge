@@ -3,8 +3,10 @@ energy window. The detector, the LLM runner and device telemetry are mocks; no m
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -529,6 +531,18 @@ def _free_port():
         return s.getsockname()[1]
 
 
+@contextlib.contextmanager
+def _short_socket_path(tmp_path: Path, name: str = "edge.sock"):
+    """macOS limits AF_UNIX socket paths to 104 bytes; fall back to /tmp when tmp_path is longer."""
+    candidate = tmp_path / name
+    if len(str(candidate)) <= 95:
+        yield candidate
+        return
+    with tempfile.TemporaryDirectory(prefix="rakshak-sock-") as td:
+        yield Path(td) / name
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="/proc/self/net is Linux-only")
 def test_netns_report_without_probe_lists_interfaces_and_routes():
     report = svc.netns_report(probe=False)
     assert "error" not in report
@@ -540,53 +554,54 @@ def test_netns_report_without_probe_lists_interfaces_and_routes():
 def test_unix_socket_serves_the_same_api_and_the_bridge_relays_it(tmp_path):
     import socket_bridge
 
-    sock = str(tmp_path / "edge.sock")
-    service = _service()
-    index = (svc.HERE / "index.html").read_bytes()
-    unix_server = svc.serve_unix(service, sock, index)
-    threading.Thread(
-        target=unix_server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
-    ).start()
-    port = _free_port()
-    threading.Thread(
-        target=socket_bridge.serve, args=("127.0.0.1", port, sock), daemon=True
-    ).start()
-    try:
-        # the bridge is a plain TCP listener on loopback: this is what the browser uses
-        deadline = time.time() + 5
-        status = body = None
-        while time.time() < deadline:
-            try:
-                status, _, body = _req(f"http://127.0.0.1:{port}/health")
-                break
-            except OSError:
-                time.sleep(0.05)
-        assert status == 200
-        assert json.loads(body)["status"] == "ok"
-        status, _, body = _req(f"http://127.0.0.1:{port}/")
-        assert status == 200 and b"Rakshak edge pipeline" in body
-    finally:
-        unix_server.shutdown()
-        unix_server.server_close()
+    with _short_socket_path(tmp_path) as sock_path:
+        sock = str(sock_path)
+        service = _service()
+        index = (svc.HERE / "index.html").read_bytes()
+        unix_server = svc.serve_unix(service, sock, index)
+        threading.Thread(
+            target=unix_server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+        ).start()
+        port = _free_port()
+        threading.Thread(
+            target=socket_bridge.serve, args=("127.0.0.1", port, sock), daemon=True
+        ).start()
+        try:
+            # the bridge is a plain TCP listener on loopback: this is what the browser uses
+            deadline = time.time() + 5
+            status = body = None
+            while time.time() < deadline:
+                try:
+                    status, _, body = _req(f"http://127.0.0.1:{port}/health")
+                    break
+                except OSError:
+                    time.sleep(0.05)
+            assert status == 200
+            assert json.loads(body)["status"] == "ok"
+            status, _, body = _req(f"http://127.0.0.1:{port}/")
+            assert status == 200 and b"Rakshak edge pipeline" in body
+        finally:
+            unix_server.shutdown()
+            unix_server.server_close()
 
 
 def test_eval_client_talks_to_the_unix_socket(tmp_path, monkeypatch):
     import eval_service
 
-    sock = tmp_path / "edge.sock"
-    service = _service()
-    unix_server = svc.serve_unix(service, str(sock), b"<html></html>")
-    threading.Thread(
-        target=unix_server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
-    ).start()
-    monkeypatch.setattr(eval_service, "SOCKET", sock)
-    try:
-        assert eval_service._get("/health")["status"] == "ok"
-        status, body = eval_service._post("hello there")
-        assert status == 200 and body["decision"]["risk"] == "LOW"
-    finally:
-        unix_server.shutdown()
-        unix_server.server_close()
+    with _short_socket_path(tmp_path) as sock:
+        service = _service()
+        unix_server = svc.serve_unix(service, str(sock), b"<html></html>")
+        threading.Thread(
+            target=unix_server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+        ).start()
+        monkeypatch.setattr(eval_service, "SOCKET", sock)
+        try:
+            assert eval_service._get("/health")["status"] == "ok"
+            status, body = eval_service._post("hello there")
+            assert status == 200 and body["decision"]["risk"] == "LOW"
+        finally:
+            unix_server.shutdown()
+            unix_server.server_close()
 
 
 def test_eval_percentiles_and_counts():

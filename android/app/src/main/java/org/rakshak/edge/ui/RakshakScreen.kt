@@ -80,6 +80,7 @@ import org.rakshak.edge.Analysis
 import org.rakshak.edge.Engine
 import org.rakshak.edge.SharedMessage
 import org.rakshak.edge.analysis.Action
+import org.rakshak.edge.analysis.DetectorOnlyMode
 import org.rakshak.edge.analysis.Evidence
 import org.rakshak.edge.analysis.RemediationItem
 import org.rakshak.edge.analysis.Risk
@@ -155,6 +156,7 @@ private fun RakshakContent(engine: Engine, shared: SharedMessage?) {
     val scope = rememberCoroutineScope()
     val reducedMotion = rememberReducedMotion()
     var selectedTab by rememberSaveable { mutableStateOf(TAB_HOME) }
+    var detectorMode by rememberSaveable { mutableStateOf(DetectorOnlyMode.QUIET) }
     var text by rememberSaveable { mutableStateOf("") }
     var analysis by remember { mutableStateOf<Analysis?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -213,7 +215,7 @@ private fun RakshakContent(engine: Engine, shared: SharedMessage?) {
     /** engine.check with a wall-clock time around it. A success is recorded in this session. */
     suspend fun runCheck(message: String, timing: InferenceTiming?): Result<Analysis> {
         val startNs = System.nanoTime()
-        val result = engine.check(message, timing)
+        val result = engine.check(message, timing, mode = detectorMode)
         val ms = elapsedMs(startNs)
         result.onSuccess { fresh ->
             val id = System.nanoTime()
@@ -335,6 +337,8 @@ private fun RakshakContent(engine: Engine, shared: SharedMessage?) {
                     detectorStatus = detectorStatus,
                     explainerInstalled = explainerInstalled,
                     permissions = permissions,
+                    detectorMode = detectorMode,
+                    onDetectorMode = { detectorMode = it },
                     onAbout = { showAbout = true },
                 )
                 else -> CheckTab(

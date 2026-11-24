@@ -241,6 +241,7 @@ class Service:
         models: dict[str, Any],
         detector_only_mode: str = DEFAULT_DETECTOR_ONLY_MODE,
         verify_threshold: float = DEFAULT_VERIFY_THRESHOLD,
+        tx_verify_threshold: float | None = None,
         hinglish_mode: str = DEFAULT_HINGLISH_MODE,
         device_fn=read_snapshot,
         energy_factory=EnergyWindow,
@@ -283,6 +284,13 @@ class Service:
         self.models = models
         self.detector_only_mode = detector_only_mode
         self.verify_threshold = float(verify_threshold)
+        if tx_verify_threshold is not None:
+            self.tx_verify_threshold = float(tx_verify_threshold)
+        else:
+            raw_tx_thr = getattr(analyzer, "tx_verify_threshold", None)
+            self.tx_verify_threshold = (
+                DEFAULT_TX_VERIFY_THRESHOLD if raw_tx_thr is None else float(raw_tx_thr)
+            )
         self.hinglish_mode = hinglish_mode
         self.device_fn = device_fn
         self.energy_factory = energy_factory
@@ -336,6 +344,30 @@ class Service:
             self._log_handle.write(line + "\n")
 
     def health(self) -> dict[str, Any]:
+        url_info = self.models.get(URL_MODEL_ID) or {}
+        nids_info = (
+            {
+                "model_mode": self.nids.model_mode,
+                "dns_min_distinct": self.nids.dns_min_distinct,
+                "dns_slow_window_s": (
+                    int(self.nids.dns_slow_window_ms // 1000)
+                    if self.nids.dns_slow_window_ms
+                    else 0
+                ),
+            }
+            if self.nids is not None
+            else None
+        )
+        url_model_doc: dict[str, Any] = {
+            # Diagnostic only (no per-request field in /analyze). Quiet mode never scores
+            # URLs for /analyze; balanced adds corroborated URLs; /analyze_url works always.
+            "enabled": bool(url_info.get("enabled")),
+            "threshold": url_info.get("threshold"),
+            "evidence_visible": self.detector_only_mode in URL_ACTIVE_MODES,
+        }
+        if url_info.get("hybrid"):
+            url_model_doc["hybrid"] = True
+            url_model_doc["domain_intel_version"] = url_info.get("domain_intel_version")
         return {
             "status": "ok",
             "pid": os.getpid(),
@@ -345,13 +377,9 @@ class Service:
             "models": self.models,
             "detector_only_mode": self.detector_only_mode,
             "verify_threshold": self.verify_threshold,
-            "url_model": {
-                # Diagnostic only (no per-request field in /analyze). Quiet mode never scores
-                # URLs for /analyze; balanced adds corroborated URLs; /analyze_url works always.
-                "enabled": bool((self.models.get(URL_MODEL_ID) or {}).get("enabled")),
-                "threshold": (self.models.get(URL_MODEL_ID) or {}).get("threshold"),
-                "evidence_visible": self.detector_only_mode in URL_ACTIVE_MODES,
-            },
+            "tx_verify_threshold": self.tx_verify_threshold,
+            "url_model": url_model_doc,
+            "nids": nids_info,
             "hinglish_mode": self.hinglish_mode,
             "response_mode": self.response_mode,
             # Explicit: the default is sync; the source says whether a flag, the environment
