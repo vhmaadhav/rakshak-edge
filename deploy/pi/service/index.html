@@ -1244,6 +1244,7 @@ footer p+p{margin-top:4px}
   /* ---------- Link ---------- */
   function renderLink(d) {
     var um = isObj(d.url_model) ? d.url_model : {};
+    var di = isObj(d.domain_intel) ? d.domain_intel : null;
     var evidence = arr(d.evidence);
     var res = $("linkRes");
     res.className = "results " + riskClass(d.risk);
@@ -1255,14 +1256,26 @@ footer p+p{margin-top:4px}
     vEl.textContent = v;
     vEl.className = "verdict " + (d.verdict === "phishing" ? "bad" : d.verdict === "suspicious" ? "warn" : "ok");
 
-    kv($("linkKv"), [
+    var thrText = isNum(um.high_threshold)
+      ? " (threshold " + fmt(um.threshold, 4) + ", phishing >= " + fmt(um.high_threshold, 4) + ")"
+      : " (threshold " + fmt(um.threshold, 4) + ")";
+    var linkRows = [
       ["Risk", sv(d.risk)],
       ["Domain", um.domain || (d.url_count ? "n/a" : "no link found")],
       ["URL model score", !um.enabled ? "off (no threshold in registry)" :
-        (score === null ? "no link" : fmt(score, 4) + " (threshold " + fmt(um.threshold, 4) + ")")],
-      ["Rule hits", evidence.length ? evidence.map(function (e) { return prettyType(e.type); }).join(", ") : "none"],
-      ["Total", fmt(isObj(d.timings_ms) ? d.timings_ms.total : null, 0) + " ms, measured"]
-    ]);
+        (score === null ? "no link" : fmt(score, 4) + thrText)],
+      ["Rule hits", evidence.length ? evidence.map(function (e) { return prettyType(e.type); }).join(", ") : "none"]
+    ];
+    if (di) {
+      var repPart = di.reputation ? " · reputation " + sv(di.reputation) : "";
+      linkRows.push(["Hybrid breakdown",
+        "ONNX " + (isNum(di.onnx_score) ? fmt(di.onnx_score, 4) : "n/a") +
+        " · Domain intel " + fmt(di.domain_score, 4) + repPart]);
+      var sigs = arr(di.signals).map(function (s) { return prettyType(s); });
+      linkRows.push(["Domain signals", sigs.length ? sigs.join(", ") : "none"]);
+    }
+    linkRows.push(["Total", fmt(isObj(d.timings_ms) ? d.timings_ms.total : null, 0) + " ms, measured"]);
+    kv($("linkKv"), linkRows);
     renderEvidence($("linkEv"), evidence);
     $("linkRemCard").hidden = renderRem($("linkRem"), d.remediation) === 0;
     animateIn(res);
@@ -1558,7 +1571,11 @@ footer p+p{margin-top:4px}
       return "unknown · " + (load ? "checking /health" : down ? "service not reachable" : "no status from /health");
     }
     if (name === "link") {
-      if (st === "on") return "on · URL model enabled";
+      if (st === "on") {
+        return H && isObj(H.url_model) && H.url_model.hybrid
+          ? "on · hybrid URL + domain intel"
+          : "on · URL model enabled";
+      }
       if (st === "off") return "off · no URL model in this service";
       return "unknown · " + (load ? "checking /health" : down ? "service not reachable" : "no /health answer");
     }
@@ -1681,17 +1698,41 @@ footer p+p{margin-top:4px}
     }
     var ec = isObj(H.explainer_cache) ? H.explainer_cache : {};
     var dom = sv(H.detector_only_mode);
-    kv($("modelKv"), [
+    if (dom === "balanced" && isNum(H.verify_threshold)) {
+      dom += " (verify >= " + fmt(H.verify_threshold, 4) +
+        (isNum(H.tx_verify_threshold) ? " · passive-tx >= " + fmt(H.tx_verify_threshold, 3) : "") + ")";
+    }
+    var urlLine = "n/a";
+    if (isObj(H.url_model)) {
+      if (H.url_model.enabled) {
+        urlLine = (H.url_model.hybrid ? "on (hybrid" : "on (threshold ") +
+          (H.url_model.hybrid ? ", threshold " : "") + fmt(H.url_model.threshold, 2) +
+          (H.url_model.hybrid ? ")" : ")");
+      } else {
+        urlLine = "off";
+      }
+    }
+    var modelRows = [
       ["Explainer runner", sv(H.llm_runner)],
       ["Detector only mode", dom],
       ["Threads", sv(H.threads)],
-      ["URL model", isObj(H.url_model) ? (H.url_model.enabled ? "on, threshold " + fmt(H.url_model.threshold, 2) : "off") : "n/a"],
+      ["URL model", urlLine]
+    ];
+    if (isObj(H.nids)) {
+      modelRows.push(["NIDS policy", sv(H.nids.model_mode) +
+        " · dns_min_distinct " + sv(H.nids.dns_min_distinct) +
+        (isNum(H.nids.dns_slow_window_s) && H.nids.dns_slow_window_s > 0
+          ? " · slow window " + sv(H.nids.dns_slow_window_s) + " s"
+          : "")]);
+    }
+    modelRows.push(
       ["Explainer cache", "hits " + sv(ec.hits) + " · misses " + sv(ec.misses) + " · size " + sv(ec.size) + " of " + sv(ec.capacity)],
       ["Uptime", fmtUptime(H.uptime_s)],
       ["RSS now / peak", fmt(H.rss_mb, 1) + " / " + fmt(H.rss_peak_mb, 1) + " MB"],
       ["SoC temp", isObj(H.device) ? fmt(H.device.temp_c, 1) + " °C" + (isNum(H.temp_limit_c) ? " (limit " + fmt(H.temp_limit_c, 0) + ")" : "") : "n/a"],
       ["Requests since start", sv(H.requests) + " (refused while hot: " + sv(H.refused_cooling) + ")"]
-    ]);
+    );
+    kv($("modelKv"), modelRows);
   }
 
   /* ---------- health (optional; the page works without it) ---------- */

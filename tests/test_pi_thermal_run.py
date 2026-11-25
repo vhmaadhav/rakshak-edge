@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -11,12 +12,19 @@ import thermal_run as tr
 
 
 def _proc_state(pid: int) -> str:
-    """Single-letter process state from /proc (T = stopped, S/R = running)."""
+    """Single-letter process state from /proc or POSIX ps (T = stopped, S/R = running)."""
     try:
         text = Path(f"/proc/{pid}/stat").read_text()
+        return text[text.rfind(")") + 2]
     except OSError:
-        return "X"
-    return text[text.rfind(")") + 2]
+        res = subprocess.run(
+            ["ps", "-o", "state=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        state = res.stdout.strip()
+        return state[0] if state else "X"
 
 
 def _probe() -> dict[str, object]:

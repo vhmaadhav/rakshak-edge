@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.rakshak.edge.analysis.DetectorOnlyMode
 import org.rakshak.edge.analysis.Risk
 import org.rakshak.edge.llm.LlmExplainer
 import org.rakshak.edge.llm.ModelFiles
@@ -51,14 +52,18 @@ class Engine(private val context: Context) : AutoCloseable {
         }
     }
 
-    suspend fun check(text: String, timing: InferenceTiming? = null): Result<Analysis> = withContext(Dispatchers.Default) {
+    suspend fun check(
+        text: String,
+        timing: InferenceTiming? = null,
+        mode: DetectorOnlyMode = DetectorOnlyMode.QUIET,
+    ): Result<Analysis> = withContext(Dispatchers.Default) {
         detectorLock.withLock {
             try {
                 ensureOpen()
                 Result.success(if (detector == null && timing?.parallelSetup == true) {
-                    checkWithParallelSetup(text, timing)
+                    checkWithParallelSetup(text, timing, mode)
                 } else {
-                    Analyzer.analyse(text, detectorFor(timing).scorer(timing), timing = timing)
+                    Analyzer.analyse(text, detectorFor(timing).scorer(timing), timing = timing, mode = mode)
                 })
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -68,10 +73,14 @@ class Engine(private val context: Context) : AutoCloseable {
         }
     }
 
-    private suspend fun checkWithParallelSetup(text: String, timing: InferenceTiming): Analysis = coroutineScope {
+    private suspend fun checkWithParallelSetup(
+        text: String,
+        timing: InferenceTiming,
+        mode: DetectorOnlyMode,
+    ): Analysis = coroutineScope {
         val prepared = async { Analyzer.prepare(text, timing) }
         val scorer = detectorFor(timing).scorer(timing)
-        Analyzer.analyse(text, prepared.await(), scorer, timing = timing)
+        Analyzer.analyse(text, prepared.await(), scorer, timing = timing, mode = mode)
     }
 
     private fun detectorFor(timing: InferenceTiming?): StudentDetector =

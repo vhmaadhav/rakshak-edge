@@ -6,16 +6,22 @@ import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
 import org.rakshak.edge.analysis.Action
+import org.rakshak.edge.analysis.DetectorOnlyMode
 import org.rakshak.edge.analysis.Risk
 import org.rakshak.edge.analysis.SCAM_THRESHOLD
 import org.rakshak.edge.analysis.ScamState
 import org.rakshak.edge.analysis.Tier
 import org.rakshak.edge.analysis.canonicalize
+import org.rakshak.edge.analysis.detectorOnlyPackage
 import org.rakshak.edge.analysis.encodeBytes
+import org.rakshak.edge.analysis.isActionSolicitation
 import org.rakshak.edge.analysis.isDetectorOnly
+import org.rakshak.edge.analysis.isPassiveTransactionalNotice
+import org.rakshak.edge.analysis.isTransactionalNotice
 import org.rakshak.edge.analysis.registeredDomain
 import org.rakshak.edge.analysis.rxOf
 import org.rakshak.edge.analysis.scamStateFor
+import org.rakshak.edge.analysis.shouldEscalateDetectorOnly
 import org.rakshak.edge.analysis.tierFor
 import org.rakshak.edge.analysis.urlFeatures
 import org.rakshak.edge.analysis.runRules
@@ -181,5 +187,82 @@ class UnitTest {
         val pkg = buildPackage(canon, runRules(canon), ScamState.UNCERTAIN)
         val collapsed = collapseByType(pkg)
         assertEquals(collapsed.evidence.map { it.type }.distinct(), collapsed.evidence.map { it.type })
+    }
+
+    @Test
+    fun balanced_passive_transactional_and_verify_modes_match_pi_policy() {
+        val passiveNotices = listOf(
+            "SBI: A/c XX4821 debited by Rs.1,250.00 via UPI Ref 632189451022. Avl Bal Rs.34,820.50.",
+            "Myntra: Your return for order 412890 has been processed. Refund of INR 1,299 initiated.",
+            "TATA Power: Bill for November is INR 1,420. Due: 2026-12-05. Pay via UPI: 9812345670@oktatapower",
+            "849201 is your SBI OTP for online payment. Valid for 5 mins. Do not share with anyone.",
+        )
+        val fixedHighScorer = StudentScorer { _, _, _ -> 0.97 }
+        val extremeScorer = StudentScorer { _, _, _ -> 0.9995 }
+        val verifyThresholdScorer = StudentScorer { _, _, _ -> 0.50 }
+
+        for (msg in passiveNotices) {
+            val canon = canonicalize(msg)
+            assertTrue(msg, isPassiveTransactionalNotice(canon.normalized))
+
+            // Quiet keeps LOW / IGNORE
+            val quiet = Analyzer.analyse(msg, fixedHighScorer, mode = DetectorOnlyMode.QUIET)
+            assertEquals(Risk.LOW, quiet.pkg.risk)
+            assertEquals(Action.IGNORE, quiet.action)
+            assertEquals("detector_only_quiet", quiet.advisory.path)
+
+            // Balanced holds passive transactional notice at LOW / IGNORE at p=0.97
+            val balMid = Analyzer.analyse(msg, fixedHighScorer, mode = DetectorOnlyMode.BALANCED)
+            assertEquals(msg, Risk.LOW, balMid.pkg.risk)
+            assertEquals(msg, Action.IGNORE, balMid.action)
+
+            // Balanced escalates passive notice at extreme confidence p=0.9995
+            val balHi = Analyzer.analyse(msg, extremeScorer, mode = DetectorOnlyMode.BALANCED)
+            assertEquals(Risk.UNCERTAIN, balHi.pkg.risk)
+            assertEquals(Action.VERIFY_INDEPENDENTLY, balHi.action)
+            assertEquals("detector_only", balHi.advisory.path)
+        }
+
+        val actionScams = listOf(
+            "Dear SBI customer, your A/c XX4821 is on hold. Call 9876543210 immediately to unblock.",
+            "BESCOM Alert: Your electricity bill is overdue and will be disconnected tonight. Contact 8812345678.",
+            "Axis Bank: Your account is frozen. Dial 9345678901 within 1 hour to reactivate.",
+        )
+        for (msg in actionScams) {
+            val canon = canonicalize(msg)
+            assertTrue(isTransactionalNotice(canon.normalized))
+            assertTrue(isActionSolicitation(canon.normalized))
+            assertFalse(isPassiveTransactionalNotice(canon.normalized))
+            assertTrue(shouldEscalateDetectorOnly(canon.normalized, 0.97, DetectorOnlyMode.BALANCED))
+        }
+        // Detector-only action-soliciting transactional message (no rule evidence) escalates in BALANCED
+        val actionNoRuleMsg = "BESCOM billing notice: Confirm your account payment status to avoid penalty."
+        val actionNoRuleCanon = canonicalize(actionNoRuleMsg)
+        assertTrue(runRules(actionNoRuleCanon).isEmpty())
+        assertTrue(isTransactionalNotice(actionNoRuleCanon.normalized))
+        assertTrue(isActionSolicitation(actionNoRuleCanon.normalized))
+        assertFalse(isPassiveTransactionalNotice(actionNoRuleCanon.normalized))
+        val balAction = Analyzer.analyse(actionNoRuleMsg, fixedHighScorer, mode = DetectorOnlyMode.BALANCED)
+        assertEquals(Risk.UNCERTAIN, balAction.pkg.risk)
+        assertEquals(Action.VERIFY_INDEPENDENTLY, balAction.action)
+        assertEquals("detector_only", balAction.advisory.path)
+
+        // General non-transactional message in verify mode vs balanced at p=0.50 vs p=0.97
+        val plain = "Special exclusive bonus awaiting confirmation."
+        val verifyRes = Analyzer.analyse(plain, verifyThresholdScorer, mode = DetectorOnlyMode.VERIFY)
+        assertEquals(Risk.UNCERTAIN, verifyRes.pkg.risk)
+        assertEquals(Action.VERIFY_INDEPENDENTLY, verifyRes.action)
+        assertEquals("detector_only", verifyRes.advisory.path)
+
+        val balGeneralMid = Analyzer.analyse(plain, verifyThresholdScorer, mode = DetectorOnlyMode.BALANCED)
+        assertEquals(Risk.LOW, balGeneralMid.pkg.risk)
+        assertEquals(Action.IGNORE, balGeneralMid.action)
+
+        val balGeneralHi = Analyzer.analyse(plain, fixedHighScorer, mode = DetectorOnlyMode.BALANCED)
+        assertEquals(Risk.UNCERTAIN, balGeneralHi.pkg.risk)
+        assertEquals(Action.VERIFY_INDEPENDENTLY, balGeneralHi.action)
+        assertFalse(shouldEscalateDetectorOnly(plain, 0.50, DetectorOnlyMode.QUIET))
+        val rawPkg = buildPackage(canonicalize(plain), emptyList(), ScamState.SCAM)
+        assertEquals(Risk.UNCERTAIN, detectorOnlyPackage(rawPkg).risk)
     }
 }

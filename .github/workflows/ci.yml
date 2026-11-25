@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python-checks:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest pytest-xdist ruff
+
+      - name: Ruff lint
+        run: |
+          ruff check src tests scripts \
+            deploy/pi/service/rakshak_edge_service.py \
+            deploy/pi/service/edge_decision.py \
+            deploy/pi/service/edge_pipeline.py \
+            deploy/pi/service/edge_workers.py \
+            deploy/pi/service/nids_pipeline.py \
+            deploy/pi/service/socket_bridge.py
+
+      - name: Check Pi Flash UI embedded JS syntax
+        run: |
+          python - <<'EOF'
+          import re, subprocess, tempfile
+          from pathlib import Path
+          html = Path("deploy/pi/service/index.html").read_text(encoding="utf-8")
+          blocks = re.findall(r"<script[^>]*>(.*?)</script>", html, re.S)
+          assert blocks, "no script blocks in index.html"
+          with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8") as fh:
+              fh.write("\n".join(blocks))
+              fh.flush()
+              subprocess.run(["node", "--check", fh.name], check=True)
+          EOF
+
+      - name: Run pytest suite
+        run: pytest -q -n auto
+
+  android-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Android JVM unit tests
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest --no-daemon

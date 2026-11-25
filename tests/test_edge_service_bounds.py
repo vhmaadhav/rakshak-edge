@@ -614,3 +614,69 @@ def test_keep_alive_socket_timeout_is_restored_after_slow_post():
             sock.sendall(head2 + body)
             resp2 = sock.recv(65536)
             assert resp2.startswith(b"HTTP/1.1 200 ")
+
+
+def test_health_reports_policy_hybrid_and_nids_config(tmp_path):
+    from nids_pipeline import NidsAnalyzer
+
+    nids = NidsAnalyzer(
+        lambda x: [[1.0, 0.0, 0.0, 0.0, 0.0] for _ in x],
+        scratch=tmp_path / "uploads",
+        flow_source="stdlib",
+        dns_min_distinct=3,
+        dns_slow_window_ms=300_000,
+    )
+    analyzer = FakeAnalyzer(pending=False)
+    analyzer.tx_verify_threshold = 0.999
+    service = svc.Service(
+        analyzer,
+        threads=1,
+        temp_limit=75.0,
+        log_path=None,
+        models={
+            svc.URL_MODEL_ID: {
+                "enabled": True,
+                "threshold": 0.6308,
+                "hybrid": True,
+                "domain_intel_version": "url-domain-intel-v1",
+            }
+        },
+        detector_only_mode="balanced",
+        verify_threshold=0.9566,
+        device_fn=lambda: {"temp_c": 42.0},
+        nids=nids,
+    )
+    health = service.health()
+    assert health["detector_only_mode"] == "balanced"
+    assert health["verify_threshold"] == pytest.approx(0.9566)
+    assert health["tx_verify_threshold"] == pytest.approx(0.999)
+    assert health["url_model"]["hybrid"] is True
+    assert health["url_model"]["domain_intel_version"] == "url-domain-intel-v1"
+    assert health["nids"] == {
+        "model_mode": "quiet",
+        "dns_min_distinct": 3,
+        "dns_slow_window_s": 300,
+    }
+
+
+def test_socket_bridge_connect_timeout_and_connection_cap(tmp_path):
+    import socket_bridge
+
+    # Dead/missing socket respects short connect timeout and returns None without hanging.
+    t0 = time.monotonic()
+    assert socket_bridge._connect(str(tmp_path / "missing.sock"), timeout=0.05) is None
+    assert time.monotonic() - t0 < 1.0
+
+    # Semaphore release is guaranteed cleanly even if client fails before upstream connects.
+    sem = threading.BoundedSemaphore(1)
+    assert sem.acquire(blocking=False)
+    s1, s2 = socket.socketpair()
+    s1.close()
+    s2.close()
+    socket_bridge._handle(s1, str(tmp_path / "missing.sock"), sem, connect_timeout=0.05)
+    # Semaphore must have been released by _handle's finally block.
+    assert sem.acquire(blocking=False)
+    sem.release()
+
+    with pytest.raises(ValueError, match="max_connections"):
+        socket_bridge.serve("127.0.0.1", 0, str(tmp_path / "missing.sock"), max_connections=0)
