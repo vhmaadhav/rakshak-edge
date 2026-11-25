@@ -1,0 +1,65 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{siunitx}
+\usepackage{xspace}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,calc,shapes.geometric}
+\PassOptionsToPackage{obeyspaces,spaces}{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage[capitalise,noabbrev]{cleveref}
+
+\sisetup{group-separator={,},group-minimum-digits=4}
+\setlist{itemsep=2pt,topsep=4pt}
+\captionsetup{font=small,labelfont=bf}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+% Marks a number that is reported in the cited document but has no raw log committed to the repository.
+\newcommand{\prose}{\textsuperscript{\dag}\xspace}
+% Repository path, set in typewriter type and allowed to break.
+\newcommand{\repo}[1]{\nolinkurl{#1}}
+
+\title{\textbf{Rakshak-Edge}\\[4pt]
+  \large Offline, proof-carrying scam, phishing and intrusion detection on Arm\\[2pt]
+  \normalsize Technical report, Phase~1 (Open Qualifying)\\
+  Bharat AI-SoC Challenge 2026--27, Problem Statement~3}
+\author{Team Rakshak-Edge: Maadhav, Sachin~A~S, Nakul}
+\date{23 November 2026}
+
+\begin{document}
+\maketitle
+
+\input{sections/abstract}
+
+\tableofcontents
+\bigskip
+
+\input{sections/introduction}
+\input{sections/system}
+\input{sections/detection}
+\input{sections/explanation}
+\input{sections/network}
+\input{sections/deployment}
+\input{sections/evaluation}
+\input{sections/limitations}
+\input{sections/future}
+
+\appendix
+\input{sections/appendix}
+
+\input{sections/references}
+
+\end{document}

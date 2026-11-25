@@ -1,0 +1,44 @@
+\section{Network intrusion detection}\label{sec:network}
+
+The network path accepts a classic libpcap capture, or a JSON flow list, at \repo{POST /analyze_flows}. It runs on the device. No test in the repository captures live traffic or sends a packet. Detection is rules-first: deterministic rules over per-host windows decide every alert, and the INT8 flow model only gives advice. The policy was fixed on 7 November 2026, before any rule was run on the test captures (\repo{docs/NIDS_EDGE.md}).
+
+\subsection{Flow extraction}
+
+A pcap is read by nfstream 6.6.0 when it can be imported (the default, \repo{--nids-flow-source auto}). Otherwise the pure-Python reader \repo{src/rakshak/nids/}\allowbreak\repo{pcap_flows.py} is used. It uses only \repo{struct}, reads classic libpcap (not pcapng), and groups IPv4 TCP, UDP and other packets into bidirectional flows with nfstream key names. On the synthetic captures its byte, packet and flag features match nfstream, and duration and throughput features differ by up to about 1 ms on some flows. A JSON body, \verb|{"flows": [...]}|, skips extraction.
+
+\subsection{Host rules}
+
+The constants are in \repo{src/rakshak/nids/}\allowbreak\repo{host_rules.py}, and the port-scan rule is in \repo{src/rakshak/nids/}\allowbreak\repo{evidence.py}. The thresholds were fixed before any run. The holdout parameters were chosen by reading these constants, so each case sits at a stated edge (\repo{docs/NIDS_EDGE.md}). A packet-rate DoS rule was not built, because flows carry only first and last times.
+
+\begin{table}[t]
+\centering
+\caption{Network rules, evaluated per request. Source: the files named in the text and \repo{docs/NIDS_EDGE.md}.}\label{tab:netrules}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{3.1cm}Yp{1.5cm}p{1.1cm}}
+\toprule
+Rule & Fires when one source host shows & Window & Weight \\
+\midrule
+\repo{port_scan} & at least 20 distinct destination ports & 10 s & 0.9 \\
+\repo{brute_force_ssh} & at least 10 short TCP flows (duration $\leq$ 5 s, bytes $\leq$ 10 KB) to port 22 on one destination & 60 s & 0.9 \\
+\repo{brute_force_other} & the same shape on ports 21, 23, 3389 and 5900 & 60 s & 0.9 \\
+\repo{dns_tunnel} & at least 5 UDP DNS queries whose name has a label of 40 or more characters, or a name of 100 or more characters, or a longest label with entropy of 3.8 bits or more per character & 60 s & 0.9 \\
+\repo{dos_flood} & at least 200 SYN-only TCP flows to one destination & 10 s & 0.85 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+In quiet mode, the default, a host with a rule hit takes its family and action from the rule. Its model score is shown beside the rule and cannot change the family. A host with model flags but no rule becomes an UNCERTAIN advisory with action VERIFY\_INDEPENDENTLY. It is counted as a model-only host, not as an alert. Network remediation uses 11 deterministic codes (\repo{src/rakshak/remediation.py}). Network advisories use templates only.
+
+\subsection{Optional DNS guards}
+
+Both options are off by default, so the pre-registered rule applies unless an operator sets them.
+
+\begin{itemize}
+\item \repo{--nids-dns-min-distinct N} (default 1) requires N distinct suspicious query names before \repo{dns_tunnel} fires within 60 s. A value of 3 suppresses repeated lookups of one CDN hostname.
+\item \repo{--nids-dns-slow-window-s S} (default 0) adds a second window. With S = 300, six distinct suspicious names must occur within 5 minutes.
+\end{itemize}
+
+\subsection{Role of the learned model}
+
+The shipped model is the INT8 student \repo{student_cse_cic_ids2018_}\allowbreak\repo{int8.onnx} (6,729 bytes; 19 live features; 8 families). It was chosen over the UNSW-NB15 student, which has a 13\% false-positive rate at its max-F1 point against 0.5\% here, and over the BoT-IoT student, whose training data is 95\% attacks (\repo{docs/NIDS_EDGE.md}). Its ALERT and UNCERTAIN thresholds are 0.0015007257461547852 and 0.0005502104759216309 (\repo{docs/SYSTEM_V1.md}, section 1a). Its cross-dataset results are weak (\cref{sec:evaluation}), so the model can raise only a verify advisory, never an alert.

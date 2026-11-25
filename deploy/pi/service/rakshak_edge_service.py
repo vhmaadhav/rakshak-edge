@@ -8,7 +8,8 @@
     GET  /                          -> a minimal page to paste an SMS and see the stages
 
 Detector-only flags (score >= threshold, no rule evidence) follow ``--detector-only-mode`` (env
-RAKSHAK_DETECTOR_ONLY_MODE): "quiet" (default) or "verify" (see docs/EDGE_PIPELINE.md, Fix B).
+RAKSHAK_DETECTOR_ONLY_MODE): "quiet" (default), "balanced" or "verify" (see docs/EDGE_PIPELINE.md,
+Fix B).
 Hinglish SMS (detect_lang) are answered in Hinglish; ``--hinglish-mode`` (env RAKSHAK_HINGLISH_MODE)
 is "template" (verifier templates, no LLM) or "llm" (Hinglish slot prompt). The request may set
 ``"lang": "auto" | "en" | "hinglish"`` (default auto). ``--explainer-cache N`` (env

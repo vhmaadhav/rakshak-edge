@@ -10,7 +10,7 @@ Status key: **available** = run on the target hardware and documented; **experim
 
 | Deployment | Input | Status | Basis |
 |---|---|---|---|
-| Android | Message pasted into the app, or text shared from another app (`ACTION_SEND`, `text/plain`) | experimental: builds, 27 JVM tests pass, not run on a device | [android/README.md](../android/README.md), [ANDROID_APP.md](ANDROID_APP.md) |
+| Android | Message pasted into the app, or text shared from another app (`ACTION_SEND`, `text/plain`) | experimental: builds; 53 JVM unit tests in `android/app/src/test`; one on-device detector run reported on a OnePlus 13R (Android 16) in [benchmarks.md](benchmarks.md) section 1 (raw output not committed); Llama not yet run on the phone | [android/README.md](../android/README.md), [ANDROID_APP.md](ANDROID_APP.md) |
 | Android | Links inside a message (canonicaliser, domain rules) | experimental: same as above | [ANDROID_APP.md](ANDROID_APP.md) section 1 |
 | Android | "Explain with Llama" (ExecuTorch, on the phone) | experimental: wired in code; without the model files the app shows the template | [ANDROID_APP.md](ANDROID_APP.md) sections 1, 4 |
 | Android | Standalone URL check with the URL model | not yet (not ported) | [ANDROID_APP.md](ANDROID_APP.md) section 5 |
@@ -67,9 +67,11 @@ The Pi runs the service from `~/rakshak-bench`. Model files are not in git: they
 deploy/pi/bench/sync_bench.sh --dry-run
 deploy/pi/bench/sync_bench.sh
 
-# Pi, once: virtualenv without torch
+# Pi, once: virtualenv. ExecuTorch (and CPU torch) are needed for the Llama explainer; versions from docs/LLAMA_PI_RESULTS.md
 python3 -m venv ~/rakshak-bench/.venv
 ~/rakshak-bench/.venv/bin/pip install onnxruntime numpy pandas pyarrow
+~/rakshak-bench/.venv/bin/pip install "torch==2.14.0" --index-url https://download.pytorch.org/whl/cpu
+~/rakshak-bench/.venv/bin/pip install "executorch==1.5.1"
 
 # Pi: start the service (it blocks until it is listening; it runs with no network route)
 ~/rakshak-bench/deploy/pi/service/start_service.sh
@@ -109,10 +111,12 @@ A missing file makes the write step exit 1 (use `--allow-missing` to keep going)
 
 ## Release placeholders (fill at release time)
 
-- TODO(release): release APK link
-- TODO(release): demo video link
-- TODO(release): technical report link
-- TODO(release): frozen commit SHAs (repository, Pi code bundle, Android build) and the release manifest hash
+The Phase 1 checklist, with the verified deadline and the status of each deliverable, is [SUBMISSION_CHECKLIST.md](SUBMISSION_CHECKLIST.md).
+
+- APK: release v1.0.0-phase1 (draft; APK pending the SMS model file)
+- Demo video: pending, see issue #29
+- Technical report: `report/main.tex` (LaTeX source in this repo; PDF on release v1.0.0-phase1)
+- TODO(release): frozen commit SHAs (repository, Pi code bundle, Android build) and the release manifest hash. Filled when the release is published.
 
 ## Known limits
 
@@ -128,11 +132,11 @@ Each number is copied from the committed document named in its row. Where two do
 | The URL model does not transfer to other benign URL sources | FPR 69.4 % on the `url_domain` test at the shipped threshold; gate U2 failed (5 / 1,133 visible, limit 4), so URL evidence stays out of quiet mode | [URL_SERVICE_RESULTS.md](URL_SERVICE_RESULTS.md) |
 | Network results are on synthetic captures | 26 files, 2017 flows, built with scapy from RFC 1918 addresses. Rules first: 11 / 11 attack instances detected, 1 / 6 benign files alerted. No real traffic was tested | [NIDS_EDGE.md](NIDS_EDGE.md) "Holdout results", "Not done or untested" |
 | The learned network model does not generalise across datasets | Leave-one-dataset-out: the best arm passes its mean-MCC gate but fails the FPR limit (1 %) on all four targets; the verdict says the pass does not support deployment | [NIDS_XDATA_RESULTS.md](NIDS_XDATA_RESULTS.md) "Verdict" |
-| Explainer on the Pi: model sentences are often rejected | Raw verifier pass 27 of 33 points (small n); 4 of 31 calls unterminated; the template fills the rest | [BASELINE_PI.md](BASELINE_PI.md) section C; [EDGE_PIPELINE.md](EDGE_PIPELINE.md) section 3 |
+| Explainer on the Pi: model sentences are often rejected | Raw verifier pass 27 of 33 points (26 of 33 in [EDGE_PIPELINE.md](EDGE_PIPELINE.md) section 3c; small n); 4 of 31 calls unterminated; the template fills the rest | [BASELINE_PI.md](BASELINE_PI.md) section C; [EDGE_PIPELINE.md](EDGE_PIPELINE.md) section 3 |
 | Explainer prompt-injection result is structural | The injected payload never reaches the explainer prompt; the slot pass on the LLM path is weak and small-n | [PTE_INJECTION_RESULTS.md](PTE_INJECTION_RESULTS.md) "Verdict" |
 | Pi numbers were taken on USB power, without a cooler | Clean-power runs: evidence 30, direct runner, total p50 989 ms, p95 1,887 ms. Energy is a PMIC estimate, not a calibrated meter. Earlier runs had an under-voltage flag set | [EDGE_PIPELINE.md](EDGE_PIPELINE.md) section 4 and clean-power table; [SYSTEM_V1.md](SYSTEM_V1.md) section 4 |
 | One URL-latency run breached the 65 °C start rule | Start temperatures reached 71.4 °C (verify batch) and 65.9 °C (quiet batch); the quiet-versus-verify comparison is therefore confounded by temperature. The 50 ms added-latency gate is met either way | [URL_SERVICE_RESULTS.md](URL_SERVICE_RESULTS.md) "Thermal note on U5" |
-| Android has not run on a device | No device latency, screenshots or on-device Llama output in this tree. Parity tests run on the JVM regex engine, not Android's | [ANDROID_APP.md](ANDROID_APP.md) sections 2, 5; [android/README.md](../android/README.md) |
+| Android device evidence is thin | One detector-only benchmark run on a OnePlus 13R is reported in [benchmarks.md](benchmarks.md) section 1, but its raw output is not committed. No on-device Llama output and no screenshots are in this tree. Parity tests run on the JVM regex engine, not Android's | [ANDROID_APP.md](ANDROID_APP.md) sections 2, 5; [android/README.md](../android/README.md) |
 | Hinglish output is a first draft | Template text only for the Pi default; the native-speaker check is not done | [EDGE_PIPELINE.md](EDGE_PIPELINE.md) section 5, "Untested" |
 | One campaign F1 value is unresolved | 0.9813 (ONNX file) versus 0.9749 (stored run log) | [BASELINE.md](BASELINE.md) note 1 |
 

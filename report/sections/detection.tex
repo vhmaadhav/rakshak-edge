@@ -1,0 +1,90 @@
+\section{Detection}
+\label{sec:detection}
+
+Detection decides the verdict before any language model runs. It has four parts: a canonicaliser that removes obfuscation, a set of experts that score the canonical text, a rule engine that extracts evidence, and a decision layer with three modes.
+
+\subsection{Canonicaliser}
+\label{sec:canon}
+
+Obfuscation defeats both rules and classifiers, so every message is first rewritten. The canonicaliser applies NFKC normalisation, removes invisible and bidirectional control characters, folds Latin homoglyphs, restores \texttt{hxxp} and bracketed dots, collapses spaced or dotted letters, folds leetspeak and extracts URLs, including obfuscated ones. Devanagari is left intact (\repo{src/rakshak/canonicalize.py}). The Android port reproduces the canonical text and URLs on the 318-row Python fixture (\repo{docs/ANDROID_APP.md}, section 2).
+
+\subsection{SMS student}
+\label{sec:sms}
+
+The SMS student is a dual-view character CNN. It reads the raw text and the canonical text as byte sequences and also receives 16 binary rule flags computed on the canonical text (\repo{deploy/pi/bench/registry.toml}). It is exported to ONNX and run with ONNX Runtime~\cite{onnxruntime} on both targets. The shipped file is 388,127 bytes, and its SHA-256 hash is pinned in the registry. Its decision threshold is $0.35127517580986023$, the F1-maximising point on the campaign calibration split (\repo{deploy/pi/bench/registry.toml}).
+
+The student is not used alone. Taken by itself it flags 471 of the 1,133 legitimate policy messages in the GroundLM set, a rate of 41.57\% (\repo{docs/BASELINE.md}). That false-alarm rate is the main reason the rules and the decision layer exist. Detector-level results on the campaign-disjoint test set are reported in \cref{sec:evaluation}. On the Pi the ONNX scores agreed with the laptop: the largest absolute probability difference over 300 rows was 0.0, and no row changed side of the threshold (\repo{docs/BASELINE_PI.md}, section A)\prose. An INT8 export was rejected because it flipped one verdict in the Pi parity run, so the FP32 model is shipped (\repo{docs/PERF_FAST_INFERENCE.md})\prose.
+
+\subsection{URL student and the hybrid domain-intelligence scorer}
+\label{sec:url}
+
+The URL student is a wide character CNN over the raw URL, with a maximum length of 200 characters. It also takes 29 side features, standardised with a saved scaler. It was trained on PhreshPhish~\cite{phreshphish}. The ONNX file is 2,741,232 bytes. Its threshold, $\tau_{\text{url}}=$\newline $0.6308487409530461$, is the smallest calibration threshold at which the benign false-positive rate on a 5\% carve-out of PhreshPhish is at most 1\% (\repo{deploy/pi/bench/registry.toml}).
+
+The threshold does not transfer to other benign sources: on the url\_domain test set it gives a false-positive rate of 69.4\% (\repo{docs/URL_SERVICE_RESULTS.md}). So URL evidence is kept out of quiet mode on \texttt{/analyze}, where its gate failed, and \texttt{/analyze\_url} gives a URL verdict in every mode.
+
+The optional hybrid scorer combines the ONNX logit with a domain-intelligence logit using equal weights of 0.5 each. The ONNX logit is clipped at 4.0 before fusion (\repo{src/rakshak/url_domain_intel.py}). The domain-intelligence scorer uses lexical and structural features: homograph and leetspeak spoofing of brand names, brand names in the host or path, free-hosting platforms, risky top-level domains and URL shorteners. It also uses 32,768 hashed character 3-to-5-grams. It was trained so that no registered domain overlaps the PhreshPhish test set or the url\_domain sets, and it needs no network access (\repo{docs/benchmarks.md}, section 2c). The hybrid returns one of three outcomes: no\_signal, suspicious or phishing.
+
+On the Pi, the hybrid at the shipped threshold lowers the url\_domain false-positive rate from 69.42\% to 5.97\% and keeps recall at 94.00\% (\repo{docs/benchmarks.md}, section 2c)\prose. It is off by default and is enabled with \verb|--url-hybrid|. It is not ported to Android.
+
+\subsection{Rules and evidence}
+\label{sec:rules}
+
+The rule engine has 16 evidence types, from credential requests and UPI collect requests to digital-arrest claims, prize claims, brand-domain mismatch, shortened links and urgency (\repo{src/rakshak/rules.py}). Each hit receives an identifier in order (E1, E2 and so on), a type, a span in the canonical text, the matched text and a weight.
+
+The weights set the risk. A top weight of at least 0.85 gives HIGH, and at least 0.6 gives MEDIUM. The urgency type is deliberately weak and cannot raise a message on its own (\repo{src/rakshak/evidence.py}). Each type maps to a short list of allowed actions, and the action chosen for the package is the first action of the highest-weighted type that has an entry. The system, not the language model, therefore selects the action (\repo{src/rakshak/evidence.py}). The rules were designed partly by reading the GroundLM outcomes, so figures on that set are in-sample (\repo{docs/SYSTEM_V1.md}, section 4).
+
+\subsection{Decision policy and modes}
+\label{sec:decision}
+
+The decision has three states. A message is in state \emph{scam} when its SMS score is at or above the threshold. It is \emph{uncertain} when rules fired without such a score, and \emph{benign} otherwise. A \emph{detector-only flag} is a scam state with no rule evidence. The mode decides what the user sees for a detector-only flag (\repo{deploy/pi/service/edge_decision.py}). The mode is set with \verb|--detector-only-mode|, and the default is quiet.
+
+\begin{description}
+  \item[Quiet (default).] A detector-only flag is LOW risk with action IGNORE. The user gets the same neutral text as for a benign message, which says that no specific scam pattern was found. The score stays in the response so that the flag can be counted.
+  \item[Balanced (\texttt{balanced\_v3}).] Detector-only flags are escalated to UNCERTAIN with action VERIFY\_INDEPENDENTLY at or above a threshold that depends on the message. Passive transactional notices, such as debit and credit alerts, protective one-time passwords, and passive order, refund or utility notices, have transactional vocabulary and no action cue. For those the threshold is $0.999$. For all other messages it is $0.9566$. The action-cue test is a fixed set of patterns for calls, clicks, verification, unblocking, KYC and phone numbers. The $0.9566$ threshold was calibrated on non-transactional negatives of the campaign calibration split at a false-positive rate of at most 0.1\%, with $n = 5{,}334$ (\repo{deploy/pi/service/edge_decision.py}). The URL model adds evidence in this mode only when the SMS score is over its threshold or a rule fired.
+  \item[Verify.] Every detector-only flag becomes UNCERTAIN with action VERIFY\_INDEPENDENTLY. This mode is kept behind the flag and is not the default.
+\end{description}
+
+\Cref{tab:modes} gives the measured trade-off. The campaign row is the campaign-disjoint test set, and the GroundLM row is the set of 1,133 legitimate policy messages. Rule design used some of the GroundLM messages, so that row is in-sample.
+
+\begin{table}[t]
+\centering
+\caption{Decision modes. Quiet and verify figures are from \texttt{docs/SYSTEM\_V1.md}, section 2b, and \texttt{docs/GROUNDLM\_EDGE\_FPR.md} (verify campaign figures); balanced figures are from \texttt{docs/VALIDATION\_REPORT.md}, section 1a. Quiet-mode rates are visible warning rates, and the GroundLM column is the set of 1,133 legitimate policy messages.}
+\label{tab:modes}
+\small
+\begin{tabularx}{\linewidth}{l Y Y Y}
+\toprule
+Mode & Detector-only flag & Campaign test: recall / FPR & Legitimate policy SMS: FPR \\
+\midrule
+quiet (default) & LOW, IGNORE & 16.20\% / 0.61\% & 0.18\% (2 / 1,133) \\
+balanced\_v3 & UNCERTAIN at or above 0.9566, or at or above 0.999 for passive transactional notices & 88.60\% / 0.83\%\prose & 1.50\% (17 / 1,133)\prose \\
+verify & UNCERTAIN for every flag & 98.12\% / 2.22\% & 41.66\% (472 / 1,133) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The quiet default trades recall for fewer warnings. On the external SmishX set (226 smishing messages; it also informed earlier policy design), visible recall is 23.45\% in quiet mode and 76.55\% in verify mode (\repo{docs/GROUNDLM_EDGE_FPR.md}). The default was chosen for the demonstration, and the cost is listed as a limitation in \cref{sec:limitations}. The balanced figures are on the campaign-disjoint test set, and its threshold was calibrated on the calibration split only. The GroundLM figures are not an independent test.
+
+\subsection{Shipped models}
+\label{sec:models}
+
+\Cref{tab:models} lists the model files that the service and the app load. The explainer is described in \cref{sec:explanation}.
+
+\begin{table}[t]
+\centering
+\caption{Shipped model files. Sizes are bytes and each file is pinned by SHA-256 in the registry or the app assets.}
+\label{tab:models}
+\footnotesize
+{\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\linewidth}{Y Y r Y Y}
+\toprule
+Model & Format & Size (bytes) & Threshold & Runs on \\
+\midrule
+SMS student (dual-view char-CNN, raw and canonical bytes, 16 rule flags) & ONNX & 388,127 & $0.35127517580986023$ & Pi 5 and Android (ONNX Runtime) \\
+URL student (wide char-CNN, 29 side features) & ONNX & 2,741,232 & $\tau_{\text{url}}=$\newline $0.6308487409530461$ & Pi 5 only; verify mode on \texttt{/analyze}, every mode on \texttt{/analyze\_url} \\
+NIDS student (INT8, CSE-CIC-IDS2018) & ONNX & 6,729 & alert $0.0015007257461547852$\newline uncertain $0.0005502104759216309$ & Pi 5; rules decide, the model alone gives only an uncertain state \\
+Explainer: Llama 3.2 1B Instruct, SpinQuant INT4 & ExecuTorch file & 1,135,951,488 & not applicable & Pi 5 (ExecuTorch Python bindings); Android wired, not run \\
+\bottomrule
+\end{tabularx}}
+\end{table}
+
+Sources: \repo{deploy/pi/bench/registry.toml}, \repo{docs/SYSTEM_V1.md} section 1a. The NIDS student was trained on CSE-CIC-IDS2018~\cite{cicids2018}. Its thresholds are on the probability score, and a model-only flag never counts as an alert on its own (\repo{docs/SYSTEM_V1.md}, section 1a).

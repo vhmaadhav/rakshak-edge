@@ -6,7 +6,7 @@ Three kinds of number are kept apart:
 
 - **Detector** metrics score a model or a rule set on a labelled split, before the user sees anything.
 - **Visible-warning policy** metrics count what the user sees (quiet or verify mode, abstention, alerts).
-- **Latency** is split into detector-only time, share-to-render, first explanation and full explanation. Where a document does not use one of these terms, the line says what it does measure. No committed document reports share-to-render.
+- **Latency** is split into detector-only time, share-to-render, first explanation and full explanation. Where a document does not use one of these terms, the line says what it does measure. Share-to-render on Android (cold and warm share, request to verdict frame) is reported only in [benchmarks.md](benchmarks.md) section 1, without committed raw output.
 
 Exposure: many SMS rows were used to design rules and thresholds. Those documents say "in-sample". SmishX is the one set the docs describe as independent of training. The 41.57 % and similar figures are not independent tests.
 
@@ -60,9 +60,10 @@ What the user sees in quiet mode (default) and verify mode. Denominators are giv
 | Cross-fitted GroundLM calibration, seed 3 (W1g) | GroundLM false positives 10 / 1,133 pass; recall and campaign F1 fail | GroundLM, SmishX, campaign; folds `sms_groupneg` | Encoder + threshold | [CROSSFIT_CONFIRM_RESULTS.md](CROSSFIT_CONFIRM_RESULTS.md) |
 | Three-seed ensemble (W1h) | GroundLM false positives 22 / 1,133; recall and campaign F1 fail | Same protocol as W1g, seeds 4–6 | Encoder ensemble | [ENSEMBLE_CONFIRM_RESULTS.md](ENSEMBLE_CONFIRM_RESULTS.md) |
 | Recall V2 (reputation-guarded URL evidence) | Gates G1–G5: GroundLM visible FP, SmishX TP and ham FP, campaign FPR, PhreshPhish recall; R3 fails G1, G3, G5; default unchanged | GroundLM, SmishX, campaign, PhreshPhish, `url_domain` | URL evidence in quiet mode | [RECALL_V2_RESULTS.md](RECALL_V2_RESULTS.md); JSON: [results/recall_v2/metrics.json](results/recall_v2/metrics.json) |
-| URL evidence in the Pi service | Gate U2 fails (5 / 1,133 visible, limit 4); U3 SmishX visible recall 53 → 181 in verify, 53 → 143 with corroboration | GroundLM; SmishX | URL evidence on `/analyze` | [URL_SERVICE_RESULTS.md](URL_SERVICE_RESULTS.md) |
+| URL evidence in the Pi service | Gate U2 fails (5 / 1,133 visible, limit 4); U3 SmishX visible recall 53 → 181 with URL evidence in quiet mode, 53 → 143 with corroboration | GroundLM; SmishX | URL evidence on `/analyze` | [URL_SERVICE_RESULTS.md](URL_SERVICE_RESULTS.md) |
 | Hard-negative arm, fused (policy view) | Visible FP caps and SmishX recall against control; killed | GroundLM, SmishX | Fusion policy | [TRANSACTIONAL_HARDNEG_FUSED_RESULTS.md](TRANSACTIONAL_HARDNEG_FUSED_RESULTS.md) |
-| Adversarial, boundary & Indian-context validation (P0/P2/P3/P4) | Passive-tx balanced SMS (campaign 88.6% rec / 0.83% FPR, paired Indian bank 20/20 rec), DNS low-and-slow multi-horizon (0/6 benign PCAPs, 4/6 slow beacons), URL hybrid adversarial (29/29 attacks, 1.37% OOD FPR), Indian SMS strata & field harness | Campaign test (22,145), GroundLM (1,133 neg / 91 pos), SmishX (1,107), paired Indian bank (40), 18 DNS boundaries + 26 PCAPs, 48 adversarial URLs + PhreshPhish/`url_domain` | SMS balanced v3, Hybrid URL, NIDS rules | [VALIDATION_REPORT.md](VALIDATION_REPORT.md) |
+| Adversarial, boundary & Indian-context validation (P0/P2/P3/P4) | Passive-tx balanced SMS (campaign 88.6% rec / 0.83% FPR, paired Indian bank 20/20 rec), DNS low-and-slow multi-horizon (0/6 benign PCAPs, 4/6 slow beacons), URL hybrid adversarial (29/29 attacks, 1.37% OOD FPR on a 4,000-row `url_domain` sample; 2.22% on the full set, [benchmarks.md](benchmarks.md) 2c), Indian SMS strata & field harness | Campaign test (22,145), GroundLM (1,133 neg / 91 pos), SmishX (1,107), paired Indian bank (40), 18 DNS boundaries + 26 PCAPs, 48 adversarial URLs + PhreshPhish/`url_domain` | SMS balanced v3, Hybrid URL, NIDS rules | [VALIDATION_REPORT.md](VALIDATION_REPORT.md) |
+| Real-hardware benchmarks (Android + Pi 5, 2026-11-23) | Android cold/warm share latency and RSS (detector only); Pi 5 verdict-first latency, throughput, PMIC power; SMS `balanced` and hybrid-URL accuracy on the Pi | OnePlus 13R (Android 16); Pi 5 4 GB; campaign test, GroundLM, SmishX, PhreshPhish, `url_domain`, 26 PCAPs | Android app, Pi service | [benchmarks.md](benchmarks.md) (raw outputs not committed) |
 
 ## 3. Explainer quality
 
@@ -88,13 +89,13 @@ Definitions as the documents use them. "Decision time" excludes the explainer. "
 | [EXPLAINER_SPEED_RESULTS.md](EXPLAINER_SPEED_RESULTS.md) | Not applicable | Not measured | Not measured | x86 LLM p50 615 ms (baseline); Pi figure is a derived projection (989 ms times the ratio), not a measurement | x86 VM, 4 vCPU shared, 3 threads |
 | [ENCODER_PI_RESULTS.md](ENCODER_PI_RESULTS.md) | Partial only (run stopped at the 64 °C bench limit) | Not measured | Not applicable | Not applicable | Pi 5; the gate was not evaluated |
 | [PTE_INJECTION_RESULTS.md](PTE_INJECTION_RESULTS.md) | Not applicable | Not measured | Not measured | Not measured as latency | Pi 5 |
-| [ANDROID_APP.md](ANDROID_APP.md) | Not measured | Not measured | Not measured | Not measured | No device run; JVM parity tests only (27 unit tests pass) |
+| [ANDROID_APP.md](ANDROID_APP.md) | Not measured | Not measured | Not measured | Not measured | Device numbers are in [benchmarks.md](benchmarks.md) section 1 (detector only, raw output not committed); 53 JVM unit tests |
 
 ## 5. Android
 
 | Document | What it measures | Data / split | Component | Link |
 |---|---|---|---|---|
-| Android app parity and build | Kotlin canonical text, rules, side flags, byte ids, decisions match the Python code on 318 rows; 27 JVM unit tests pass | 318-row parity fixture (SMS campaign test, GroundLM, SmishX, hand-made cases) | Android app | [ANDROID_APP.md](ANDROID_APP.md) |
+| Android app parity and build | Kotlin canonical text, rules, side flags, byte ids, decisions match the Python code on 318 rows; 27 JVM unit tests passed on 2026-11-20 (53 exist now) | 318-row parity fixture (SMS campaign test, GroundLM, SmishX, hand-made cases) | Android app | [ANDROID_APP.md](ANDROID_APP.md) |
 | Local history and model import | Design and data layer only; no UI wiring yet | Not applicable | Android app | [../android/docs/HISTORY_AND_PROVISIONING.md](../android/docs/HISTORY_AND_PROVISIONING.md) |
 
 ## 6. Assurance checks

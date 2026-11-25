@@ -1,0 +1,73 @@
+\section{Proof-carrying explanation}
+\label{sec:explanation}
+
+The explanation layer turns the verdict into plain-language sentences. It is ``proof-carrying'' in a narrow sense: each sentence the model writes is tied to evidence the detector produced, is checked against that evidence before it is shown, and carries a receipt that records whether it was accepted and why. A rejected sentence is replaced by a template. The layer never sets the verdict, the risk or the action.
+
+\subsection{Evidence package}
+\label{sec:package}
+
+The evidence package is the only input the explanation may use (\repo{src/rakshak/evidence.py}). It holds the risk, the confidence state, the evidence items, the allowed actions, and the domains and phone numbers found in the message. The allowed actions come from a fixed map from evidence type to action codes. The system chooses the advisory action from that map, and the explainer does not choose actions. The prompt gives one short fact per evidence item: the type phrase and a matched-text slot of at most 60 characters, with URLs reduced to their registered domain (\repo{src/rakshak/prompts.py}). The slot is the span of one rule hit, not the whole message.
+
+\subsection{The explainer model}
+\label{sec:llm}
+
+The explainer is Llama~3.2 1B Instruct~\cite{llama32}, quantised to INT4 with SpinQuant learned rotations~\cite{spinquant}. The quantised file is a pre-exported ExecuTorch \texttt{.pte} from the ExecuTorch community~\cite{etcommunity}, 1,135,951,488 bytes, and it runs with ExecuTorch 1.5.1~\cite{executorch}. The Pi runs it through the ExecuTorch Python bindings in a separate low-priority process, which reuses the cached system-prompt entries across calls (\repo{docs/EDGE_PIPELINE.md}, ``Prefix reuse''). The Android app wires the same ExecuTorch version, but the model has not been run on the phone. The Llama licence notice ships with the app (\repo{docs/ANDROID_APP.md}, section 4).
+
+\subsection{Slot prompting}
+\label{sec:slots}
+
+The explainer makes one call per evidence type. The collapsed package keeps the first item of each type, so six prize-lottery hits produce one sentence (\repo{docs/EDGE_PIPELINE.md}, Fix D). Each call gives one fact and asks for one sentence that restates it. The system instruction forbids judging the message or its sender and limits the model to that fact. The edge service uses the \texttt{describe\_kw} variant, with the type clause and keyword in the prefix. Generation is limited to 20 new tokens per point and stops at a sentence end or at a quote, a brace or a newline.
+
+The wording matters. Before the change to ``describe, do not judge'', the model wrote sentences such as ``This message is (likely) a scam'', and the attribution guard rejected most of them. The raw point pass at that stage was 10 of 45 (\repo{docs/EDGE_PIPELINE.md}, Fix A)\prose.
+
+\subsection{Verifier and guards}
+\label{sec:verifier}
+
+The verifier (\repo{src/rakshak/verifier.py}) accepts a point only if every URL, domain, phone number and number it mentions appears in the package. At HIGH or MEDIUM risk it never calls the message safe, legitimate or genuine. It gives no positive instruction to click, call, pay or share, although a warning such as ``Do not share your OTP'' is allowed. It has no prompt-injection phrasing and contains a keyword from the lexicon for its type. It is a complete sentence of at most 160 characters. The evidence identifiers attached to a point are assigned by the system from the type it describes, not written by the model.
+
+Two edge guards sit on top of this check (\repo{docs/EDGE_PIPELINE.md}, section 1).
+\begin{description}
+  \item[G1, no model call at LOW risk.] A LOW-risk decision gets a template-only advisory, so a benign message never receives generated text.
+  \item[G2, attribution guard.] A point may not attribute scam intent to the sender. At LOW risk any such term is rejected, even when negated. At MEDIUM and UNCERTAIN risk it is accepted only inside a hedge such as ``may be a scam''. At HIGH risk G2 is not applied. Whether unhedged wording is acceptable at HIGH is an open decision (\repo{docs/SYSTEM_V1.md}, section 5).
+\end{description}
+
+\subsection{Template fallback and response modes}
+\label{sec:fallback}
+
+Every point that fails the verifier is replaced by the template sentence for its evidence type. The templates are deterministic and exist in English and in Hinglish; the Hinglish wording is a first draft that a native speaker has not reviewed. The summary line is always the template. The verdict, risk, action and remediation are computed before the explainer runs and are not changed by it.
+
+In \texttt{sync} mode, the default, the answer carries the verdict and the explanation together. In \texttt{verdict\_first} mode the answer carries the verdict and the template at once, and the explanation is read later from \texttt{GET /explanation/<id>} or from the explanation table. The table is built offline with one sentence for each language, prompt variant, evidence type and presence of a slot. Each sentence holds a \texttt{[[SLOT]]} placeholder that is filled at run time with the matched text, so the model never writes the slot, and the filled sentence is checked again. The table has 68 keys, of which the verifier rejects 14, so those points fall back to the template (\repo{docs/PERF_FAST_INFERENCE.md}, ``Known gaps'')\prose.
+
+\subsection{Prompt injection}
+\label{sec:injection}
+
+The attack is text in the message that tries to steer the explainer. On the default path the explainer sees short facts and matched spans, not the whole message, and it is limited to restating one fact. A message can still place text inside a matched span, so this is a partial defence.
+
+An injection test used 150 message pairs, with the five payload families in the repository, on the INT4 model with the service settings. It found no harmful flips and no unsupported or reassuring sentences (\repo{docs/PTE\_INJECTION\_RESULTS.md})\prose. The result is structural. The payload never reached the prompt in any pair, so the clean and injected prompts were identical, and zero flips is what the design predicts. The test does not measure a defence. The free-form variant, which receives the raw message, flipped 35 of 150 pairs (23.3\%) in an FP16 run that was not on the Pi, which is why it is not shipped. A test that places payloads inside matched spans has not been run.
+
+\subsection{Measured results}
+\label{sec:explresults}
+
+\Cref{tab:explainresults} gives the explainer and response-mode results reported in the repository. Figures marked with a dagger are device measurements.
+
+\begin{table}[t]
+\centering
+\caption{Explainer and response-mode results, as reported in the cited documents.}
+\label{tab:explainresults}
+\small
+\begin{tabularx}{\linewidth}{Y Y l}
+\toprule
+Measure & Value & Source \\
+\midrule
+Evidence-bearing rows that reached the model (INT4 path); points passing the verifier & 28 of 34 rows (82.4\%); 37 of 43 points (86.0\%)\prose & \repo{docs/PTE_INJECTION_RESULTS.md} \\
+Harmful flips, injected against clean pairs & 0 of 150 (structural, see \cref{sec:injection})\prose & \repo{docs/PTE_INJECTION_RESULTS.md} \\
+Explanation table: keys; rejected entries & 68 keys; 14 rejected, so template fallback\prose & \repo{docs/PERF_FAST_INFERENCE.md} \\
+Verdict-first, quiet mode, English 40-row run: table hits & 23 of 27 (85.2\%)\prose & \repo{docs/benchmarks.md}, section 2a \\
+Verdict-first, quiet mode: time to verdict, p50 and p95 & 4.11 ms and 10.04 ms\prose & \repo{docs/benchmarks.md}, section 2a \\
+Synchronous mode, verdict with explanation, p50 & 794 ms to 1.4 s\prose & \repo{README.md} \\
+Explainer on the Android phone & not run; template only in the measured run & \repo{docs/benchmarks.md}, section 1 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+These results come from small samples, one seed and one device per target. The 28 of 34 figure is the evidence-bearing subset of the rows that reached the model, taken from 150 pairs. The limits of the explainer are collected in \cref{sec:limitations}.
